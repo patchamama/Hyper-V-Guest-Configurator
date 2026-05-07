@@ -129,6 +129,38 @@ function Wait-VMReady {
     throw "VM '$VMName' did not respond within ${TimeoutSec}s"
 }
 
+function Start-VMWithMemoryFallback([string]$VMName) {
+    try {
+        Start-VM $VMName -ErrorAction Stop | Out-Null
+        return
+    } catch {
+        $msg = $_.Exception.Message
+        $isMemoryError = $msg -match "0x800705AA|Nicht genügend Systemressourcen|not enough system resources|cannot allocate|cannot reserve RAM|cannot reserve memory"
+        if (-not $isMemoryError) { throw }
+        Write-Host "  Low host memory detected while starting '$VMName'. Applying fallback VM memory settings..." -ForegroundColor Yellow
+    }
+
+    $mem = Get-VMMemory -VMName $VMName
+    $targetStartup = if ($mem.Startup -gt 4GB) { 4GB } else { $mem.Startup }
+    if ($targetStartup -lt 2GB) { $targetStartup = 2GB }
+
+    $targetMinimum = if ($mem.Minimum -gt $targetStartup) { $targetStartup } else { $mem.Minimum }
+    if ($targetMinimum -lt 1GB) { $targetMinimum = 1GB }
+
+    $targetMaximum = if ($mem.Maximum -lt $targetStartup) { $targetStartup } else { $mem.Maximum }
+
+    Set-VMMemory -VMName $VMName `
+        -DynamicMemoryEnabled $true `
+        -StartupBytes $targetStartup `
+        -MinimumBytes $targetMinimum `
+        -MaximumBytes $targetMaximum
+
+    Write-Host ("  Memory fallback applied: Startup={0} MB, Min={1} MB, Max={2} MB" -f `
+        [int]($targetStartup / 1MB), [int]($targetMinimum / 1MB), [int]($targetMaximum / 1MB)) -ForegroundColor Yellow
+
+    Start-VM $VMName -ErrorAction Stop | Out-Null
+}
+
 function Invoke-InVM([scriptblock]$Script) {
     Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock $Script
 }
@@ -240,9 +272,7 @@ function Select-LocalSoftwares {
         return @()
     }
 
-    $folders = @(
-        [PSCustomObject]@{ Name = "(root)"; Path = $SoftwaresPath; Relative = "." }
-    ) + @(Get-ChildItem -Path $SoftwaresPath -Directory | Sort-Object Name | ForEach-Object {
+    $folders = @(Get-ChildItem -Path $SoftwaresPath -Directory | Sort-Object Name | ForEach-Object {
         [PSCustomObject]@{
             Name     = $_.Name
             Path     = $_.FullName
@@ -250,8 +280,13 @@ function Select-LocalSoftwares {
         }
     })
 
+    if ($folders.Count -eq 0) {
+        Write-Host "  No subfolders found in softwares\. Create folders and put installers there." -ForegroundColor Yellow
+        return @()
+    }
+
     Write-Host ""
-    Write-Host "  Select one or more source folders under softwares\ first." -ForegroundColor Cyan
+    Write-Host "  Select one or more folders inside softwares\." -ForegroundColor Cyan
     $pickedFolders = Select-FromList `
         -Items $folders `
         -Prompt "Folder numbers separated by spaces (or A for all, - to skip):" `
@@ -358,7 +393,7 @@ if (Has-PendingInstallation $state) {
         $resumeVMName = $state.VMName
         if ($resumeVMName) {
             Stop-VM $resumeVMName -Force -ErrorAction SilentlyContinue
-            Start-VM $resumeVMName
+            Start-VMWithMemoryFallback $resumeVMName
         }
     }
 }
@@ -484,8 +519,8 @@ if ($enableSoftware -and -not $deferSoftwareSelection -and -not (Is-Done $state 
 $postgresPassword = ""
 $mssqlSaPassword  = ""
 if ($enableSoftware -and -not $deferSoftwareSelection) {
-    $hasPostgres = ($state.WingetPkgs -contains "PostgreSQL.PostgreSQL.18") -or ($state.LocalFiles | Where-Object { $_ -match "(?i)postgresql" } | Measure-Object).Count -gt 0
-    $hasMssql    = ($state.WingetPkgs -contains "Microsoft.SQLServer.2022.Developer") -or ($state.LocalFiles | Where-Object { $_ -match "(?i)sql.*server|ssei" } | Measure-Object).Count -gt 0
+    $hasPostgres = (($state.WingetPkgs | Where-Object { $_ -match "(?i)^PostgreSQL\.PostgreSQL(\.|$)" } | Measure-Object).Count -gt 0) -or (($state.LocalFiles | Where-Object { $_ -match "(?i)postgresql" } | Measure-Object).Count -gt 0)
+    $hasMssql    = (($state.WingetPkgs | Where-Object { $_ -match "(?i)^Microsoft\.SQLServer(\.|$)" } | Measure-Object).Count -gt 0) -or (($state.LocalFiles | Where-Object { $_ -match "(?i)sql.*server|ssei" } | Measure-Object).Count -gt 0)
 
     if ($hasPostgres) {
         Write-Host ""
@@ -526,7 +561,7 @@ Write-Host ""
 $vmState = (Get-VM -Name $VMName).State
 if ($vmState -ne 'Running') {
     Write-Host "  VM is not running (state: $vmState) -- starting..." -ForegroundColor Yellow
-    Start-VM $VMName -ErrorAction SilentlyContinue
+    Start-VMWithMemoryFallback $VMName
     Wait-VMReady $VMName $cred -TimeoutSec 300
 } elseif ($resumeVMName) {
     Wait-VMReady $VMName $cred -TimeoutSec 300
@@ -544,7 +579,7 @@ if ($enableWSL) {
         Write-Banner "STEP 1 -- Nested Virtualization"
         Stop-VM $VMName -Force -ErrorAction SilentlyContinue
         Set-VMProcessor -VMName $VMName -ExposeVirtualizationExtensions $true
-        Start-VM $VMName
+        Start-VMWithMemoryFallback $VMName
         Wait-VMReady $VMName $cred
         Mark-Done $state "nested-virt"
     }
@@ -666,7 +701,7 @@ if ($enableWSL) {
         if (-not (Is-Done $state "docker-reboot")) {
         Write-Host "  Rebooting VM after Docker Desktop install..."
         Stop-VM $VMName -Force -ErrorAction SilentlyContinue
-        Start-VM $VMName
+        Start-VMWithMemoryFallback $VMName
         Wait-VMReady $VMName $cred -TimeoutSec 300
         Mark-Done $state "docker-reboot"
     }
@@ -825,8 +860,8 @@ if ($deferSoftwareSelection -and -not (Is-Done $state "software-selected")) {
 }
 
 if ($enableSoftware -and $deferSoftwareSelection) {
-    $hasPostgres = ($state.WingetPkgs -contains "PostgreSQL.PostgreSQL.18") -or ($state.LocalFiles | Where-Object { $_ -match "(?i)postgresql" } | Measure-Object).Count -gt 0
-    $hasMssql    = ($state.WingetPkgs -contains "Microsoft.SQLServer.2022.Developer") -or ($state.LocalFiles | Where-Object { $_ -match "(?i)sql.*server|ssei" } | Measure-Object).Count -gt 0
+    $hasPostgres = (($state.WingetPkgs | Where-Object { $_ -match "(?i)^PostgreSQL\.PostgreSQL(\.|$)" } | Measure-Object).Count -gt 0) -or (($state.LocalFiles | Where-Object { $_ -match "(?i)postgresql" } | Measure-Object).Count -gt 0)
+    $hasMssql    = (($state.WingetPkgs | Where-Object { $_ -match "(?i)^Microsoft\.SQLServer(\.|$)" } | Measure-Object).Count -gt 0) -or (($state.LocalFiles | Where-Object { $_ -match "(?i)sql.*server|ssei" } | Measure-Object).Count -gt 0)
 
     if ($hasPostgres) {
         Write-Host ""
@@ -962,19 +997,24 @@ if ($enableSoftware) {
                 Remove-Item $wgBundle -Force -ErrorAction SilentlyContinue
                 Write-Host "  winget installed." -ForegroundColor Green
             }
+            try {
+                winget source update --name winget --accept-source-agreements | Out-Null
+            } catch {
+                Write-Host "  [WARN] Could not refresh winget source. Continuing..." -ForegroundColor Yellow
+            }
 
             foreach ($pkgId in $using:pkgIds) {
                 Write-Host "  Installing: $pkgId ..."
                 if ($wingetOverridesLocal.ContainsKey($pkgId)) {
                     $overrideArgs = $wingetOverridesLocal[$pkgId]
-                    winget install --id $pkgId --silent --accept-package-agreements --accept-source-agreements --override $overrideArgs
+                    winget install --id $pkgId --source winget --exact --silent --disable-interactivity --accept-package-agreements --accept-source-agreements --override $overrideArgs 2>&1 | Out-Null
                 } else {
-                    winget install --id $pkgId --silent --accept-package-agreements --accept-source-agreements
+                    winget install --id $pkgId --source winget --exact --silent --disable-interactivity --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null
                 }
                 if ($LASTEXITCODE -eq 0) {
                     Write-Host "  Installed: $pkgId" -ForegroundColor Green
                 } else {
-                    Write-Host "  [WARN] Exit code $LASTEXITCODE for $pkgId" -ForegroundColor Yellow
+                    Write-Host "  [WARN] winget failed for $pkgId (exit code $LASTEXITCODE)." -ForegroundColor Yellow
                 }
             }
         }
