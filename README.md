@@ -1,51 +1,77 @@
 # Hyper-V Guest Configurator
 
-This project provides a robust PowerShell-based automation framework designed to streamline the provisioning and configuration of Microsoft Hyper-V guest virtual machines. It specializes in two primary areas: automated software deployment and the establishment of a complete WSL2/Docker infrastructure for AI workloads.
+PowerShell automation for preparing and provisioning Windows Hyper-V guest VMs.
 
-## Core Functionalities
+## What it does
 
-### 1. Automated Software Installation
-The script manages the lifecycle of software deployment through two main channels:
-- **Local Installers**: Automates the transfer of binaries from the host's `softwares` directory to the guest VM (C:\Install). It supports silent installation modes for common tools like Firefox, Notepad++, PostgreSQL, and SQL Server using predefined command-line arguments.
-- **Winget Integration**: Leverages the Windows Package Manager (Winget) to install modern applications directly from Microsoft's repository, ensuring up-to-date versions without manual intervention.
+- Configures VM prerequisites for WSL2 (including nested virtualization).
+- Supports two WSL tracks:
+  - **Full WSL + AI stack**: WSL2 + Docker + Ollama + Caddy.
+  - **Minimal WSL preparation**: enables support only, no WSL install.
+- Deploys software to guest VM from:
+  - **Local installers** in `softwares/`.
+  - **Winget** package catalog.
+- Handles interrupted runs with checkpoint/resume support.
 
-### 2. WSL2 and Docker Infrastructure
-A significant portion of the script is dedicated to preparing the guest VM for containerized workloads:
-- **Nested Virtualization**: Automatically configures the host processor settings to expose virtualization extensions to the guest VM, a prerequisite for running WSL2 and Docker.
-- **WSL2 Deployment**: Enables the Virtual Machine Platform and Windows Subsystem for Linux features, installs the Linux kernel update package, and sets WSL2 as the default version.
-- **Docker Desktop Orchestration**: Automates the installation of Docker Desktop via Chocolatey, manages necessary reboots, and ensures the Docker daemon is responsive before proceeding.
+## New behavior and options
 
-### 3. AI Stack Deployment (Ollama + Caddy)
-The script automates the deployment of a local AI inference environment:
-- **Containerization**: Uses Docker Compose to orchestrate an Ollama instance paired with a Caddy reverse proxy.
-- **Security**: Caddy is configured to provide an SSL-secured endpoint for the Ollama API, including automatic certificate generation and installation into the guest's Trusted Root store.
-- **Model Management**: Allows the user to select and automatically pull multiple LLM models (e.g., DeepSeek, Llama, Mistral) during the deployment phase.
+### Startup safety prompt
+If an interrupted/pending installation is detected, the script asks in English whether to continue before any resume/start-over action.
 
-## Technical Workflow
+### Feature selection modes
+- `1`: Full WSL2 + AI stack (WSL + Docker + Ollama)
+- `2`: Software packages only
+- `3`: Minimal WSL preparation only (no WSL install)
+- `4`: Minimal WSL preparation + software
+- `A`: Full WSL2 + AI stack + software
 
-The execution follows a state-aware pipeline:
-1.  **State Initialization**: Checks for existing deployment state files to allow resuming from the last successful step in case of interruptions.
-2.  **Environment Validation**: Verifies VM connectivity and administrative privileges.
-3.  **Feature Provisioning**:
-    - Host-side: Configuration of nested virtualization.
-    - Guest-side: Windows Feature enablement and WSL kernel installation.
-4.  **Application Deployment**:
-    - Infrastructure: Docker and Chocolatey setup.
-    - Software: File transfer and silent/interactive installation.
-5.  **Finalization**: Cleanup of temporary state files and deployment summary reporting.
+### Minimal WSL preparation mode
+This mode:
+- Enables `VirtualMachinePlatform` and `Microsoft-Windows-Subsystem-Linux`.
+- Reboots VM to apply features.
+- Prepares update/package support in guest Windows (Microsoft Update service registration, update services, winget source refresh when available).
+
+It **does not** install WSL. At the end it prints required commands to run inside the VM:
+- `wsl --install --no-distribution`
+- `wsl --update`
+- `wsl --set-default-version 2`
+
+### Software source selection by folders
+Local software selection is now two-step:
+1. Choose one or more folders under `softwares/`.
+2. Choose specific files from those folders.
+
+Paths are preserved when copied to `C:\Install` in the VM.
+
+### Default local installer behavior: copy-only
+For local installers, default mode is now **copy-only** in all flows.
+- Files are copied to guest VM.
+- They are not executed unless you explicitly choose `silent` or `interactive`.
+
+### Docker via winget option
+When selecting winget packages, you can explicitly opt-in Docker Desktop installation via winget.
+
+### PostgreSQL and SQL Server password prompts
+When PostgreSQL or SQL Server installer/package is detected, the script can prompt for:
+- PostgreSQL superuser password
+- SQL Server `sa` password
+
+Passwords are entered as hidden input and are not stored in checkpoint state.
 
 ## Requirements
 
-- **Host OS**: Windows 10/11 Pro, Enterprise, or Server with Hyper-V role enabled.
-- **Privileges**: PowerShell must be executed as Administrator.
-- **Guest OS**: Windows 10/11 guest with WinRM enabled for remote command execution.
-- **Connectivity**: The host must have network access to the guest VM and the internet for package downloads.
+- Host: Windows with Hyper-V enabled.
+- Run PowerShell **as Administrator**.
+- Guest VM: Windows guest reachable via PowerShell Direct/Hyper-V integration.
+- Internet access for package downloads (winget/choco/WSL kernel/etc.).
 
 ## Usage
 
-1. Place local installers in the `softwares` folder.
-2. Execute the script from an elevated PowerShell prompt:
-   ```powershell
-   .\hyperv-configurator.ps1
-   ```
-3. Follow the interactive prompts to select the target VM and desired features.
+1. Put local installers in `softwares/` (subfolders supported).
+2. Run from elevated PowerShell:
+
+```powershell
+.\hyperv-configurator.ps1
+```
+
+3. Follow prompts for VM, feature mode, and package/file selection.

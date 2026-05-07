@@ -23,6 +23,7 @@ $ModelCatalogue = @(
 $WingetCatalogue = @(
     [PSCustomObject]@{ Name = "Mozilla Firefox";              Id = "Mozilla.Firefox" }
     [PSCustomObject]@{ Name = "Notepad++";                    Id = "Notepad++.Notepad++" }
+    [PSCustomObject]@{ Name = "Docker Desktop";               Id = "Docker.DockerDesktop" }
     [PSCustomObject]@{ Name = "PostgreSQL 18";                Id = "PostgreSQL.PostgreSQL.18" }
     [PSCustomObject]@{ Name = "SQL Server 2022 Developer";    Id = "Microsoft.SQLServer.2022.Developer" }
     [PSCustomObject]@{ Name = "SQL Server Mgmt Studio";       Id = "Microsoft.SQLServerManagementStudio" }
@@ -82,6 +83,28 @@ function Mark-Done($state, $step) {
     if (-not (Is-Done $state $step)) { $state.Completed = @($state.Completed) + $step }
     Save-State $state
     Write-Host "  [DONE] $step" -ForegroundColor Green
+}
+
+function Read-PlainSecret([string]$Prompt) {
+    $secure = Read-Host -Prompt $Prompt -AsSecureString
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+    try {
+        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+    } finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    }
+}
+
+function Has-PendingInstallation($state) {
+    return (
+        $state.Completed.Count -gt 0 -or
+        -not [string]::IsNullOrWhiteSpace($state.VMName) -or
+        $state.Features.Count -gt 0 -or
+        $state.Models.Count -gt 0 -or
+        $state.LocalFiles.Count -gt 0 -or
+        $state.WingetPkgs.Count -gt 0 -or
+        -not [string]::IsNullOrWhiteSpace($state.InstallMode)
+    )
 }
 
 # =============================================================================
@@ -216,23 +239,54 @@ function Select-LocalSoftwares {
         Write-Host "  'softwares' folder not found at: $SoftwaresPath" -ForegroundColor Yellow
         return @()
     }
-    $files = Get-ChildItem -Path $SoftwaresPath -File | Sort-Object Name
-    if ($files.Count -eq 0) {
-        Write-Host "  No files found in the softwares folder." -ForegroundColor Yellow
+
+    $folders = @(
+        [PSCustomObject]@{ Name = "(root)"; Path = $SoftwaresPath; Relative = "." }
+    ) + @(Get-ChildItem -Path $SoftwaresPath -Directory | Sort-Object Name | ForEach-Object {
+        [PSCustomObject]@{
+            Name     = $_.Name
+            Path     = $_.FullName
+            Relative = $_.Name
+        }
+    })
+
+    Write-Host ""
+    Write-Host "  Select one or more source folders under softwares\ first." -ForegroundColor Cyan
+    $pickedFolders = Select-FromList `
+        -Items $folders `
+        -Prompt "Folder numbers separated by spaces (or A for all, - to skip):" `
+        -DisplayItem { param($f) ("{0,-25} path: {1}" -f $f.Name, $f.Relative) } `
+        -AllowEmpty
+
+    if ($pickedFolders.Count -eq 0) {
+        Write-Host "  No folders selected." -ForegroundColor Yellow
         return @()
     }
 
+    $files = @()
+    foreach ($folder in $pickedFolders) {
+        $files += Get-ChildItem -Path $folder.Path -File -Recurse
+    }
+
+    if ($files.Count -eq 0) {
+        Write-Host "  No files found in selected folders." -ForegroundColor Yellow
+        return @()
+    }
+
+    $files = @($files | Sort-Object FullName -Unique)
+
     $picked = Select-FromList `
         -Items $files `
-        -Prompt "Numbers separated by spaces (or A for all, - to skip):" `
+        -Prompt "File numbers separated by spaces (or A for all, - to skip):" `
         -DisplayItem { param($f)
             $ext = $f.Extension.ToLower()
             $note = if ($ext -eq ".zip") { " [ZIP -- manual extraction needed]" } else { "" }
-            "$($f.Name)$note"
+            $relativePath = $f.FullName.Substring($SoftwaresPath.Length).TrimStart('\','/')
+            "$relativePath$note"
         } `
         -AllowEmpty
 
-    return @($picked | ForEach-Object { $_.Name })
+    return @($picked | ForEach-Object { $_.FullName.Substring($SoftwaresPath.Length).TrimStart('\','/') })
 }
 
 function Select-WingetPackages {
@@ -259,7 +313,7 @@ Write-Banner "Hyper-V Guest Configurator"
 $state        = Get-DeployState
 $resumeVMName = $null
 
-if ($state.Completed.Count -gt 0) {
+if (Has-PendingInstallation $state) {
     $lastStep = $state.Completed[-1]
     $vmLabel  = if ($state.VMName) { $state.VMName } else { "(not set)" }
 
@@ -268,8 +322,17 @@ if ($state.Completed.Count -gt 0) {
     Write-Host "  |----------------------------------------------------|" -ForegroundColor Yellow
     Write-Host ("  |  VM       : {0,-37}|" -f $vmLabel)                              -ForegroundColor Yellow
     Write-Host ("  |  Completed: {0,-37}|" -f "$($state.Completed.Count) step(s)")   -ForegroundColor Yellow
-    Write-Host ("  |  Last step: {0,-37}|" -f $lastStep)                             -ForegroundColor Yellow
+    Write-Host ("  |  Last step: {0,-37}|" -f $(if ($lastStep) { $lastStep } else { "(none yet)" })) -ForegroundColor Yellow
     Write-Host "  +----------------------------------------------------+" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  There is a pending installation from a previous run." -ForegroundColor Yellow
+    Write-Host "  Do you want to continue with the installation? [Y/N] (default: Y): " -NoNewline -ForegroundColor Yellow
+    $continueInstall = (Read-Host).Trim()
+    if ($continueInstall -match "^[Nn]") {
+        Write-Host ""
+        Write-Host "  Installation cancelled by user." -ForegroundColor Magenta
+        exit 0
+    }
     Write-Host ""
     Write-Host "  [R] Resume from checkpoint" -ForegroundColor Cyan
     Write-Host "  [S] Start over from the beginning" -ForegroundColor Cyan
@@ -308,23 +371,30 @@ if ($state.Features.Count -eq 0) {
     Write-Banner "Feature Selection"
     Write-Host "  What do you want to configure on the guest VM?" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "  [1] Enable WSL2 for AI use (Docker + Ollama LLM deployment)" -ForegroundColor White
+    Write-Host "  [1] Full WSL2 + AI stack (WSL + Docker + Ollama)" -ForegroundColor White
     Write-Host "  [2] Install software packages on the guest VM" -ForegroundColor White
-    Write-Host "  [A] Both of the above" -ForegroundColor White
+    Write-Host "  [3] Minimal WSL preparation only (no WSL install)" -ForegroundColor White
+    Write-Host "  [4] Minimal WSL preparation + software copy/install options" -ForegroundColor White
+    Write-Host "  [A] Full WSL2 + AI stack + software packages" -ForegroundColor White
     Write-Host ""
-    Write-Host "  Choice [1/2/A]: " -NoNewline -ForegroundColor Yellow
+    Write-Host "  Choice [1/2/3/4/A]: " -NoNewline -ForegroundColor Yellow
     $fc = (Read-Host).Trim().ToUpper()
 
     $state.Features = [string[]] $(switch ($fc) {
         "1"     { @("wsl-ai") }
         "2"     { @("software") }
+        "3"     { @("wsl-prep") }
+        "4"     { @("wsl-prep", "software") }
         default { @("wsl-ai", "software") }
     })
     Save-State $state
 }
 
-$enableWSL      = $state.Features -contains "wsl-ai"
+$enableWSLFull  = $state.Features -contains "wsl-ai"
+$enableWSLPrep  = $state.Features -contains "wsl-prep"
+$enableWSL      = $enableWSLFull -or $enableWSLPrep
 $enableSoftware = $state.Features -contains "software"
+$deferSoftwareSelection = $enableWSLPrep -and $enableSoftware
 
 # ── VM selection ──────────────────────────────────────────────────────────────
 
@@ -347,19 +417,19 @@ $VMName = $state.VMName
 
 # ── Ollama model selection (WSL pipeline only) ────────────────────────────────
 
-if ($enableWSL -and $state.Models.Count -eq 0) {
+if ($enableWSLFull -and $state.Models.Count -eq 0) {
     Write-Host ""
     Write-Banner "Ollama Model Selection"
     Write-Host "  Select all models now -- no further prompts during deploy." -ForegroundColor Gray
     $state.Models = [string[]]$(Select-Models)
     Save-State $state
-} elseif ($enableWSL) {
+} elseif ($enableWSLFull) {
     Write-Host "  Models from checkpoint: $($state.Models -join ', ')" -ForegroundColor Gray
 }
 
 # ── Software selection ────────────────────────────────────────────────────────
 
-if ($enableSoftware -and -not (Is-Done $state "software-selected")) {
+if ($enableSoftware -and -not $deferSoftwareSelection -and -not (Is-Done $state "software-selected")) {
     Write-Host ""
     Write-Banner "Software Selection"
 
@@ -376,6 +446,14 @@ if ($enableSoftware -and -not (Is-Done $state "software-selected")) {
     Write-Host "  ------------------------------------------------------------------" -ForegroundColor DarkGray
     Write-Host "  Installed automatically on the guest. No files to copy." -ForegroundColor Gray
     $wingetIds = Select-WingetPackages
+    Write-Host ""
+    Write-Host "  Install Docker Desktop on the guest VM via winget? [Y/N] (default: N): " -NoNewline -ForegroundColor Yellow
+    $dockerViaWinget = (Read-Host).Trim()
+    if ($dockerViaWinget -match "^[Yy]") {
+        if ($wingetIds -notcontains "Docker.DockerDesktop") {
+            $wingetIds += "Docker.DockerDesktop"
+        }
+    }
     if ($wingetIds.Count -gt 0) {
         $state.WingetPkgs = [string[]]$wingetIds
     }
@@ -385,14 +463,15 @@ if ($enableSoftware -and -not (Is-Done $state "software-selected")) {
         Write-Host "  Installation mode for LOCAL installers:" -ForegroundColor Cyan
         Write-Host "  [S] Silent     -- fully automated, no interaction needed" -ForegroundColor White
         Write-Host "  [I] Interactive -- copy files, then launch each installer with UI" -ForegroundColor White
-        Write-Host "  [C] Copy only  -- copy files to C:\Install, do not run" -ForegroundColor White
+        Write-Host "  [C] Copy only  -- copy files to C:\Install, do not run (default)" -ForegroundColor White
         Write-Host ""
-        Write-Host "  Choice [S/I/C] (default: S): " -NoNewline -ForegroundColor Yellow
+        Write-Host "  Choice [S/I/C] (default: C): " -NoNewline -ForegroundColor Yellow
         $modeRaw = (Read-Host).Trim().ToUpper()
         $state.InstallMode = switch ($modeRaw) {
+            "S" { "silent" }
             "I" { "interactive" }
             "C" { "copy-only" }
-            default { "silent" }
+            default { "copy-only" }
         }
     }
 
@@ -402,12 +481,39 @@ if ($enableSoftware -and -not (Is-Done $state "software-selected")) {
     Write-Host "  Software from checkpoint: $($state.LocalFiles.Count) local file(s), $($state.WingetPkgs.Count) winget package(s)" -ForegroundColor Gray
 }
 
+$postgresPassword = ""
+$mssqlSaPassword  = ""
+if ($enableSoftware -and -not $deferSoftwareSelection) {
+    $hasPostgres = ($state.WingetPkgs -contains "PostgreSQL.PostgreSQL.18") -or ($state.LocalFiles | Where-Object { $_ -match "(?i)postgresql" } | Measure-Object).Count -gt 0
+    $hasMssql    = ($state.WingetPkgs -contains "Microsoft.SQLServer.2022.Developer") -or ($state.LocalFiles | Where-Object { $_ -match "(?i)sql.*server|ssei" } | Measure-Object).Count -gt 0
+
+    if ($hasPostgres) {
+        Write-Host ""
+        Write-Host "  PostgreSQL installer detected." -ForegroundColor Cyan
+        Write-Host "  Define PostgreSQL superuser password now? [Y/N] (default: Y): " -NoNewline -ForegroundColor Yellow
+        $setPgPwd = (Read-Host).Trim()
+        if ($setPgPwd -notmatch "^[Nn]") {
+            $postgresPassword = Read-PlainSecret "  PostgreSQL password (hidden input)"
+        }
+    }
+
+    if ($hasMssql) {
+        Write-Host ""
+        Write-Host "  SQL Server installer detected." -ForegroundColor Cyan
+        Write-Host "  Define SQL Server 'sa' password now? [Y/N] (default: Y): " -NoNewline -ForegroundColor Yellow
+        $setSqlPwd = (Read-Host).Trim()
+        if ($setSqlPwd -notmatch "^[Nn]") {
+            $mssqlSaPassword = Read-PlainSecret "  SQL Server sa password (hidden input)"
+        }
+    }
+}
+
 # ── Credentials (always prompted -- not stored in state file) ────────────────
 
 $cred = Get-Credential -Message "Credentials for VM '$VMName'"
 Write-Host ""
 Write-Host "  Target VM    : $VMName" -ForegroundColor Cyan
-if ($enableWSL)      { Write-Host "  Ollama models: $($state.Models -join ', ')" -ForegroundColor Cyan }
+if ($enableWSLFull)  { Write-Host "  Ollama models: $($state.Models -join ', ')" -ForegroundColor Cyan }
 if ($enableSoftware) {
     Write-Host "  Local files  : $($state.LocalFiles.Count)" -ForegroundColor Cyan
     Write-Host "  Winget pkgs  : $($state.WingetPkgs.Count)" -ForegroundColor Cyan
@@ -461,65 +567,89 @@ if ($enableWSL) {
         Mark-Done $state "wsl-reboot"
     }
 
-    # ── STEP 3a: Install WSL2 kernel package ──────────────────────────────────
-
-    if (-not (Is-Done $state "wsl-install")) {
-        Write-Banner "STEP 3a -- Install WSL2 Kernel Package"
-
+    if ($enableWSLPrep -and -not (Is-Done $state "wsl-prep-updates")) {
+        Write-Banner "STEP 3 -- Prepare Windows Update and package support (WSL prep mode)"
         Invoke-InVM {
             Write-Host "  Enabling Microsoft Update for other products..."
             $svcMgr = New-Object -ComObject Microsoft.Update.ServiceManager
-            $svcMgr.ClientApplicationID = "WSL2 Setup"
+            $svcMgr.ClientApplicationID = "WSL2 Prep"
             $svcMgr.AddService2("7971f918-a847-4430-9279-4a52d1efe18d", 7, "") | Out-Null
             Write-Host "  Microsoft Update enabled." -ForegroundColor Green
 
-            Write-Host "  Downloading WSL2 Linux kernel update package..."
-            $msi = "$env:TEMP\wsl_kernel.msi"
-            Invoke-WebRequest `
-                -Uri "https://wslstorestorage.blob.core.windows.net/wslblob/wsl_update_x64.msi" `
-                -OutFile $msi -UseBasicParsing
-            Write-Host "  Installing WSL2 kernel update package..."
-            Start-Process msiexec -ArgumentList "/i `"$msi`" /quiet /norestart" -Wait
-            Remove-Item $msi -Force -ErrorAction SilentlyContinue
-            Write-Host "  WSL2 kernel installed." -ForegroundColor Green
+            Write-Host "  Ensuring Windows Update services are available..."
+            foreach ($svcName in @("wuauserv","bits")) {
+                Set-Service -Name $svcName -StartupType Manual -ErrorAction SilentlyContinue
+                Start-Service -Name $svcName -ErrorAction SilentlyContinue
+            }
+
+            Write-Host "  Running package source update (winget) when available..."
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                winget source update | Out-Null
+            }
         }
-
-        Write-Host ""
-        Write-Host "  +-------------------------------------------------------+" -ForegroundColor Yellow
-        Write-Host "  |  ACTION REQUIRED -- Manual WSL Install                |" -ForegroundColor Yellow
-        Write-Host "  |                                                       |" -ForegroundColor Yellow
-        Write-Host "  |  1. Switch to the VM window.                          |" -ForegroundColor Yellow
-        Write-Host "  |  2. Open PowerShell as Administrator.                 |" -ForegroundColor Yellow
-        Write-Host "  |  3. Run: wsl --install --no-distribution              |" -ForegroundColor Blue
-        Write-Host "  |  4. Return here and press ENTER to continue.          |" -ForegroundColor Yellow
-        Write-Host "  +-------------------------------------------------------+" -ForegroundColor Yellow
-        Write-Host ""
-        Read-Host "  Press ENTER when done..." | Out-Null
-
-        Write-Host "  Rebooting VM to finalise WSL installation..."
-        Restart-VM $VMName -Force
-        Wait-VMReady $VMName $cred -TimeoutSec 300
-        Mark-Done $state "wsl-install"
+        Mark-Done $state "wsl-prep-updates"
     }
 
-    # ── STEP 3b: Set WSL2 as default ──────────────────────────────────────────
+    if ($enableWSLFull) {
+        # ── STEP 3a: Install WSL2 kernel package ──────────────────────────────
 
-    if (-not (Is-Done $state "wsl2-default")) {
-        Write-Banner "STEP 3b -- Set WSL2 as Default Version"
-        Invoke-InVM {
-            Write-Host "  Updating WSL..."
-            wsl --update
-            Write-Host "  Setting WSL2 as default version..."
-            wsl --set-default-version 2
-            Write-Host "  WSL2 set as default." -ForegroundColor Green
+        if (-not (Is-Done $state "wsl-install")) {
+            Write-Banner "STEP 3a -- Install WSL2 Kernel Package"
+
+            Invoke-InVM {
+                Write-Host "  Enabling Microsoft Update for other products..."
+                $svcMgr = New-Object -ComObject Microsoft.Update.ServiceManager
+                $svcMgr.ClientApplicationID = "WSL2 Setup"
+                $svcMgr.AddService2("7971f918-a847-4430-9279-4a52d1efe18d", 7, "") | Out-Null
+                Write-Host "  Microsoft Update enabled." -ForegroundColor Green
+
+                Write-Host "  Downloading WSL2 Linux kernel update package..."
+                $msi = "$env:TEMP\wsl_kernel.msi"
+                Invoke-WebRequest `
+                    -Uri "https://wslstorestorage.blob.core.windows.net/wslblob/wsl_update_x64.msi" `
+                    -OutFile $msi -UseBasicParsing
+                Write-Host "  Installing WSL2 kernel update package..."
+                Start-Process msiexec -ArgumentList "/i `"$msi`" /quiet /norestart" -Wait
+                Remove-Item $msi -Force -ErrorAction SilentlyContinue
+                Write-Host "  WSL2 kernel installed." -ForegroundColor Green
+            }
+
+            Write-Host ""
+            Write-Host "  +-------------------------------------------------------+" -ForegroundColor Yellow
+            Write-Host "  |  ACTION REQUIRED -- Manual WSL Install                |" -ForegroundColor Yellow
+            Write-Host "  |                                                       |" -ForegroundColor Yellow
+            Write-Host "  |  1. Switch to the VM window.                          |" -ForegroundColor Yellow
+            Write-Host "  |  2. Open PowerShell as Administrator.                 |" -ForegroundColor Yellow
+            Write-Host "  |  3. Run: wsl --install --no-distribution              |" -ForegroundColor Blue
+            Write-Host "  |  4. Return here and press ENTER to continue.          |" -ForegroundColor Yellow
+            Write-Host "  +-------------------------------------------------------+" -ForegroundColor Yellow
+            Write-Host ""
+            Read-Host "  Press ENTER when done..." | Out-Null
+
+            Write-Host "  Rebooting VM to finalise WSL installation..."
+            Restart-VM $VMName -Force
+            Wait-VMReady $VMName $cred -TimeoutSec 300
+            Mark-Done $state "wsl-install"
         }
-        Assert-WSL2
-        Mark-Done $state "wsl2-default"
-    }
 
-    # ── STEP 4: Chocolatey + Docker Desktop ───────────────────────────────────
+        # ── STEP 3b: Set WSL2 as default ──────────────────────────────────────
 
-    if (-not (Is-Done $state "docker-install")) {
+        if (-not (Is-Done $state "wsl2-default")) {
+            Write-Banner "STEP 3b -- Set WSL2 as Default Version"
+            Invoke-InVM {
+                Write-Host "  Updating WSL..."
+                wsl --update
+                Write-Host "  Setting WSL2 as default version..."
+                wsl --set-default-version 2
+                Write-Host "  WSL2 set as default." -ForegroundColor Green
+            }
+            Assert-WSL2
+            Mark-Done $state "wsl2-default"
+        }
+
+        # ── STEP 4: Chocolatey + Docker Desktop ───────────────────────────────
+
+        if (-not (Is-Done $state "docker-install")) {
         Write-Banner "STEP 4 -- Install Docker Desktop"
         Invoke-InVM {
             if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
@@ -533,7 +663,7 @@ if ($enableWSL) {
         Mark-Done $state "docker-install"
     }
 
-    if (-not (Is-Done $state "docker-reboot")) {
+        if (-not (Is-Done $state "docker-reboot")) {
         Write-Host "  Rebooting VM after Docker Desktop install..."
         Stop-VM $VMName -Force -ErrorAction SilentlyContinue
         Start-VM $VMName
@@ -543,7 +673,7 @@ if ($enableWSL) {
 
     # ── STEP 5: Start Docker Desktop ──────────────────────────────────────────
 
-    if (-not (Is-Done $state "docker-ready")) {
+        if (-not (Is-Done $state "docker-ready")) {
         Write-Banner "STEP 5 -- Start Docker Desktop"
 
         Invoke-InVM {
@@ -571,7 +701,7 @@ if ($enableWSL) {
 
     # ── STEP 6: Deploy Ollama + Caddy ─────────────────────────────────────────
 
-    if (-not (Is-Done $state "compose-up")) {
+        if (-not (Is-Done $state "compose-up")) {
         Write-Banner "STEP 6 -- Deploy Ollama + Caddy via Docker Compose"
 
         Write-Host "  Proceed with docker compose deployment? [Y/N]: " -NoNewline -ForegroundColor Yellow
@@ -650,6 +780,7 @@ https://127.0.0.1:11434, https://localhost:11434 {
             }
             Mark-Done $state "compose-up"
         }
+        }
     }
 
 } # end $enableWSL
@@ -657,6 +788,66 @@ https://127.0.0.1:11434, https://localhost:11434 {
 # =============================================================================
 # SOFTWARE PIPELINE
 # =============================================================================
+
+if ($deferSoftwareSelection -and -not (Is-Done $state "software-selected")) {
+    Write-Host ""
+    Write-Banner "Software Selection (Final Step)"
+
+    Write-Host "  LOCAL INSTALLERS (from selected folders under softwares\)" -ForegroundColor Cyan
+    Write-Host "  ----------------------------------------------------------" -ForegroundColor DarkGray
+    Write-Host "  These files will be copied to C:\Install on the guest VM." -ForegroundColor Gray
+    $localFiles = Select-LocalSoftwares
+    if ($localFiles.Count -gt 0) {
+        $state.LocalFiles = [string[]]$localFiles
+        $state.InstallMode = "copy-only"
+        Write-Host "  Local installers will be copied only (no auto-install)." -ForegroundColor Yellow
+    }
+
+    Write-Host ""
+    Write-Host "  WINGET PACKAGES (optional)" -ForegroundColor Cyan
+    Write-Host "  --------------------------" -ForegroundColor DarkGray
+    Write-Host "  Winget packages are installed on the VM (not copied)." -ForegroundColor Gray
+    $wingetIds = Select-WingetPackages
+    Write-Host ""
+    Write-Host "  Install Docker Desktop on the guest VM via winget? [Y/N] (default: N): " -NoNewline -ForegroundColor Yellow
+    $dockerViaWinget = (Read-Host).Trim()
+    if ($dockerViaWinget -match "^[Yy]") {
+        if ($wingetIds -notcontains "Docker.DockerDesktop") {
+            $wingetIds += "Docker.DockerDesktop"
+        }
+    }
+    if ($wingetIds.Count -gt 0) {
+        $state.WingetPkgs = [string[]]$wingetIds
+    }
+
+    Save-State $state
+    Mark-Done $state "software-selected"
+}
+
+if ($enableSoftware -and $deferSoftwareSelection) {
+    $hasPostgres = ($state.WingetPkgs -contains "PostgreSQL.PostgreSQL.18") -or ($state.LocalFiles | Where-Object { $_ -match "(?i)postgresql" } | Measure-Object).Count -gt 0
+    $hasMssql    = ($state.WingetPkgs -contains "Microsoft.SQLServer.2022.Developer") -or ($state.LocalFiles | Where-Object { $_ -match "(?i)sql.*server|ssei" } | Measure-Object).Count -gt 0
+
+    if ($hasPostgres) {
+        Write-Host ""
+        Write-Host "  PostgreSQL installer detected." -ForegroundColor Cyan
+        Write-Host "  Define PostgreSQL superuser password now? [Y/N] (default: Y): " -NoNewline -ForegroundColor Yellow
+        $setPgPwd = (Read-Host).Trim()
+        if ($setPgPwd -notmatch "^[Nn]") {
+            $postgresPassword = Read-PlainSecret "  PostgreSQL password (hidden input)"
+        }
+    }
+
+    if ($hasMssql) {
+        Write-Host ""
+        Write-Host "  SQL Server installer detected." -ForegroundColor Cyan
+        Write-Host "  Define SQL Server 'sa' password now? [Y/N] (default: Y): " -NoNewline -ForegroundColor Yellow
+        $setSqlPwd = (Read-Host).Trim()
+        if ($setSqlPwd -notmatch "^[Nn]") {
+            $mssqlSaPassword = Read-PlainSecret "  SQL Server sa password (hidden input)"
+        }
+    }
+}
 
 if ($enableSoftware) {
 
@@ -683,14 +874,18 @@ if ($enableSoftware) {
 
         Invoke-InVM { New-Item -ItemType Directory -Path "C:\Install" -Force | Out-Null }
 
-        foreach ($fileName in $state.LocalFiles) {
-            $srcPath = Join-Path $SoftwaresPath $fileName
+        foreach ($relativePath in $state.LocalFiles) {
+            $srcPath = Join-Path $SoftwaresPath $relativePath
             if (-not (Test-Path $srcPath)) {
-                Write-Host "  [SKIP] File not found: $fileName" -ForegroundColor Yellow
+                Write-Host "  [SKIP] File not found: $relativePath" -ForegroundColor Yellow
                 continue
             }
-            Write-Host "  Copying $fileName ..." -NoNewline
-            Copy-ToVM -SourcePath $srcPath -DestinationPath "C:\Install\$fileName"
+            $relativeWinPath = $relativePath -replace '/', '\'
+            $destPath = "C:\Install\$relativeWinPath"
+            $destDir = Split-Path -Path $destPath -Parent
+            Invoke-InVM { New-Item -ItemType Directory -Path $using:destDir -Force | Out-Null }
+            Write-Host "  Copying $relativePath ..." -NoNewline
+            Copy-ToVM -SourcePath $srcPath -DestinationPath $destPath
             Write-Host " done." -ForegroundColor Green
         }
         Mark-Done $state "software-copy"
@@ -701,8 +896,10 @@ if ($enableSoftware) {
     if ($state.LocalFiles.Count -gt 0 -and $state.InstallMode -ne "copy-only" -and -not (Is-Done $state "software-install-local")) {
         Write-Banner "STEP S3 -- Install Local Software ($($state.InstallMode))"
 
-        foreach ($fileName in $state.LocalFiles) {
-            $installerPath = "C:\Install\$fileName"
+        foreach ($relativePath in $state.LocalFiles) {
+            $relativeWinPath = $relativePath -replace '/', '\'
+            $fileName      = [System.IO.Path]::GetFileName($relativePath)
+            $installerPath = "C:\Install\$relativeWinPath"
             $ext           = [System.IO.Path]::GetExtension($fileName).ToLower()
 
             if ($ext -eq ".zip") {
@@ -716,18 +913,24 @@ if ($enableSoftware) {
             }
 
             if ($state.InstallMode -eq "silent") {
-                $silentArg = if ($SilentArgs.ContainsKey($fileName)) { $SilentArgs[$fileName] } else { "/S" }
-                Write-Host "  Installing (silent): $fileName ..."
+                $silentArg = if ($SilentArgs.ContainsKey($relativePath)) { $SilentArgs[$relativePath] } elseif ($SilentArgs.ContainsKey($fileName)) { $SilentArgs[$fileName] } else { "/S" }
+                if ($fileName -match "(?i)^postgresql-.*-windows-.*\.exe$" -and $postgresPassword) {
+                    $silentArg = "--mode unattended --unattendedmodeui minimal --superpassword `"$postgresPassword`""
+                }
+                if ($fileName -match "(?i)^SQL\d+-SSEI-.*\.exe$" -and $mssqlSaPassword) {
+                    $silentArg = "/Q /IACCEPTSQLSERVERLICENSETERMS /ACTION=Install /FEATURES=SQL /INSTANCENAME=MSSQLSERVER /SECURITYMODE=SQL /SAPWD=`"$mssqlSaPassword`" /SQLSVCACCOUNT=`"NT AUTHORITY\SYSTEM`""
+                }
+                Write-Host "  Installing (silent): $relativePath ..."
                 Invoke-InVM {
                     $proc = Start-Process -FilePath $using:installerPath -ArgumentList $using:silentArg -Wait -PassThru
                     if ($proc.ExitCode -notin @(0, 3010)) {
-                        Write-Host "  [WARN] $using:fileName exited with code $($proc.ExitCode)" -ForegroundColor Yellow
+                        Write-Host "  [WARN] $using:relativePath exited with code $($proc.ExitCode)" -ForegroundColor Yellow
                     } else {
-                        Write-Host "  Installed: $using:fileName" -ForegroundColor Green
+                        Write-Host "  Installed: $using:relativePath" -ForegroundColor Green
                     }
                 }
             } else {
-                Write-Host "  Launching (interactive): $fileName"
+                Write-Host "  Launching (interactive): $relativePath"
                 Invoke-InVM { Start-Process -FilePath $using:installerPath }
                 Write-Host "  Installer opened in the VM. Press ENTER here when done..." -ForegroundColor Yellow
                 Read-Host | Out-Null
@@ -742,7 +945,15 @@ if ($enableSoftware) {
         Write-Banner "STEP S4 -- Install Winget Packages"
 
         $pkgIds = $state.WingetPkgs
+        $wingetOverrides = @{}
+        if ($postgresPassword) {
+            $wingetOverrides["PostgreSQL.PostgreSQL.18"] = "--mode unattended --unattendedmodeui minimal --superpassword `"$postgresPassword`""
+        }
+        if ($mssqlSaPassword) {
+            $wingetOverrides["Microsoft.SQLServer.2022.Developer"] = "/Q /IACCEPTSQLSERVERLICENSETERMS /ACTION=Install /FEATURES=SQL /INSTANCENAME=MSSQLSERVER /SECURITYMODE=SQL /SAPWD=`"$mssqlSaPassword`" /SQLSVCACCOUNT=`"NT AUTHORITY\SYSTEM`""
+        }
         Invoke-InVM {
+            $wingetOverridesLocal = $using:wingetOverrides
             if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
                 Write-Host "  winget not found -- installing Microsoft.DesktopAppInstaller..." -ForegroundColor Yellow
                 $wgBundle = "$env:TEMP\winget.msixbundle"
@@ -754,7 +965,12 @@ if ($enableSoftware) {
 
             foreach ($pkgId in $using:pkgIds) {
                 Write-Host "  Installing: $pkgId ..."
-                winget install --id $pkgId --silent --accept-package-agreements --accept-source-agreements
+                if ($wingetOverridesLocal.ContainsKey($pkgId)) {
+                    $overrideArgs = $wingetOverridesLocal[$pkgId]
+                    winget install --id $pkgId --silent --accept-package-agreements --accept-source-agreements --override $overrideArgs
+                } else {
+                    winget install --id $pkgId --silent --accept-package-agreements --accept-source-agreements
+                }
                 if ($LASTEXITCODE -eq 0) {
                     Write-Host "  Installed: $pkgId" -ForegroundColor Green
                 } else {
@@ -768,6 +984,24 @@ if ($enableSoftware) {
 } # end $enableSoftware
 
 # =============================================================================
+# WSL PREP NEXT STEPS
+# =============================================================================
+
+if ($enableWSLPrep) {
+    Write-Host ""
+    Write-Host "  +-------------------------------------------------------+" -ForegroundColor Yellow
+    Write-Host "  |  WSL PREPARATION COMPLETE (NO WSL INSTALLED YET)      |" -ForegroundColor Yellow
+    Write-Host "  |                                                       |" -ForegroundColor Yellow
+    Write-Host "  |  Run these commands inside the VM (Admin PowerShell): |" -ForegroundColor Yellow
+    Write-Host "  |   1) wsl --install --no-distribution                  |" -ForegroundColor Blue
+    Write-Host "  |   2) wsl --update                                      |" -ForegroundColor Blue
+    Write-Host "  |   3) wsl --set-default-version 2                      |" -ForegroundColor Blue
+    Write-Host "  |   4) Restart VM if requested                          |" -ForegroundColor Yellow
+    Write-Host "  +-------------------------------------------------------+" -ForegroundColor Yellow
+    Write-Host ""
+}
+
+# =============================================================================
 # COMPLETE
 # =============================================================================
 
@@ -775,8 +1009,10 @@ Write-Host ""
 Write-Host "  +=========================================+" -ForegroundColor Green
 Write-Host "  |        CONFIGURATION COMPLETE           |" -ForegroundColor Green
 Write-Host ("  |  VM      : {0,-30}|" -f $VMName) -ForegroundColor Green
-if ($enableWSL) {
+if ($enableWSLFull) {
     Write-Host ("  |  Models  : {0,-30}|" -f "$($state.Models.Count) Ollama model(s)") -ForegroundColor Green
+} elseif ($enableWSLPrep) {
+    Write-Host ("  |  WSL mode: {0,-30}|" -f "Preparation only") -ForegroundColor Green
 }
 if ($enableSoftware) {
     $totalPkgs = $state.LocalFiles.Count + $state.WingetPkgs.Count
