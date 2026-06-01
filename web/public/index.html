@@ -823,19 +823,41 @@ function psCopy() {
   const mkSubdirs = subdirs.map(d => `New-Item -ItemType Directory "C:\\Install\\${d}" -Force | Out-Null`).join('; ');
 
   return psCred() + `
+# Start vmicguestinterface inside VM via PSSession (needed for Copy-VMFile VMBus channel)
+Write-Output "Ensuring Guest Service Interface is active inside VM..."
+Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
+    New-Item -ItemType Directory "C:\\Install" -Force | Out-Null
+    ${mkSubdirs ? mkSubdirs + '\n    ' : ''}$svc = Get-Service 'vmicguestinterface' -ErrorAction SilentlyContinue
+    if ($svc -and $svc.Status -ne 'Running') {
+        Write-Output "Starting vmicguestinterface..."
+        Start-Service 'vmicguestinterface' -ErrorAction SilentlyContinue
+        Start-Sleep 5
+    }
+    Write-Output "vmicguestinterface: $(if ($svc) { $svc.Status } else { 'not found' })"
+}
+Start-Sleep 8
+
 function Invoke-VMFileCopy($Src, $Dst) {
-    $max = 5; $n = 0
+    $max = 3; $n = 0
     while ($true) {
         try { Copy-VMFile -Name $VMName -SourcePath $Src -DestinationPath $Dst -FileSource Host -Force -ErrorAction Stop; return }
         catch {
             $n++
-            if ($n -ge $max) { Write-Output "  [FAIL] $Dst"; throw }
-            Write-Output "  Retry $n/$max - waiting 10s..."
-            Start-Sleep 10
+            if ($n -ge $max) { break }
+            Write-Output "  Retry $n/$max (Copy-VMFile) - waiting 15s..."
+            Start-Sleep 15
         }
     }
+    # Fallback: transfer via PSSession (works regardless of Guest Service Interface state)
+    Write-Output "  Falling back to PSSession transfer..."
+    $bytes = [System.IO.File]::ReadAllBytes($Src)
+    Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
+        param($b, $d)
+        $dir = [System.IO.Path]::GetDirectoryName($d)
+        if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory $dir -Force | Out-Null }
+        [System.IO.File]::WriteAllBytes($d, $b)
+    } -ArgumentList $bytes, $Dst
 }
-Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock { New-Item -ItemType Directory "C:\\Install" -Force | Out-Null${mkSubdirs ? '; ' + mkSubdirs : ''} }
 ${lines}`;
 }
 
