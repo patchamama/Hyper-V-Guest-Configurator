@@ -823,23 +823,41 @@ function psCopy() {
   const mkSubdirs = subdirs.map(d => `New-Item -ItemType Directory "C:\\Install\\${d}" -Force | Out-Null`).join('; ');
 
   return psCred() + `
-Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
+$copySession = New-PSSession -VMName $VMName -Credential $cred
+Invoke-Command -Session $copySession -ScriptBlock {
     New-Item -ItemType Directory "C:\\Install" -Force | Out-Null
     ${mkSubdirs ? mkSubdirs : ''}
 }
 
 function Invoke-VMFileCopy($Src, $Dst) {
-    # Primary: PSSession byte transfer (reliable, no Guest Service Interface required)
+    # Primary: chunked PSSession transfer — 8 MB chunks, single reused session
     try {
-        $bytes = [System.IO.File]::ReadAllBytes($Src)
-        Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
-            param($b, $d)
-            $dir = [System.IO.Path]::GetDirectoryName($d)
-            if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory $dir -Force | Out-Null }
-            [System.IO.File]::WriteAllBytes($d, $b)
-        } -ArgumentList $bytes, $Dst
+        $fileSize  = (Get-Item $Src).Length
+        $chunkSize = 8MB
+        $fs        = [System.IO.File]::OpenRead($Src)
+        $copied    = [long]0
+        try {
+            $buf   = New-Object byte[] $chunkSize
+            $first = $true
+            while (($read = $fs.Read($buf, 0, $chunkSize)) -gt 0) {
+                $chunk   = $buf[0..($read - 1)]
+                $isFirst = $first
+                $dest    = $Dst
+                Invoke-Command -Session $copySession -ScriptBlock {
+                    $mode = if ($using:isFirst) { [System.IO.FileMode]::Create } else { [System.IO.FileMode]::Append }
+                    $rfs  = [System.IO.File]::Open($using:dest, $mode)
+                    $c    = [byte[]]$using:chunk
+                    try   { $rfs.Write($c, 0, $c.Length) }
+                    finally { $rfs.Close() }
+                }
+                $copied += $read; $first = $false
+                if ($fileSize -gt 1MB) {
+                    Write-Output ("  {0:N1} / {1:N1} MB" -f ($copied / 1MB), ($fileSize / 1MB))
+                }
+            }
+        } finally { $fs.Close() }
         return
-    } catch { Write-Output "  PSSession failed: $($_.Exception.Message)" }
+    } catch { Write-Output "  PSSession chunk failed: $($_.Exception.Message)" }
     # Fallback: Copy-VMFile
     Write-Output "  Trying Copy-VMFile..."
     $max = 3; $n = 0
@@ -853,7 +871,8 @@ function Invoke-VMFileCopy($Src, $Dst) {
         }
     }
 }
-${lines}`;
+${lines}
+Remove-PSSession $copySession -ErrorAction SilentlyContinue`;
 }
 
 function psInstallLocal() {
