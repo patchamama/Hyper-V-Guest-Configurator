@@ -411,6 +411,18 @@ function Select-FromList {
     return @(0..($Items.Count - 1) | Where-Object { $sel[$_] } | ForEach-Object { $Items[$_] })
 }
 
+function Select-YesNo([string]$Question, [bool]$DefaultYes = $true) {
+    Write-Host "  $Question" -ForegroundColor Cyan
+    Write-Host ""
+    $opts = @(
+        [PSCustomObject]@{ Label = "Yes"; Value = $true  }
+        [PSCustomObject]@{ Label = "No";  Value = $false }
+    )
+    if (-not $DefaultYes) { $opts = $opts[1], $opts[0] }
+    $chosen = Select-FromList -Items $opts -DisplayItem { param($o) $o.Label } -SingleSelect
+    return [bool]$chosen[0].Value
+}
+
 function Select-Models {
     $picked = Select-FromList `
         -Items $ModelCatalogue `
@@ -558,21 +570,22 @@ if (Has-PendingInstallation $state) {
     Write-Host "  +----------------------------------------------------+" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  There is a pending installation from a previous run." -ForegroundColor Yellow
-    Write-Host "  Do you want to continue with the installation? [Y/N] (default: Y): " -NoNewline -ForegroundColor Yellow
-    $continueInstall = (Read-Host).Trim()
-    if ($continueInstall -match "^[Nn]") {
-        Write-Host ""
+    Write-Host ""
+    if (-not (Select-YesNo "Continue with the installation?")) {
         Write-Host "  Installation cancelled by user." -ForegroundColor Magenta
         exit 0
     }
-    Write-Host ""
-    Write-Host "  [R] Resume from checkpoint" -ForegroundColor Cyan
-    Write-Host "  [S] Start over from the beginning" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "  Choice [R/S] (default: R): " -NoNewline -ForegroundColor Yellow
-    $answer = (Read-Host).Trim()
 
-    if ($answer -match "^[Ss]") {
+    Write-Host ""
+    $resumeOptions = @(
+        [PSCustomObject]@{ Label = "Resume from checkpoint";       Value = "resume" }
+        [PSCustomObject]@{ Label = "Start over from the beginning"; Value = "start-over" }
+    )
+    Write-Host "  How do you want to proceed?" -ForegroundColor Cyan
+    Write-Host ""
+    $answer = (Select-FromList -Items $resumeOptions -DisplayItem { param($o) $o.Label } -SingleSelect)[0].Value
+
+    if ($answer -eq "start-over") {
         Write-Host ""
         Write-Host "  Starting over -- previous state cleared." -ForegroundColor Magenta
         $state = [PSCustomObject]@{
@@ -628,7 +641,7 @@ $deferSoftwareSelection = $enableWSLPrep -and $enableSoftware
 # ── VM selection ──────────────────────────────────────────────────────────────
 
 if (-not $state.VMName) {
-    $vms = Get-VM
+    $vms = @(Get-VM | Sort-Object { if ($_.State -eq 'Running') { 0 } else { 1 } }, Name)
     if ($vms.Count -eq 0) { throw "No Hyper-V VMs found on this host." }
 
     Clear-Host
@@ -721,9 +734,8 @@ if ($enableSoftware -and -not $deferSoftwareSelection) {
     if ($hasPostgres) {
         Write-Host ""
         Write-Host "  PostgreSQL installer detected." -ForegroundColor Cyan
-        Write-Host "  Define PostgreSQL superuser password now? [Y/N] (default: Y): " -NoNewline -ForegroundColor Yellow
-        $setPgPwd = (Read-Host).Trim()
-        if ($setPgPwd -notmatch "^[Nn]") {
+        Write-Host ""
+        if (Select-YesNo "Set PostgreSQL superuser password now?") {
             $postgresPassword = Read-PlainSecret "  PostgreSQL password (hidden input)"
         }
     }
@@ -731,9 +743,8 @@ if ($enableSoftware -and -not $deferSoftwareSelection) {
     if ($hasMssql) {
         Write-Host ""
         Write-Host "  SQL Server installer detected." -ForegroundColor Cyan
-        Write-Host "  Define SQL Server 'sa' password now? [Y/N] (default: Y): " -NoNewline -ForegroundColor Yellow
-        $setSqlPwd = (Read-Host).Trim()
-        if ($setSqlPwd -notmatch "^[Nn]") {
+        Write-Host ""
+        if (Select-YesNo "Set SQL Server 'sa' password now?") {
             $mssqlSaPassword = Read-PlainSecret "  SQL Server sa password (hidden input)"
         }
     }
@@ -943,9 +954,8 @@ if ($enableWSL) {
         if (-not (Is-Done $state "compose-up")) {
         Write-Banner "STEP 6 -- Deploy Ollama + Caddy via Docker Compose"
 
-        Write-Host "  Proceed with docker compose deployment? [Y/N]: " -NoNewline -ForegroundColor Yellow
-        $confirm = (Read-Host).Trim()
-        if ($confirm -notmatch "^[Yy]") {
+        Write-Host ""
+        if (-not (Select-YesNo "Proceed with docker compose deployment?")) {
             Write-Host "  Deployment cancelled by user." -ForegroundColor Red
         } else {
             $modelsList = $state.Models
@@ -1064,9 +1074,8 @@ if ($enableSoftware -and $deferSoftwareSelection) {
     if ($hasPostgres) {
         Write-Host ""
         Write-Host "  PostgreSQL installer detected." -ForegroundColor Cyan
-        Write-Host "  Define PostgreSQL superuser password now? [Y/N] (default: Y): " -NoNewline -ForegroundColor Yellow
-        $setPgPwd = (Read-Host).Trim()
-        if ($setPgPwd -notmatch "^[Nn]") {
+        Write-Host ""
+        if (Select-YesNo "Set PostgreSQL superuser password now?") {
             $postgresPassword = Read-PlainSecret "  PostgreSQL password (hidden input)"
         }
     }
@@ -1074,9 +1083,8 @@ if ($enableSoftware -and $deferSoftwareSelection) {
     if ($hasMssql) {
         Write-Host ""
         Write-Host "  SQL Server installer detected." -ForegroundColor Cyan
-        Write-Host "  Define SQL Server 'sa' password now? [Y/N] (default: Y): " -NoNewline -ForegroundColor Yellow
-        $setSqlPwd = (Read-Host).Trim()
-        if ($setSqlPwd -notmatch "^[Nn]") {
+        Write-Host ""
+        if (Select-YesNo "Set SQL Server 'sa' password now?") {
             $mssqlSaPassword = Read-PlainSecret "  SQL Server sa password (hidden input)"
         }
     }
