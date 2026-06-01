@@ -112,10 +112,10 @@ input:focus{border-color:var(--accent)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .b-run{animation:pulse 1.4s infinite}
 
-/* Log panel */
-.logpanel{width:360px;background:var(--sur);border-left:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
-.loghdr{padding:10px 14px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:flex;align-items:center;justify-content:space-between}
-.logbody{flex:1;overflow-y:auto;padding:10px 14px;font-family:var(--mono);font-size:11.5px;line-height:1.65}
+/* Log footer */
+.logfooter{height:190px;flex-shrink:0;background:var(--sur);border-top:1px solid var(--border);display:flex;flex-direction:column}
+.loghdr{padding:7px 14px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.logbody{flex:1;overflow-y:auto;padding:8px 14px;font-family:var(--mono);font-size:11.5px;line-height:1.6}
 .ll{white-space:pre-wrap;word-break:break-all}
 .ll.err{color:var(--red)}
 .ll.sys{color:var(--muted);font-style:italic}
@@ -156,14 +156,14 @@ input:focus{border-color:var(--accent)}
 <div class="body">
   <nav class="sidebar" id="sidebar"></nav>
   <main class="main" id="main"></main>
-  <aside class="logpanel">
-    <div class="loghdr">
-      <span>Execution Log</span>
-      <button class="hbtn" onclick="Log.clear()">Clear</button>
-    </div>
-    <div class="logbody" id="logbody"></div>
-  </aside>
 </div>
+<footer class="logfooter">
+  <div class="loghdr">
+    <span>Execution Log</span>
+    <button class="hbtn" onclick="Log.clear()">Clear</button>
+  </div>
+  <div class="logbody" id="logbody"></div>
+</footer>
 
 <script>
 // ── Log ──────────────────────────────────────────────────────────────────────
@@ -269,10 +269,10 @@ function isDone(id) {
     features:    S.features.length > 0,
     vm:          !!S.vmName,
     models:      S.models.length > 0 || !hasWSL(),
-    downloads:   true,
-    local:       true,
-    winget:      true,
-    installmode: true,
+    downloads:   S.downloadUrls.length > 0,
+    local:       S.localFiles.length > 0,
+    winget:      S.wingetPkgs.length > 0,
+    installmode: S.localFiles.length > 0,
     credentials: !!S.vmUser,
     execute:     false,
   }[id] ?? false;
