@@ -916,11 +916,25 @@ Write-Output "Nested virtualization enabled. VM starting."`;
 function psWSLFeatures() {
   return psCred() + `
 Write-Output "Enabling WSL features inside VM..."
-Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
-    dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart 2>&1
-    dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart 2>&1
-    Write-Output "WSL features enabled -- reboot required."
-}`;
+# Each DISM command runs in its own session to avoid PSSessionStateBroken.
+# Start-Process -Wait detaches DISM from the PS runspace so session disruptions don't break the pipe.
+try {
+    Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
+        Write-Output "Enabling VirtualMachinePlatform..."
+        $p = Start-Process "dism.exe" -ArgumentList "/online /enable-feature /featurename:VirtualMachinePlatform /all /norestart" -Wait -PassThru -NoNewWindow
+        Write-Output "VirtualMachinePlatform exit: $($p.ExitCode)"
+    }
+} catch { Write-Output "VirtualMachinePlatform: $($_.Exception.Message)" }
+
+try {
+    Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
+        Write-Output "Enabling Microsoft-Windows-Subsystem-Linux..."
+        $p = Start-Process "dism.exe" -ArgumentList "/online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart" -Wait -PassThru -NoNewWindow
+        Write-Output "WSL exit: $($p.ExitCode)"
+    }
+} catch { Write-Output "WSL feature: $($_.Exception.Message)" }
+
+Write-Output "WSL features step done -- reboot required."`;
 }
 
 function psWSLInstall() {
