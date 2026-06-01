@@ -971,6 +971,19 @@ function psComposeUp() {
   return psCred() + `
 Write-Output "Deploying Ollama + Caddy..."
 Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
+    # Start Docker Desktop and wait for daemon (up to 3 minutes)
+    Write-Output "Starting Docker Desktop..."
+    Start-Process "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe" -ErrorAction SilentlyContinue
+    $until = (Get-Date).AddSeconds(180)
+    $ready = $false
+    while ((Get-Date) -lt $until) {
+        docker info 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) { Write-Output "Docker daemon ready."; $ready = $true; break }
+        Write-Output "Waiting for Docker daemon..."
+        Start-Sleep 10
+    }
+    if (-not $ready) { throw "Docker daemon did not become ready within 180s" }
+
     New-Item -ItemType Directory -Path "C:\\ollama-ssl" -Force | Out-Null
     Set-Content "C:\\ollama-ssl\\docker-compose.yml" @'
 services:
