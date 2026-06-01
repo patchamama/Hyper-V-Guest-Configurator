@@ -133,9 +133,19 @@ input:focus{border-color:var(--accent)}
 .al-warn{background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.25)}
 
 /* Folder header */
-.fhdr{font-size:12px;font-weight:600;color:var(--muted);margin:14px 0 8px;display:flex;align-items:center;gap:10px}
+.fhdr{font-size:12px;font-weight:600;color:var(--muted);margin:14px 0 6px;display:flex;align-items:center;gap:10px}
 .flink{font-size:11px;color:var(--accent);cursor:pointer;font-weight:400}
 .flink:hover{text-decoration:underline}
+
+/* File list */
+.file-list{display:flex;flex-direction:column;gap:2px;margin-bottom:4px}
+.file-row{display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:5px;cursor:pointer;transition:background .12s;user-select:none;border:1px solid transparent}
+.file-row:hover{background:var(--sur2)}
+.file-row.sel{background:rgba(88,166,255,.08);border-color:rgba(88,166,255,.25)}
+.file-row .chk{width:15px;height:15px;border:1.5px solid var(--border);border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;transition:all .15s}
+.file-row.sel .chk{background:var(--accent);border-color:var(--accent);color:#000}
+.file-icon{font-size:14px;flex-shrink:0}
+.file-name{font-size:13px;font-family:var(--mono);color:var(--text)}
 
 /* Progress bar */
 .pbar-wrap{background:var(--border);border-radius:4px;height:4px;overflow:hidden;margin-top:8px}
@@ -431,16 +441,19 @@ const panels = {
     const html = softwares.map(f => {
       const files = f.files.map(fi => {
         const sel = S.localFiles.includes(fi.relativePath);
-        return `<div class="opt ${sel?'sel':''}" onclick="toggleArr(S.localFiles,'${fi.relativePath}');App.showPanel('local')">
+        const ext = fi.name.split('.').pop().toLowerCase();
+        const icon = {zip:'📦', exe:'⚙', msi:'⚙', iso:'💿', pk:'🔑'}[ext] || '📄';
+        return `<div class="file-row ${sel?'sel':''}" onclick="toggleArr(S.localFiles,'${fi.relativePath}');App.showPanel('local')">
           <div class="chk">${sel?'✓':''}</div>
-          <div><div class="opt-name">${fi.name}</div></div>
+          <span class="file-icon">${icon}</span>
+          <span class="file-name">${fi.name}</span>
         </div>`;
       }).join('');
       return `<div class="fhdr">📁 ${f.folder}
         <span class="flink" onclick="folderAll('${f.folder}',true)">All</span>
         <span class="flink" onclick="folderAll('${f.folder}',false)">None</span>
       </div>
-      <div class="grid">${files}</div>`;
+      <div class="file-list">${files}</div>`;
     }).join('');
     return `<div class="card">
       <h2>Local Installers</h2>
