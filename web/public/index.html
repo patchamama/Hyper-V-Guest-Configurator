@@ -841,12 +841,13 @@ function folderAll(folder, sel) {
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 async function init() {
+  const toArr = d => Array.isArray(d) ? d : [];
   await Promise.all([
-    fetch('/api/vms').then(r=>r.json()).then(d=>{ vms=d||[]; }),
-    fetch('/api/downloads').then(r=>r.json()).then(d=>{ downloads=d||[]; }),
-    fetch('/api/softwares').then(r=>r.json()).then(d=>{ softwares=d||[]; }),
-    fetch('/api/winget').then(r=>r.json()).then(d=>{ winget=d||[]; }),
-    fetch('/api/models').then(r=>r.json()).then(d=>{ models=d||[]; }),
+    fetch('/api/vms').then(r=>r.json()).then(d=>{ vms=toArr(d); }).catch(()=>{}),
+    fetch('/api/downloads').then(r=>r.json()).then(d=>{ downloads=toArr(d); }).catch(()=>{}),
+    fetch('/api/softwares').then(r=>r.json()).then(d=>{ softwares=toArr(d); }).catch(()=>{}),
+    fetch('/api/winget').then(r=>r.json()).then(d=>{ winget=toArr(d); }).catch(()=>{}),
+    fetch('/api/models').then(r=>r.json()).then(d=>{ models=toArr(d); }).catch(()=>{}),
     fetch('/api/state').then(r=>r.json()).then(st=>{
       if (st.VMName)       S.vmName       = st.VMName;
       if (st.Features?.length)    S.features    = st.Features;

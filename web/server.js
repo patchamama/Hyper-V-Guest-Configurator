@@ -48,14 +48,17 @@ const MODELS = [
 // ── REST API ──────────────────────────────────────────────────────────────────
 
 app.get('/api/vms', (req, res) => {
-  runPS(
-    `Get-VM | Select-Object Name,State,@{N='MemGB';E={[math]::Round($_.MemoryAssigned/1GB,1)}} ` +
-    `| Sort-Object @{E={if($_.State -eq 'Running'){0}else{1}}},Name | ConvertTo-Json -AsArray`,
-    (out, err) => {
-      if (err && !out) return res.status(500).json({ error: err });
-      try { res.json(JSON.parse(out || '[]')); } catch { res.json([]); }
-    }
-  );
+  const cmd =
+    `Import-Module Hyper-V -ErrorAction SilentlyContinue; ` +
+    `$vms = Get-VM -ErrorAction SilentlyContinue; ` +
+    `if ($vms) { $vms | Select-Object Name,State,` +
+    `@{N='MemGB';E={[math]::Round($_.MemoryAssigned/1GB,1)}} ` +
+    `| Sort-Object @{E={if($_.State -eq 'Running'){0}else{1}}},Name ` +
+    `| ConvertTo-Json -AsArray } else { Write-Output '[]' }`;
+  runPS(cmd, (out, err) => {
+    try { res.json(JSON.parse(out || '[]')); }
+    catch { res.json([]); }
+  });
 });
 
 app.get('/api/state', (req, res) => {
