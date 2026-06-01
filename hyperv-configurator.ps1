@@ -5,16 +5,24 @@ $StateFile     = "C:\ollama-ssl\deploy-state.json"
 $ScriptRoot    = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SoftwaresPath = Join-Path $ScriptRoot "softwares"
 
-# ── Ollama model catalogue ────────────────────────────────────────────────────
+# ── Ollama model catalogue (loaded from ollama-models.json) ──────────────────
 
-$ModelCatalogue = @(
-    [PSCustomObject]@{ Tag = "deepseek-r1:1.5b"; Desc = "DeepSeek R1 1.5B   -- fast, lightweight" }
-    [PSCustomObject]@{ Tag = "llama3.1:8b";      Desc = "Meta LLaMA 3.1 8B  -- balanced quality" }
-    [PSCustomObject]@{ Tag = "gemma4:latest";    Desc = "Google Gemma 4      -- latest release" }
-    [PSCustomObject]@{ Tag = "phi4:latest";      Desc = "Microsoft Phi-4     -- efficient reasoning" }
-    [PSCustomObject]@{ Tag = "mistral:latest";   Desc = "Mistral 7B          -- strong multilingual" }
-    [PSCustomObject]@{ Tag = "qwen2.5:7b";       Desc = "Alibaba Qwen 2.5 7B -- coding & reasoning" }
-)
+$_modelsFile = Join-Path $ScriptRoot "ollama-models.json"
+if (Test-Path $_modelsFile) {
+    $ModelCatalogue = @(Get-Content $_modelsFile -Raw | ConvertFrom-Json | ForEach-Object {
+        [PSCustomObject]@{ Tag = $_.tag; Desc = $_.desc }
+    })
+} else {
+    Write-Host "  [WARN] ollama-models.json not found at '$_modelsFile' -- using built-in defaults." -ForegroundColor Yellow
+    $ModelCatalogue = @(
+        [PSCustomObject]@{ Tag = "deepseek-r1:1.5b"; Desc = "DeepSeek R1 1.5B   -- fast, lightweight" }
+        [PSCustomObject]@{ Tag = "llama3.1:8b";      Desc = "Meta LLaMA 3.1 8B  -- balanced quality" }
+        [PSCustomObject]@{ Tag = "gemma4:latest";    Desc = "Google Gemma 4      -- latest release" }
+        [PSCustomObject]@{ Tag = "phi4:latest";      Desc = "Microsoft Phi-4     -- efficient reasoning" }
+        [PSCustomObject]@{ Tag = "mistral:latest";   Desc = "Mistral 7B          -- strong multilingual" }
+        [PSCustomObject]@{ Tag = "qwen2.5:7b";       Desc = "Alibaba Qwen 2.5 7B -- coding & reasoning" }
+    )
+}
 
 # ── Winget package catalogue ──────────────────────────────────────────────────
 # winget is the Windows Package Manager (built-in on Win10 1809+ / Win11).

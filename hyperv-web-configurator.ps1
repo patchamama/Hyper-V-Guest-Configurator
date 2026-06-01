@@ -108,7 +108,17 @@ if (-not (Test-Path $chromiumFlag) -and -not (Test-Path $pwBrowsers)) {
     OK "Playwright Chromium present"
 }
 
-# ── 5. Free port if already in use ───────────────────────────────────────────
+# ── 5. Ollama models catalogue ───────────────────────────────────────────────
+Step "Checking ollama-models.json..."
+$modelsFile = Join-Path $ScriptRoot "ollama-models.json"
+if (Test-Path $modelsFile) {
+    $modelCount = (Get-Content $modelsFile -Raw | ConvertFrom-Json).Count
+    OK "$modelCount model(s) in catalogue  ($modelsFile)"
+} else {
+    Warn "ollama-models.json not found -- server will use built-in defaults."
+}
+
+# ── 7. Free port if already in use ───────────────────────────────────────────
 Step "Checking port $PORT..."
 $existing = Get-NetTCPConnection -LocalPort $PORT -State Listen -ErrorAction SilentlyContinue
 if ($existing) {
@@ -118,7 +128,7 @@ if ($existing) {
 }
 OK "Port $PORT available"
 
-# ── 6. Start server ───────────────────────────────────────────────────────────
+# ── 8. Start server ───────────────────────────────────────────────────────────
 Step "Starting web server..."
 
 $proc = Start-Process -FilePath "node" -ArgumentList "`"$serverScript`"" `
@@ -162,7 +172,7 @@ Write-Host "  Browser opened at $url" -ForegroundColor Green
 Write-Host "  Press Ctrl+C to stop the server." -ForegroundColor Gray
 Write-Host ""
 
-# ── 7. Keep alive ─────────────────────────────────────────────────────────────
+# ── 9. Keep alive ─────────────────────────────────────────────────────────────
 try {
     while (-not $proc.HasExited) { Start-Sleep 1 }
     Fail "Server stopped unexpectedly."

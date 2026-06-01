@@ -9,8 +9,23 @@ const fs   = require('fs');
 const PORT        = 3000;
 const SCRIPT_DIR  = path.join(__dirname, '..');
 const STATE_FILE  = 'C:\\ollama-ssl\\deploy-state.json';
-const DOWNLOADS   = path.join(SCRIPT_DIR, 'downloads.txt');
-const SOFTWARES   = path.join(SCRIPT_DIR, 'softwares');
+const DOWNLOADS    = path.join(SCRIPT_DIR, 'downloads.txt');
+const SOFTWARES    = path.join(SCRIPT_DIR, 'softwares');
+const MODELS_FILE  = path.join(SCRIPT_DIR, 'ollama-models.json');
+
+function loadModels() {
+  try {
+    if (fs.existsSync(MODELS_FILE)) return JSON.parse(fs.readFileSync(MODELS_FILE, 'utf8'));
+  } catch (e) { console.warn('[models] Failed to load ollama-models.json:', e.message); }
+  return [
+    { tag: 'deepseek-r1:1.5b', desc: 'DeepSeek R1 1.5B — fast, lightweight'     },
+    { tag: 'llama3.1:8b',      desc: 'Meta LLaMA 3.1 8B — balanced quality'     },
+    { tag: 'gemma4:latest',    desc: 'Google Gemma 4 — latest release'           },
+    { tag: 'phi4:latest',      desc: 'Microsoft Phi-4 — efficient reasoning'     },
+    { tag: 'mistral:latest',   desc: 'Mistral 7B — strong multilingual'          },
+    { tag: 'qwen2.5:7b',       desc: 'Alibaba Qwen 2.5 7B — coding & reasoning' },
+  ];
+}
 
 const app    = express();
 const server = createServer(app);
@@ -36,14 +51,6 @@ const WINGET = [
   { name: 'Chocolatey',                id: 'Chocolatey.Chocolatey'               },
 ];
 
-const MODELS = [
-  { tag: 'deepseek-r1:1.5b', desc: 'DeepSeek R1 1.5B — fast, lightweight'     },
-  { tag: 'llama3.1:8b',      desc: 'Meta LLaMA 3.1 8B — balanced quality'     },
-  { tag: 'gemma4:latest',    desc: 'Google Gemma 4 — latest release'           },
-  { tag: 'phi4:latest',      desc: 'Microsoft Phi-4 — efficient reasoning'     },
-  { tag: 'mistral:latest',   desc: 'Mistral 7B — strong multilingual'          },
-  { tag: 'qwen2.5:7b',       desc: 'Alibaba Qwen 2.5 7B — coding & reasoning' },
-];
 
 // ── REST API ──────────────────────────────────────────────────────────────────
 
@@ -128,7 +135,8 @@ app.get('/api/softwares', (req, res) => {
 });
 
 app.get('/api/winget', (req, res) => res.json(WINGET));
-app.get('/api/models', (req, res) => res.json(MODELS));
+// Always reads from disk so edits to ollama-models.json take effect without restart
+app.get('/api/models', (req, res) => res.json(loadModels()));
 
 // ── WebSocket execution ───────────────────────────────────────────────────────
 

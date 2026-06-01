@@ -1,0 +1,8 @@
+[
+  { "tag": "deepseek-r1:1.5b", "desc": "DeepSeek R1 1.5B   -- fast, lightweight"        },
+  { "tag": "llama3.1:8b",      "desc": "Meta LLaMA 3.1 8B  -- balanced quality"         },
+  { "tag": "gemma4:latest",    "desc": "Google Gemma 4      -- latest release"           },
+  { "tag": "phi4:latest",      "desc": "Microsoft Phi-4     -- efficient reasoning"      },
+  { "tag": "mistral:latest",   "desc": "Mistral 7B          -- strong multilingual"      },
+  { "tag": "qwen2.5:7b",       "desc": "Alibaba Qwen 2.5 7B -- coding & reasoning"      }
+]
