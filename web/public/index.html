@@ -368,11 +368,9 @@ const panels = {
 
   // Ollama models
   models() {
-    if (!hasWSL()) return `<div class="card"><h2>Ollama Models</h2>
-      <p class="sub">Not needed for the selected feature set.</p>
-      <div class="brow"><button class="btn btn-o" onclick="App.showPanel('vm')">← Back</button>
-      <button class="btn btn-p" onclick="App.showPanel('downloads')">Continue →</button></div></div>`;
-
+    const notice = !hasWSL()
+      ? `<div class="alert al-warn">⚠ Ollama models are only pulled when <strong>Full WSL2 + AI Stack</strong> is selected. Your current feature set does not include it — selections here will be saved but not used.</div>`
+      : '';
     const opts = models.map(m => {
       const sel = S.models.includes(m.tag);
       return `<div class="opt ${sel?'sel':''}" onclick="toggleArr(S.models,'${m.tag}');App.showPanel('models')">
@@ -383,11 +381,12 @@ const panels = {
     const tags = S.models.map(t => `<span class="tag">${t}<span class="x" onclick="toggleArr(S.models,'${t}');App.showPanel('models')">✕</span></span>`).join('');
     return `<div class="card">
       <h2>Ollama Models</h2>
-      <p class="sub">Select models to pull during deployment.</p>
+      <p class="sub">Select models to pull during deployment via <code>ollama pull</code>.</p>
+      ${notice}
       <div class="grid">${opts}</div>
-      <div style="margin-top:12px">
-        <div class="fg" style="margin-top:8px">
-          <label class="fl">Custom model tag</label>
+      <div style="margin-top:14px">
+        <div class="fg">
+          <label class="fl">Custom model tag (e.g. llava:latest)</label>
           <div style="display:flex;gap:8px;max-width:340px">
             <input type="text" id="customModel" placeholder="e.g. llava:latest">
             <button class="btn btn-o" onclick="addCustomModel()" style="white-space:nowrap">Add</button>
