@@ -558,6 +558,7 @@ const panels = {
         <div class="einfo">
           <div class="ename">${s.label}</div>
           <div class="esub">${s.sub}</div>
+          ${s.warn && !done ? `<div class="esub" style="color:var(--yellow);margin-top:3px">⚠ ${s.warn}</div>` : ''}
           <div class="pbar-wrap" id="pb-${s.id}" style="display:none"><div class="pbar" style="width:0%"></div></div>
         </div>
         <span class="badge ${done?'b-ok':'b-pen'}" id="b-${s.id}">${done?'Done':'Pending'}</span>
@@ -770,7 +771,7 @@ function buildSteps() {
   if (hasWSL()) {
     steps.push({ id: 'wsl-install', label: 'Install WSL2 Kernel', sub: 'Downloads and installs WSL2 MSI inside VM', script: psWSLInstall() });
     steps.push({ id: 'docker-install', label: 'Install Docker Desktop', sub: 'Chocolatey + Docker Desktop inside VM', script: psDockerInstall() });
-    steps.push({ id: 'compose-up', label: 'Deploy Ollama + Caddy', sub: `Models: ${S.models.join(', ') || 'none'}`, script: psComposeUp() });
+    steps.push({ id: 'compose-up', label: 'Deploy Ollama + Caddy', sub: `Models: ${S.models.join(', ') || 'none'}`, script: psComposeUp(), warn: 'Docker Desktop must be running inside the VM before this step.' });
   }
   return steps;
 }
