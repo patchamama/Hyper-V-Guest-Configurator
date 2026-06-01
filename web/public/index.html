@@ -145,7 +145,8 @@ input:focus{border-color:var(--accent)}
 .file-row .chk{width:15px;height:15px;border:1.5px solid var(--border);border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;transition:all .15s}
 .file-row.sel .chk{background:var(--accent);border-color:var(--accent);color:#000}
 .file-icon{font-size:14px;flex-shrink:0}
-.file-name{font-size:13px;font-family:var(--mono);color:var(--text)}
+.file-name{font-size:13px;font-family:var(--mono);color:var(--text);flex:1}
+.file-size{font-size:11px;color:var(--muted);white-space:nowrap;margin-left:auto}
 
 /* Progress bar */
 .pbar-wrap{background:var(--border);border-radius:4px;height:4px;overflow:hidden;margin-top:8px}
@@ -442,10 +443,12 @@ const panels = {
         const sel = S.localFiles.includes(fi.relativePath);
         const ext = fi.name.split('.').pop().toLowerCase();
         const icon = {zip:'📦', exe:'⚙', msi:'⚙', iso:'💿', pk:'🔑'}[ext] || '📄';
+        const size = fi.sizeLabel ? `<span class="file-size">${fi.sizeLabel}</span>` : '';
         return `<div class="file-row ${sel?'sel':''}" onclick="toggleArr(S.localFiles,'${fi.relativePath}');App.showPanel('local')">
           <div class="chk">${sel?'✓':''}</div>
           <span class="file-icon">${icon}</span>
           <span class="file-name">${fi.name}</span>
+          ${size}
         </div>`;
       }).join('');
       return `<div class="fhdr">📁 ${f.folder}
@@ -708,10 +711,13 @@ Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
 function psCopy() {
   const lines = S.localFiles.map(rel => {
     const winRel = rel.replace(/\//g, '\\');
-    const src = `${e(path.join(S.scriptDir||'C:\\ollama-ssl\\installator', 'softwares'))}\\${winRel}`;
+    // ScriptRoot is resolved server-side; use $PSScriptRoot equivalent passed via env or hardcoded base
+    const src = `$scriptBase\\softwares\\${winRel}`;
     return `Write-Output "Copying ${winRel}..."; Copy-VMFile -Name $VMName -SourcePath "${src}" -DestinationPath "C:\\Install\\${winRel}" -FileSource Host -Force; Write-Output "Copied: ${winRel}";`;
   }).join('\n');
   return psCred() + `
+$scriptBase = Split-Path -Parent (Get-Item "$PSScriptRoot\\..\\hyperv-configurator.ps1" -ErrorAction SilentlyContinue).FullName
+if (-not $scriptBase) { $scriptBase = "C:\\ollama-ssl\\installator" }
 Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock { New-Item -ItemType Directory "C:\\Install" -Force | Out-Null }
 ${lines}`;
 }

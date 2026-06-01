@@ -128,7 +128,13 @@ app.get('/api/softwares', (req, res) => {
         folder: d.name,
         files: fs.readdirSync(path.join(SOFTWARES, d.name), { withFileTypes: true })
           .filter(f => f.isFile())
-          .map(f => ({ name: f.name, relativePath: `${d.name}/${f.name}` }))
+          .map(f => {
+            const bytes = fs.statSync(path.join(SOFTWARES, d.name, f.name)).size;
+            const sizeLabel = bytes >= 1048576
+              ? `${(bytes / 1048576).toFixed(1)} MB`
+              : `${Math.round(bytes / 1024)} KB`;
+            return { name: f.name, relativePath: `${d.name}/${f.name}`, bytes, sizeLabel };
+          })
       }));
     res.json(folders);
   } catch (e) { res.status(500).json({ error: e.message }); }
