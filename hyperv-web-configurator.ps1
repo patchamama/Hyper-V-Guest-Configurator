@@ -124,22 +124,33 @@ Step "Starting web server..."
 $proc = Start-Process -FilePath "node" -ArgumentList "`"$serverScript`"" `
     -PassThru -NoNewWindow
 
-# Poll HTTP until ready (max 15 s)
-$url      = "http://localhost:$PORT"
+# Poll TCP port directly -- avoids proxy/firewall issues with Invoke-WebRequest
+$url      = "http://127.0.0.1:$PORT"
 $ready    = $false
-$deadline = (Get-Date).AddSeconds(15)
+$deadline = (Get-Date).AddSeconds(20)
+Write-Host "  Waiting for server on port $PORT" -NoNewline -ForegroundColor Gray
 while ((Get-Date) -lt $deadline) {
-    if ($proc.HasExited) { throw "Server process exited unexpectedly (check web\server.js)." }
+    if ($proc.HasExited) {
+        Write-Host ""
+        throw "Server process exited unexpectedly. Check web\server.js for errors."
+    }
+    $tcp = New-Object System.Net.Sockets.TcpClient
     try {
-        $r = Invoke-WebRequest -Uri "$url/api/state" -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop
-        if ($r.StatusCode -lt 500) { $ready = $true; break }
-    } catch {}
-    Start-Sleep -Seconds 1
+        $tcp.Connect('127.0.0.1', $PORT)
+        $ready = $true
+        $tcp.Close()
+        break
+    } catch {
+        $tcp.Close()
+    }
+    Write-Host "." -NoNewline -ForegroundColor Gray
+    Start-Sleep -Milliseconds 500
 }
+Write-Host ""
 
 if (-not $ready) {
     $proc.Kill()
-    throw "Server did not respond within 15 seconds."
+    throw "Server did not respond on port $PORT within 20 seconds."
 }
 
 OK "Server running at $url  (PID $($proc.Id))"
