@@ -205,9 +205,19 @@ const WS = {
     this.conn.onmessage = e => this.handle(JSON.parse(e.data));
   },
   handle(msg) {
-    if (msg.type === 'out')       Log.append(msg.text);
+    if (msg.type === 'out') {
+      Log.append(msg.text);
+      try { Exec.outHook?.(msg.text); } catch (e) { /* ignore hook errors */ }
+    }
     else if (msg.type === 'err')  Log.err(msg.text);
-    else if (msg.type === 'done') { Log.sys(`[exit ${msg.code}]`); this.onDone?.(msg.code); this.onDone = null; }
+    else if (msg.type === 'done') {
+      const code = msg.code;
+      Log.sys(`[exit ${code}]`);
+      const cb = this.onDone;
+      this.onDone = null;
+      if (cb) cb(code === null ? -1 : code);
+      else    Log.err('[warn] done arrived but no callback was registered');
+    }
     else if (msg.type === 'error')     Log.err('[error] ' + msg.text);
     else if (msg.type === 'cancelled') Log.sys('[cancelled]');
   },
@@ -226,6 +236,7 @@ const S = {
 };
 
 let vms = [], downloads = [], softwares = [], winget = [], models = [];
+let scriptDir = 'C:\\ollama-ssl\\installator';
 
 // ── Catalogues & helpers ──────────────────────────────────────────────────────
 const FEATURE_OPTS = [
@@ -257,6 +268,7 @@ const NAV = [
   { id: 'installmode', label: 'Install Mode',   sec: null        },
   { id: 'credentials', label: 'Credentials',    sec: null        },
   { id: 'execute',     label: 'Execute',        sec: 'Run'       },
+  { id: 'help',        label: 'Help',           sec: 'Help'      },
 ];
 
 let currentPanel = 'features';
@@ -576,12 +588,79 @@ const panels = {
       <div class="exec-list">${rows}</div>
     </div>`;
   },
+  // Help
+  help() {
+    return `
+<div class="card">
+  <h2>How to add Local Files</h2>
+  <p class="sub">Files placed in <code>softwares\\</code> appear automatically in the Local Files step.</p>
+  <ol style="padding-left:18px;line-height:2;font-size:13px">
+    <li>Create a subfolder inside <code>softwares\\</code> — e.g. <code>softwares\\MyApp\\</code></li>
+    <li>Drop <code>.exe</code>, <code>.msi</code>, <code>.zip</code>, or any installer file into it</li>
+    <li>Reload the Local Files panel — files appear instantly (no server restart needed)</li>
+  </ol>
+  <div class="alert al-info" style="margin-top:12px">
+    Each subfolder becomes a group header. Files are copied to <code>C:\\Install\\&lt;folder&gt;\\&lt;file&gt;</code> on the guest VM.
+  </div>
+</div>
+
+<div class="card">
+  <h2>How to add Download Links</h2>
+  <p class="sub">Edit <code>downloads.txt</code> in the project root. No server restart needed.</p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:12px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:12px">
+    <span style="color:var(--muted)"># Format: Display Name | URL</span><br>
+    My Installer | https://example.com/setup.exe<br>
+    <span style="color:var(--muted)"># Lines starting with # are comments</span><br>
+    <span style="color:var(--muted)"># Bare URLs also work (filename is used as display name)</span><br>
+    https://example.com/tool.zip
+  </div>
+  <div class="alert al-warn">
+    URLs with <code>?token=…&amp;expire=…</code> parameters will be flagged as expired when the timestamp passes.
+    Run <code>node refresh-elo-tokens.js</code> to refresh ELO CDN tokens.
+  </div>
+</div>
+
+<div class="card">
+  <h2>How to add Ollama Models</h2>
+  <p class="sub">Edit <code>ollama-models.json</code> in the project root. Changes take effect immediately.</p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:12px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:12px">
+    [<br>
+    &nbsp;&nbsp;{ "tag": "llama3.2:3b", "desc": "Meta LLaMA 3.2 3B — small &amp; fast" },<br>
+    &nbsp;&nbsp;{ "tag": "codellama:7b", "desc": "Code LLaMA 7B — code generation" }<br>
+    ]
+  </div>
+  <p style="font-size:13px;color:var(--muted)">
+    Find available model tags at
+    <a href="https://ollama.com/library" target="_blank" style="color:var(--accent)">ollama.com/library</a>.
+    Use the exact tag shown (e.g. <code>llama3.2:3b</code>, <code>mistral:latest</code>).
+  </p>
+</div>
+
+<div class="card">
+  <h2>How to add Winget Packages</h2>
+  <p class="sub">Edit the <code>WINGET</code> array in <code>web/server.js</code>. Requires a server restart.</p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:12px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:12px">
+    { name: 'My App', id: 'Publisher.AppName' },
+  </div>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Find the exact package ID with:</p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--mono);font-size:12px">
+    winget search &lt;app name&gt;
+  </div>
+  <p style="font-size:13px;color:var(--muted);margin-top:8px">
+    Or browse at
+    <a href="https://winget.run" target="_blank" style="color:var(--accent)">winget.run</a>
+    and copy the package ID from there.
+  </p>
+</div>`;
+  },
+
 };
 
 // ── Execution engine ──────────────────────────────────────────────────────────
 const Exec = {
   queue: [],
   current: null,
+  outHook: null,
 
   runAll() {
     const steps = buildSteps().filter(s => !S.completed.includes(s.id));
@@ -598,18 +677,40 @@ const Exec = {
     this.setStatus(id, 'run', 'Running…');
     setCancelVisible(true);
     Log.sys(`\n▶ ${step.label}\n`);
+
+    if (step.progress) {
+      const { total, pattern } = step.progress;
+      const wrap = document.getElementById(`pb-${id}`);
+      if (wrap) wrap.style.display = '';
+      let count = 0;
+      this.outHook = text => {
+        for (const line of text.split('\n')) {
+          if (pattern.test(line.trim())) {
+            count++;
+            const bar = wrap?.querySelector('.pbar');
+            if (bar) bar.style.width = Math.min(100, Math.round(count / total * 100)) + '%';
+          }
+        }
+      };
+    }
+
     WS.run(step.script, code => {
-      setCancelVisible(false);
-      this.current = null;
-      if (code === 0) {
-        S.completed.push(id);
-        App.saveState();
-        this.setStatus(id, 'ok', 'Done');
-        renderSidebar();
-        if (this.queue.length) this.runStep(this.queue.shift());
-      } else {
-        this.setStatus(id, 'err', 'Error');
-        this.queue = [];
+      try {
+        setCancelVisible(false);
+        this.current = null;
+        this.outHook = null;
+        if (code === 0) {
+          S.completed.push(id);
+          App.saveState().catch(err => Log.err('[save] ' + (err?.message || err)));
+          this.setStatus(id, 'ok', 'Done');
+          renderSidebar();
+          if (this.queue.length) this.runStep(this.queue.shift());
+        } else {
+          this.setStatus(id, 'err', 'Error');
+          this.queue = [];
+        }
+      } catch (err) {
+        Log.err('[step callback error] ' + (err?.message || err));
       }
     });
   },
@@ -617,6 +718,7 @@ const Exec = {
   cancel() {
     WS.cancel();
     this.queue = [];
+    this.outHook = null;
     if (this.current) this.setStatus(this.current, 'err', 'Cancelled');
     this.current = null;
     setCancelVisible(false);
@@ -650,10 +752,10 @@ function buildSteps() {
     steps.push({ id: 'guest-services', label: 'Enable Guest Services', sub: 'Required for VM communication', script: psGuestServices() });
   }
   if (S.downloadUrls.length) {
-    steps.push({ id: 'software-download', label: 'Download Installers in VM', sub: `${S.downloadUrls.length} file(s) to download directly in VM`, script: psDownload() });
+    steps.push({ id: 'software-download', label: 'Download Installers in VM', sub: `${S.downloadUrls.length} file(s) to download directly in VM`, script: psDownload(), progress: { total: S.downloadUrls.length, pattern: /^Done: / } });
   }
   if (S.localFiles.length) {
-    steps.push({ id: 'software-copy', label: 'Copy Local Files to VM', sub: `${S.localFiles.length} file(s) → C:\\Install`, script: psCopy() });
+    steps.push({ id: 'software-copy', label: 'Copy Local Files to VM', sub: `${S.localFiles.length} file(s) → C:\\Install`, script: psCopy(), progress: { total: S.localFiles.length, pattern: /^Copied: / } });
   }
   if (S.localFiles.length && S.installMode !== 'copy-only') {
     steps.push({ id: 'software-install-local', label: 'Install Local Software', sub: `Mode: ${S.installMode}`, script: psInstallLocal() });
@@ -711,14 +813,29 @@ Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
 function psCopy() {
   const lines = S.localFiles.map(rel => {
     const winRel = rel.replace(/\//g, '\\');
-    // ScriptRoot is resolved server-side; use $PSScriptRoot equivalent passed via env or hardcoded base
-    const src = `$scriptBase\\softwares\\${winRel}`;
-    return `Write-Output "Copying ${winRel}..."; Copy-VMFile -Name $VMName -SourcePath "${src}" -DestinationPath "C:\\Install\\${winRel}" -FileSource Host -Force; Write-Output "Copied: ${winRel}";`;
+    const src = `${scriptDir}\\softwares\\${winRel}`;
+    return `Write-Output "Copying ${winRel}..."; Invoke-VMFileCopy "${e(src)}" "C:\\Install\\${winRel}"; Write-Output "Copied: ${winRel}";`;
   }).join('\n');
+
+  const subdirs = [...new Set(
+    S.localFiles.map(rel => rel.includes('/') ? rel.split('/').slice(0, -1).join('\\') : null).filter(Boolean)
+  )];
+  const mkSubdirs = subdirs.map(d => `New-Item -ItemType Directory "C:\\Install\\${d}" -Force | Out-Null`).join('; ');
+
   return psCred() + `
-$scriptBase = Split-Path -Parent (Get-Item "$PSScriptRoot\\..\\hyperv-configurator.ps1" -ErrorAction SilentlyContinue).FullName
-if (-not $scriptBase) { $scriptBase = "C:\\ollama-ssl\\installator" }
-Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock { New-Item -ItemType Directory "C:\\Install" -Force | Out-Null }
+function Invoke-VMFileCopy($Src, $Dst) {
+    $max = 5; $n = 0
+    while ($true) {
+        try { Copy-VMFile -Name $VMName -SourcePath $Src -DestinationPath $Dst -FileSource Host -Force -ErrorAction Stop; return }
+        catch {
+            $n++
+            if ($n -ge $max) { Write-Output "  [FAIL] $Dst"; throw }
+            Write-Output "  Retry $n/$max - waiting 10s..."
+            Start-Sleep 10
+        }
+    }
+}
+Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock { New-Item -ItemType Directory "C:\\Install" -Force | Out-Null${mkSubdirs ? '; ' + mkSubdirs : ''} }
 ${lines}`;
 }
 
@@ -739,13 +856,16 @@ function psInstallLocal() {
 
 function psWinget() {
   const lines = S.wingetPkgs.map(id =>
-    `Write-Output "Installing ${id}..."; winget install --id "${id}" --source winget --exact --silent --accept-package-agreements --accept-source-agreements 2>&1`
+    `Write-Output "Installing ${id}..."; winget install --id "${id}" --source winget --exact --silent --accept-package-agreements --accept-source-agreements 2>&1; Write-Output "Done: ${id}";`
   ).join('\n    ');
   return psCred() + `
 Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
     winget source update 2>&1
     ${lines}
-}`;
+    Write-Output "All packages processed."
+}
+# winget returns non-zero when package is already at latest version -- treat as success
+exit 0`;
 }
 
 function psNestedVirt() {
@@ -869,6 +989,7 @@ function folderAll(folder, sel) {
 async function init() {
   const toArr = d => Array.isArray(d) ? d : [];
   await Promise.all([
+    fetch('/api/config').then(r=>r.json()).then(d=>{ if(d.scriptDir) scriptDir=d.scriptDir; }).catch(()=>{}),
     fetch('/api/vms').then(r=>r.json()).then(d=>{ vms=toArr(d); }).catch(()=>{}),
     fetch('/api/downloads').then(r=>r.json()).then(d=>{ downloads=toArr(d); }).catch(()=>{}),
     fetch('/api/softwares').then(r=>r.json()).then(d=>{ softwares=toArr(d); }).catch(()=>{}),

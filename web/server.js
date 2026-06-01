@@ -9,6 +9,12 @@ const fs   = require('fs');
 const PORT        = 3000;
 const SCRIPT_DIR  = path.join(__dirname, '..');
 const STATE_FILE  = 'C:\\ollama-ssl\\deploy-state.json';
+
+function toWinPath(p) {
+  const m = p.match(/^\/mnt\/([a-z])\/(.*)/i);
+  if (m) return m[1].toUpperCase() + ':\\' + m[2].replace(/\//g, '\\');
+  return p;
+}
 const DOWNLOADS    = path.join(SCRIPT_DIR, 'downloads.txt');
 const SOFTWARES    = path.join(SCRIPT_DIR, 'softwares');
 const MODELS_FILE  = path.join(SCRIPT_DIR, 'ollama-models.json');
@@ -140,6 +146,7 @@ app.get('/api/softwares', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/config', (req, res) => res.json({ scriptDir: toWinPath(SCRIPT_DIR) }));
 app.get('/api/winget', (req, res) => res.json(WINGET));
 // Always reads from disk so edits to ollama-models.json take effect without restart
 app.get('/api/models', (req, res) => res.json(loadModels()));
