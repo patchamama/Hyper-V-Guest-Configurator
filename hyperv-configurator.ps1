@@ -58,8 +58,9 @@ function Get-DeployState {
         if ($null -eq $s.Models     -or $s.Models     -isnot [array]) { $s | Add-Member -NotePropertyName Models         -NotePropertyValue @()   -Force }
         if ($null -eq $s.Features   -or $s.Features   -isnot [array]) { $s | Add-Member -NotePropertyName Features       -NotePropertyValue @()   -Force }
         if ($null -eq $s.LocalFiles -or $s.LocalFiles -isnot [array]) { $s | Add-Member -NotePropertyName LocalFiles     -NotePropertyValue @()   -Force }
-        if ($null -eq $s.WingetPkgs -or $s.WingetPkgs-isnot [array]) { $s | Add-Member -NotePropertyName WingetPkgs     -NotePropertyValue @()   -Force }
-        if ($null -eq $s.InstallMode)                                  { $s | Add-Member -NotePropertyName InstallMode    -NotePropertyValue ""    -Force }
+        if ($null -eq $s.WingetPkgs    -or $s.WingetPkgs   -isnot [array]) { $s | Add-Member -NotePropertyName WingetPkgs     -NotePropertyValue @()   -Force }
+        if ($null -eq $s.DownloadUrls  -or $s.DownloadUrls -isnot [array]) { $s | Add-Member -NotePropertyName DownloadUrls   -NotePropertyValue @()   -Force }
+        if ($null -eq $s.InstallMode)                                        { $s | Add-Member -NotePropertyName InstallMode    -NotePropertyValue ""    -Force }
         return $s
     }
     return [PSCustomObject]@{
@@ -68,8 +69,9 @@ function Get-DeployState {
         Models      = [string[]]@()
         Features    = [string[]]@()
         LocalFiles  = [string[]]@()
-        WingetPkgs  = [string[]]@()
-        InstallMode = ""
+        WingetPkgs    = [string[]]@()
+        DownloadUrls  = [string[]]@()
+        InstallMode   = ""
     }
 }
 
@@ -165,17 +167,19 @@ function Invoke-InVM([scriptblock]$Script) {
     Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock $Script
 }
 
-function Copy-ToVM([string]$SourcePath, [string]$DestinationPath) {
-    $session = New-PSSession -VMName $VMName -Credential $cred
+function Copy-ToVM([string]$SourcePath, [string]$DestinationPath,
+                   [System.Management.Automation.Runspaces.PSSession]$Session = $null) {
+    $ownsSession = $null -eq $Session
+    if ($ownsSession) { $Session = New-PSSession -VMName $VMName -Credential $cred }
     try {
-        $destDir = Split-Path -Path $DestinationPath -Parent
-        Invoke-Command -Session $session -ScriptBlock {
+        $destDir  = Split-Path -Path $DestinationPath -Parent
+        $fileName = [System.IO.Path]::GetFileName($SourcePath)
+        $fileSize = (Get-Item $SourcePath).Length
+        Invoke-Command -Session $Session -ScriptBlock {
             New-Item -ItemType Directory -Path $using:destDir -Force | Out-Null
         }
 
-        $chunkSize = 4MB
-        $fileSize  = (Get-Item $SourcePath).Length
-        $fileName  = [System.IO.Path]::GetFileName($SourcePath)
+        $chunkSize = 8MB
         $fs        = [System.IO.File]::OpenRead($SourcePath)
         $copied    = [long]0
         try {
@@ -185,7 +189,7 @@ function Copy-ToVM([string]$SourcePath, [string]$DestinationPath) {
                 $chunk   = $buffer[0..($read - 1)]
                 $dest    = $DestinationPath
                 $isFirst = $first
-                Invoke-Command -Session $session -ScriptBlock {
+                Invoke-Command -Session $Session -ScriptBlock {
                     $mode  = if ($using:isFirst) { [System.IO.FileMode]::Create } else { [System.IO.FileMode]::Append }
                     $rfs   = [System.IO.File]::Open($using:dest, $mode)
                     $bytes = [byte[]]$using:chunk
@@ -194,7 +198,7 @@ function Copy-ToVM([string]$SourcePath, [string]$DestinationPath) {
                 }
                 $copied += $read
                 $first   = $false
-                $pct     = if ($fileSize -gt 0) { [int]($copied * 100 / $fileSize) } else { 100 }
+                $pct      = if ($fileSize -gt 0) { [int]($copied * 100 / $fileSize) } else { 100 }
                 $copiedMB = [math]::Round($copied / 1MB, 1)
                 $totalMB  = [math]::Round($fileSize / 1MB, 1)
                 Write-Progress -Id 1 -Activity "Copying to VM" `
@@ -206,7 +210,79 @@ function Copy-ToVM([string]$SourcePath, [string]$DestinationPath) {
             Write-Progress -Id 1 -Activity "Copying to VM" -Completed
         }
     } finally {
-        Remove-PSSession $session -ErrorAction SilentlyContinue
+        if ($ownsSession) { Remove-PSSession $Session -ErrorAction SilentlyContinue }
+    }
+}
+
+function Test-UrlExpired([string]$Url) {
+    if ($Url -match '[?&]expire=(\d+)') {
+        $expireAt = [long]$Matches[1]
+        $now      = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        return $expireAt -lt $now
+    }
+    return $false
+}
+
+function Download-ToVM([string]$Url, [string]$DestinationPath) {
+    $fileName  = $Url.Split('?')[0].Split('/')[-1]
+    $totalBytes = [long]-1
+    try {
+        $req = [System.Net.HttpWebRequest]::Create($Url)
+        $req.Method = "HEAD"
+        $req.AllowAutoRedirect = $true
+        $resp = $req.GetResponse()
+        $totalBytes = $resp.ContentLength
+        $resp.Close()
+    } catch { }
+
+    $totalMB = if ($totalBytes -gt 0) { [math]::Round($totalBytes / 1MB, 1) } else { "?" }
+
+    $downloadSession = New-PSSession -VMName $VMName -Credential $cred
+    $pollSession     = New-PSSession -VMName $VMName -Credential $cred
+    $downloadJob     = $null
+    try {
+        $destDir = Split-Path -Path $DestinationPath -Parent
+        Invoke-Command -Session $pollSession -ScriptBlock {
+            New-Item -ItemType Directory -Path $using:destDir -Force | Out-Null
+        }
+
+        $downloadJob = Invoke-Command -Session $downloadSession -AsJob -ScriptBlock {
+            $wc = [System.Net.WebClient]::new()
+            $wc.DownloadFile($using:Url, $using:DestinationPath)
+        }
+
+        while ($downloadJob.State -eq 'Running') {
+            Start-Sleep -Seconds 2
+            try {
+                $currentBytes = Invoke-Command -Session $pollSession -ScriptBlock {
+                    if (Test-Path $using:DestinationPath) { (Get-Item $using:DestinationPath).Length } else { [long]0 }
+                }
+                $doneMB = [math]::Round($currentBytes / 1MB, 1)
+                if ($totalBytes -gt 0) {
+                    $pct = [int]([math]::Min(99, $currentBytes * 100 / $totalBytes))
+                    Write-Progress -Id 2 -Activity "Downloading in VM" `
+                        -Status "$fileName  --  $doneMB MB / $totalMB MB" `
+                        -PercentComplete $pct
+                } else {
+                    Write-Progress -Id 2 -Activity "Downloading in VM" `
+                        -Status "$fileName  --  $doneMB MB downloaded"
+                }
+            } catch { }
+        }
+
+        try {
+            Receive-Job $downloadJob -Wait -ErrorAction Stop | Out-Null
+        } catch {
+            Write-Progress -Id 2 -Activity "Downloading in VM" -Completed
+            $inner = $_.Exception.InnerException
+            $msg   = if ($null -ne $inner) { $inner.Message } else { $_.Exception.Message }
+            throw "Download failed for '$fileName': $msg"
+        }
+        Write-Progress -Id 2 -Activity "Downloading in VM" -Completed
+    } finally {
+        if ($null -ne $downloadJob) { Remove-Job $downloadJob -Force -ErrorAction SilentlyContinue }
+        Remove-PSSession $downloadSession -ErrorAction SilentlyContinue
+        Remove-PSSession $pollSession     -ErrorAction SilentlyContinue
     }
 }
 
@@ -254,32 +330,85 @@ function Write-Banner($text) {
 function Select-FromList {
     param(
         [array]$Items,
-        [string]$Prompt,
-        [scriptblock]$DisplayItem,
-        [switch]$AllowEmpty
+        [string]$Prompt       = "",
+        [scriptblock]$DisplayItem  = { param($x) "$x" },
+        [switch]$AllowEmpty,
+        [switch]$SingleSelect
     )
-    Write-Host ""
-    for ($i = 0; $i -lt $Items.Count; $i++) {
-        $label = & $DisplayItem $Items[$i]
-        Write-Host ("  [{0,2}] {1}" -f $i, $label)
-    }
-    Write-Host "  [ A] Select all"
-    if ($AllowEmpty) { Write-Host "  [ -] Skip / none" }
-    Write-Host ""
-    Write-Host "  $Prompt " -NoNewline -ForegroundColor Yellow
-    $raw = (Read-Host).Trim().ToUpper()
 
-    if ($raw -eq "A") { return $Items }
-    if ($raw -eq "" -or $raw -eq "-") { return @() }
+    if ($Items.Count -eq 0) { return @() }
 
-    $selected = @()
-    foreach ($token in ($raw -split '\s+')) {
-        if ($token -match '^\d+$') {
-            $n = [int]$token
-            if ($n -ge 0 -and $n -lt $Items.Count) { $selected += $Items[$n] }
+    $sel    = [bool[]]::new($Items.Count)
+    $cursor = 0
+
+    $draw = {
+        $w = [Math]::Max(60, [Console]::WindowWidth - 1)
+        [Console]::CursorVisible = $false
+        [Console]::SetCursorPosition(0, $topRow)
+
+        $hint = if ($SingleSelect) {
+            "  UP/DOWN navigate  |  ENTER select"
+        } elseif ($AllowEmpty) {
+            "  UP/DOWN navigate  |  SPACE toggle  |  A select all  |  N select none  |  ENTER confirm (or skip)"
+        } else {
+            "  UP/DOWN navigate  |  SPACE toggle  |  A select all  |  N select none  |  ENTER confirm"
         }
+        Write-Host $hint.PadRight($w) -ForegroundColor DarkGray
+        Write-Host " ".PadRight($w)
+
+        for ($i = 0; $i -lt $Items.Count; $i++) {
+            $label = & $DisplayItem $Items[$i]
+            if ($i -eq $cursor) {
+                $line = if ($SingleSelect) {
+                    "  >  $label"
+                } else {
+                    $mark = if ($sel[$i]) { "X" } else { " " }
+                    "  > [$mark]  $label"
+                }
+                Write-Host $line.PadRight($w) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
+            } else {
+                $line = if ($SingleSelect) {
+                    "     $label"
+                } else {
+                    $mark = if ($sel[$i]) { "X" } else { " " }
+                    "    [$mark]  $label"
+                }
+                Write-Host $line.PadRight($w) -ForegroundColor White -NoNewline
+            }
+            Write-Host ""
+        }
+        Write-Host " ".PadRight($w)
     }
-    return $selected
+
+    $topRow = [Console]::CursorTop
+    & $draw
+
+    $done = $false
+    while (-not $done) {
+        $k = [Console]::ReadKey($true)
+
+        if     ($k.Key -eq [ConsoleKey]::UpArrow)   { $cursor = if ($cursor -gt 0) { $cursor - 1 } else { $Items.Count - 1 } }
+        elseif ($k.Key -eq [ConsoleKey]::DownArrow)  { $cursor = if ($cursor -lt ($Items.Count - 1)) { $cursor + 1 } else { 0 } }
+        elseif ($k.Key -eq [ConsoleKey]::Spacebar -and -not $SingleSelect) { $sel[$cursor] = -not $sel[$cursor] }
+        elseif ($k.Key -eq [ConsoleKey]::Enter) {
+            if ($SingleSelect -or $AllowEmpty -or ($sel -contains $true)) { $done = $true }
+        } else {
+            $ch = $k.KeyChar.ToString().ToUpper()
+            if (-not $SingleSelect) {
+                if ($ch -eq 'A') { 0..($Items.Count - 1) | ForEach-Object { $sel[$_] = $true } }
+                if ($ch -eq 'N') { 0..($Items.Count - 1) | ForEach-Object { $sel[$_] = $false } }
+            }
+        }
+
+        if (-not $done) { & $draw }
+    }
+
+    [Console]::CursorVisible = $true
+    [Console]::SetCursorPosition(0, $topRow + $Items.Count + 3)
+    Write-Host ""
+
+    if ($SingleSelect) { return @($Items[$cursor]) }
+    return @(0..($Items.Count - 1) | Where-Object { $sel[$_] } | ForEach-Object { $Items[$_] })
 }
 
 function Select-Models {
@@ -375,6 +504,38 @@ function Select-WingetPackages {
     return @($picked | ForEach-Object { $_.Id })
 }
 
+function Read-DownloadCatalogue {
+    $cataloguePath = Join-Path $ScriptRoot "downloads.txt"
+    if (-not (Test-Path $cataloguePath)) { return @() }
+    $entries = @()
+    foreach ($line in (Get-Content $cataloguePath)) {
+        $line = $line.Trim()
+        if ($line -eq "" -or $line.StartsWith("#")) { continue }
+        if ($line -match "^\s*(.+?)\s*\|\s*(https?://.+)$") {
+            $entries += [PSCustomObject]@{ Name = $Matches[1].Trim(); Url = $Matches[2].Trim() }
+        } elseif ($line -match "^https?://") {
+            $fileName = $line.Split('?')[0].Split('/')[-1]
+            $entries += [PSCustomObject]@{ Name = $fileName; Url = $line }
+        }
+    }
+    return $entries
+}
+
+function Select-DownloadItems([PSCustomObject[]]$Catalogue) {
+    $picked = Select-FromList `
+        -Items $Catalogue `
+        -Prompt "Numbers separated by spaces (or A for all, - to skip):" `
+        -DisplayItem { param($d) $d.Name } `
+        -AllowEmpty
+
+    if ($picked.Count -gt 0) {
+        Write-Host ""
+        Write-Host "  Downloads queued:" -ForegroundColor Green
+        $picked | ForEach-Object { Write-Host "    - $($_.Name)" }
+    }
+    return @($picked | ForEach-Object { $_.Url })
+}
+
 # =============================================================================
 # STARTUP -- detect interrupted installation
 # =============================================================================
@@ -415,13 +576,14 @@ if (Has-PendingInstallation $state) {
         Write-Host ""
         Write-Host "  Starting over -- previous state cleared." -ForegroundColor Magenta
         $state = [PSCustomObject]@{
-            VMName      = ""
-            Completed   = [string[]]@()
-            Models      = [string[]]@()
-            Features    = [string[]]@()
-            LocalFiles  = [string[]]@()
-            WingetPkgs  = [string[]]@()
-            InstallMode = ""
+            VMName        = ""
+            Completed     = [string[]]@()
+            Models        = [string[]]@()
+            Features      = [string[]]@()
+            LocalFiles    = [string[]]@()
+            WingetPkgs    = [string[]]@()
+            DownloadUrls  = [string[]]@()
+            InstallMode   = ""
         }
         Save-State $state
     } else {
@@ -439,25 +601,21 @@ if (Has-PendingInstallation $state) {
 # =============================================================================
 
 if ($state.Features.Count -eq 0) {
+    Clear-Host
     Write-Banner "Feature Selection"
     Write-Host "  What do you want to configure on the guest VM?" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "  [1] Full WSL2 + AI stack (WSL + Docker + Ollama)" -ForegroundColor White
-    Write-Host "  [2] Install software packages on the guest VM" -ForegroundColor White
-    Write-Host "  [3] Minimal WSL preparation only (no WSL install)" -ForegroundColor White
-    Write-Host "  [4] Minimal WSL preparation + software copy/install options" -ForegroundColor White
-    Write-Host "  [A] Full WSL2 + AI stack + software packages" -ForegroundColor White
-    Write-Host ""
-    Write-Host "  Choice [1/2/3/4/A]: " -NoNewline -ForegroundColor Yellow
-    $fc = (Read-Host).Trim().ToUpper()
 
-    $state.Features = [string[]] $(switch ($fc) {
-        "1"     { @("wsl-ai") }
-        "2"     { @("software") }
-        "3"     { @("wsl-prep") }
-        "4"     { @("wsl-prep", "software") }
-        default { @("wsl-ai", "software") }
-    })
+    $featureOptions = @(
+        [PSCustomObject]@{ Label = "Full WSL2 + AI stack  (WSL + Docker + Ollama)";   Value = @("wsl-ai") }
+        [PSCustomObject]@{ Label = "Install software packages on the guest VM";        Value = @("software") }
+        [PSCustomObject]@{ Label = "Minimal WSL preparation only  (no WSL install)";  Value = @("wsl-prep") }
+        [PSCustomObject]@{ Label = "Minimal WSL prep + software install";              Value = @("wsl-prep", "software") }
+        [PSCustomObject]@{ Label = "Full WSL2 + AI stack + software packages";         Value = @("wsl-ai", "software") }
+    )
+
+    $chosen = Select-FromList -Items $featureOptions -DisplayItem { param($f) $f.Label } -SingleSelect
+    $state.Features = [string[]]$chosen[0].Value
     Save-State $state
 }
 
@@ -473,14 +631,17 @@ if (-not $state.VMName) {
     $vms = Get-VM
     if ($vms.Count -eq 0) { throw "No Hyper-V VMs found on this host." }
 
+    Clear-Host
+    Write-Banner "VM Selection"
+    Write-Host "  Select the Hyper-V guest VM to configure." -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "  Available Hyper-V VMs:" -ForegroundColor Cyan
-    for ($i = 0; $i -lt $vms.Count; $i++) {
-        Write-Host ("  [{0}] {1}  --  {2}" -f $i, $vms[$i].Name, $vms[$i].State)
-    }
-    Write-Host ""
-    Write-Host "  Select VM number: " -NoNewline -ForegroundColor Yellow
-    $state.VMName = $vms[[int](Read-Host)].Name
+
+    $chosen = Select-FromList `
+        -Items $vms `
+        -DisplayItem { param($v) ("{0,-30} State: {1}" -f $v.Name, $v.State) } `
+        -SingleSelect
+
+    $state.VMName = $chosen[0].Name
     Save-State $state
 }
 
@@ -489,9 +650,10 @@ $VMName = $state.VMName
 # ── Ollama model selection (WSL pipeline only) ────────────────────────────────
 
 if ($enableWSLFull -and $state.Models.Count -eq 0) {
-    Write-Host ""
+    Clear-Host
     Write-Banner "Ollama Model Selection"
     Write-Host "  Select all models now -- no further prompts during deploy." -ForegroundColor Gray
+    Write-Host ""
     $state.Models = [string[]]$(Select-Models)
     Save-State $state
 } elseif ($enableWSLFull) {
@@ -501,38 +663,45 @@ if ($enableWSLFull -and $state.Models.Count -eq 0) {
 # ── Software selection ────────────────────────────────────────────────────────
 
 if ($enableSoftware -and -not $deferSoftwareSelection -and -not (Is-Done $state "software-selected")) {
-    Write-Host ""
-    Write-Banner "Software Selection"
 
-    Write-Host "  LOCAL INSTALLERS (from softwares\ folder)" -ForegroundColor Cyan
-    Write-Host "  ------------------------------------------" -ForegroundColor DarkGray
-    Write-Host "  These files will be copied to C:\Install on the guest VM." -ForegroundColor Gray
+    $dlCatalogue = Read-DownloadCatalogue
+    if ($dlCatalogue.Count -gt 0) {
+        Clear-Host
+        Write-Banner "Direct Downloads"
+        Write-Host "  Files downloaded straight into the VM from the internet." -ForegroundColor Cyan
+        Write-Host "  ELO tokens auto-refresh when expired. URLs sourced from downloads.txt." -ForegroundColor Gray
+        Write-Host ""
+        $state.DownloadUrls = [string[]]$(Select-DownloadItems -Catalogue $dlCatalogue)
+    }
+
+    Clear-Host
+    Write-Banner "Local Installers"
+    Write-Host "  Files from softwares\ will be copied to C:\Install on the guest VM." -ForegroundColor Gray
+    Write-Host ""
     $localFiles = Select-LocalSoftwares
     $state.LocalFiles = [string[]]$localFiles
     if ($localFiles.Count -eq 0) { $state.InstallMode = "" }
 
+    Clear-Host
+    Write-Banner "Winget Packages"
+    Write-Host "  Packages installed directly on the guest via Windows Package Manager." -ForegroundColor Gray
     Write-Host ""
-    Write-Host "  WINGET PACKAGES (Windows Package Manager -- like apt-get / brew)" -ForegroundColor Cyan
-    Write-Host "  ------------------------------------------------------------------" -ForegroundColor DarkGray
-    Write-Host "  Installed automatically on the guest. No files to copy." -ForegroundColor Gray
     $wingetIds = Select-WingetPackages
     $state.WingetPkgs = [string[]]$wingetIds
 
     if ($state.LocalFiles.Count -gt 0) {
+        Clear-Host
+        Write-Banner "Installation Mode"
+        Write-Host "  How should local installers be run on the guest VM?" -ForegroundColor Cyan
         Write-Host ""
-        Write-Host "  Installation mode for LOCAL installers:" -ForegroundColor Cyan
-        Write-Host "  [S] Silent     -- fully automated, no interaction needed" -ForegroundColor White
-        Write-Host "  [I] Interactive -- copy files, then launch each installer with UI" -ForegroundColor White
-        Write-Host "  [C] Copy only  -- copy files to C:\Install, do not run (default)" -ForegroundColor White
-        Write-Host ""
-        Write-Host "  Choice [S/I/C] (default: C): " -NoNewline -ForegroundColor Yellow
-        $modeRaw = (Read-Host).Trim().ToUpper()
-        $state.InstallMode = switch ($modeRaw) {
-            "S" { "silent" }
-            "I" { "interactive" }
-            "C" { "copy-only" }
-            default { "copy-only" }
-        }
+
+        $modeOptions = @(
+            [PSCustomObject]@{ Label = "Silent       -- fully automated, no interaction needed";  Mode = "silent" }
+            [PSCustomObject]@{ Label = "Interactive  -- copy files, then launch each installer";  Mode = "interactive" }
+            [PSCustomObject]@{ Label = "Copy only    -- copy to C:\Install, do not run";          Mode = "copy-only" }
+        )
+        $chosenMode = Select-FromList -Items $modeOptions -DisplayItem { param($m) $m.Label } -SingleSelect
+        $state.InstallMode = $chosenMode[0].Mode
     }
 
     Save-State $state
@@ -943,6 +1112,87 @@ if ($enableSoftware) {
         Mark-Done $state "guest-services"
     }
 
+    # ── STEP S1.5: Download files directly in VM ─────────────────────────────
+
+    if ($state.DownloadUrls.Count -gt 0 -and -not (Is-Done $state "software-download")) {
+        Write-Banner "STEP S1.5 -- Download Installers in VM (C:\Install)"
+
+        $expiredUrls = @($state.DownloadUrls | Where-Object { Test-UrlExpired $_ })
+        if ($expiredUrls.Count -gt 0) {
+            Write-Host "  [!] Expired tokens detected for:" -ForegroundColor Yellow
+            $expiredUrls | ForEach-Object {
+                Write-Host ("    - " + $_.Split('?')[0].Split('/')[-1]) -ForegroundColor Yellow
+            }
+            Write-Host ""
+
+            $node = Get-Command node -ErrorAction SilentlyContinue
+            if ($null -eq $node) {
+                Write-Host "  Node.js not found -- installing via winget..." -ForegroundColor Gray
+                & winget install OpenJS.NodeJS.LTS --source winget --exact --silent --accept-package-agreements --accept-source-agreements
+                if ($LASTEXITCODE -notin @(0, -1978335189)) { throw "winget failed to install Node.js (exit $LASTEXITCODE)" }
+                # Reload PATH so node/npm are available in this session
+                $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" +
+                            [System.Environment]::GetEnvironmentVariable("PATH","User")
+                $node = Get-Command node -ErrorAction SilentlyContinue
+                if ($null -eq $node) { throw "Node.js installed but 'node' still not found -- open a new terminal and rerun." }
+                Write-Host "  Node.js installed." -ForegroundColor Green
+            }
+
+            $nodeModules = Join-Path $ScriptRoot "node_modules\playwright"
+            if (-not (Test-Path $nodeModules)) {
+                Write-Host "  One-time setup: installing npm dependencies..." -ForegroundColor Gray
+                Push-Location $ScriptRoot
+                try {
+                    & npm install
+                    if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+                    Write-Host "  One-time setup: installing Playwright Chromium browser..." -ForegroundColor Gray
+                    & npx playwright install chromium
+                    if ($LASTEXITCODE -ne 0) { throw "Playwright browser install failed" }
+                } finally {
+                    Pop-Location
+                }
+            }
+
+            $refreshScript = Join-Path $ScriptRoot "refresh-elo-tokens.js"
+            Write-Host "  Launching token refresher..." -ForegroundColor Cyan
+            Write-Host "  Log in at partner.elo.com, click each download, then press ENTER in this window." -ForegroundColor Gray
+            Write-Host ""
+            & node $refreshScript
+            if ($LASTEXITCODE -ne 0) { throw "Token refresh exited with code $LASTEXITCODE" }
+
+            # Reload fresh URLs from downloads.txt, matching by CDN product path key
+            $freshCatalogue = Read-DownloadCatalogue
+            $freshByKey = @{}
+            foreach ($entry in $freshCatalogue) {
+                $key = ($entry.Url.Split('?')[0] -split '/')[3]  # 4th segment = product folder
+                $freshByKey[$key] = $entry.Url
+            }
+            $state.DownloadUrls = [string[]]@($state.DownloadUrls | ForEach-Object {
+                $key = ($_.Split('?')[0] -split '/')[3]
+                if ($freshByKey.ContainsKey($key)) { $freshByKey[$key] } else { $_ }
+            })
+            Save-State $state
+
+            $stillExpired = @($state.DownloadUrls | Where-Object { Test-UrlExpired $_ })
+            if ($stillExpired.Count -gt 0) {
+                throw "Tokens still expired after refresh -- check downloads.txt"
+            }
+            Write-Host "  Tokens refreshed successfully." -ForegroundColor Green
+            Write-Host ""
+        }
+
+        Invoke-InVM { New-Item -ItemType Directory -Path "C:\Install" -Force | Out-Null }
+
+        foreach ($url in $state.DownloadUrls) {
+            $fileName = $url.Split('?')[0].Split('/')[-1]
+            $destPath = "C:\Install\$fileName"
+            Write-Host "  Downloading $fileName ..." -NoNewline
+            Download-ToVM -Url $url -DestinationPath $destPath
+            Write-Host " done." -ForegroundColor Green
+        }
+        Mark-Done $state "software-download"
+    }
+
     # ── STEP S2: Copy local files to VM ───────────────────────────────────────
 
     if ($state.LocalFiles.Count -gt 0 -and -not (Is-Done $state "software-copy")) {
@@ -950,17 +1200,22 @@ if ($enableSoftware) {
 
         Invoke-InVM { New-Item -ItemType Directory -Path "C:\Install" -Force | Out-Null }
 
-        foreach ($relativePath in $state.LocalFiles) {
-            $srcPath = Join-Path $SoftwaresPath $relativePath
-            if (-not (Test-Path $srcPath)) {
-                Write-Host "  [SKIP] File not found: $relativePath" -ForegroundColor Yellow
-                continue
+        $copySession = New-PSSession -VMName $VMName -Credential $cred
+        try {
+            foreach ($relativePath in $state.LocalFiles) {
+                $srcPath = Join-Path $SoftwaresPath $relativePath
+                if (-not (Test-Path $srcPath)) {
+                    Write-Host "  [SKIP] File not found: $relativePath" -ForegroundColor Yellow
+                    continue
+                }
+                $relativeWinPath = $relativePath -replace '/', '\'
+                $destPath = "C:\Install\$relativeWinPath"
+                Write-Host "  Copying $relativePath ..." -NoNewline
+                Copy-ToVM -SourcePath $srcPath -DestinationPath $destPath -Session $copySession
+                Write-Host " done." -ForegroundColor Green
             }
-            $relativeWinPath = $relativePath -replace '/', '\'
-            $destPath = "C:\Install\$relativeWinPath"
-            Write-Host "  Copying $relativePath ..." -NoNewline
-            Copy-ToVM -SourcePath $srcPath -DestinationPath $destPath
-            Write-Host " done." -ForegroundColor Green
+        } finally {
+            Remove-PSSession $copySession -ErrorAction SilentlyContinue
         }
         Mark-Done $state "software-copy"
     }

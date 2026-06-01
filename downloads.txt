@@ -1,0 +1,16 @@
+# Direct download catalogue for VM installer downloads.
+# Format: Display Name | URL
+# Lines starting with # are comments. Blank lines are ignored.
+# ELO CDN URLs contain tokens that expire -- refresh with: node refresh-elo-tokens.js
+
+# ── ELO (tokens expire -- refresh via Playwright) ────────────────────────────
+ELO Server Setup 25.00.003.3759449 | https://cdn2.elo.com/Serversetup_Windows/25/25.00.003.3759449/serversetup2-25.00.003.3759449-windows_signed.zip?token=8Q5evk4B10Fq3GmRYcBR5Q&expire=1780406086
+ELO Java Client 25.00.041.144 | https://cdn2.elo.com/Java_Client_Windows/25/25.00.041.144/ELO_Java_Client_Windows_25_00_041_144.zip?token=6jO87n3HWzMWQ8jMFCbajA&expire=1780406087
+ELO XC 25.01.013.202 | https://cdn2.elo.com/XC/25/25.01.013.202/ELOxc_25.01.013.202.zip?token=JAQ-6s6jgvjuApd3Nh_GMA&expire=1780406147
+
+# ── PostgreSQL (stable direct link, no token) ─────────────────────────────────
+PostgreSQL 18.4 Windows x64 | https://get.enterprisedb.com/postgresql/postgresql-18.4-1-windows-x64.exe
+
+# ── SQL Server 2022 (SSEI bootstrapper -- runs silently inside VM) ────────────
+SQL Server 2022 Developer | https://download.microsoft.com/download/c/c/9/cc9c6797-383c-4b24-8920-dc057c1de9d3/SQL2022-SSEI-Dev.exe
+SQL Server 2022 Express   | https://download.microsoft.com/download/5/1/4/5145fe04-4d30-4b85-b0d1-39533663a2f1/SQL2022-SSEI-Expr.exe
