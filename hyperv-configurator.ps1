@@ -168,7 +168,32 @@ function Invoke-InVM([scriptblock]$Script) {
 function Copy-ToVM([string]$SourcePath, [string]$DestinationPath) {
     $session = New-PSSession -VMName $VMName -Credential $cred
     try {
-        Copy-Item -Path $SourcePath -Destination $DestinationPath -ToSession $session -Force
+        $destDir = Split-Path -Path $DestinationPath -Parent
+        Invoke-Command -Session $session -ScriptBlock {
+            New-Item -ItemType Directory -Path $using:destDir -Force | Out-Null
+        }
+
+        $chunkSize = 4MB
+        $fs = [System.IO.File]::OpenRead($SourcePath)
+        try {
+            $buffer = New-Object byte[] $chunkSize
+            $first  = $true
+            while (($read = $fs.Read($buffer, 0, $chunkSize)) -gt 0) {
+                $chunk   = $buffer[0..($read - 1)]
+                $dest    = $DestinationPath
+                $isFirst = $first
+                Invoke-Command -Session $session -ScriptBlock {
+                    $mode  = if ($using:isFirst) { [System.IO.FileMode]::Create } else { [System.IO.FileMode]::Append }
+                    $rfs   = [System.IO.File]::Open($using:dest, $mode)
+                    $bytes = [byte[]]$using:chunk
+                    try   { $rfs.Write($bytes, 0, $bytes.Length) }
+                    finally { $rfs.Close() }
+                }
+                $first = $false
+            }
+        } finally {
+            $fs.Close()
+        }
     } finally {
         Remove-PSSession $session -ErrorAction SilentlyContinue
     }
@@ -472,26 +497,15 @@ if ($enableSoftware -and -not $deferSoftwareSelection -and -not (Is-Done $state 
     Write-Host "  ------------------------------------------" -ForegroundColor DarkGray
     Write-Host "  These files will be copied to C:\Install on the guest VM." -ForegroundColor Gray
     $localFiles = Select-LocalSoftwares
-    if ($localFiles.Count -gt 0) {
-        $state.LocalFiles = [string[]]$localFiles
-    }
+    $state.LocalFiles = [string[]]$localFiles
+    if ($localFiles.Count -eq 0) { $state.InstallMode = "" }
 
     Write-Host ""
     Write-Host "  WINGET PACKAGES (Windows Package Manager -- like apt-get / brew)" -ForegroundColor Cyan
     Write-Host "  ------------------------------------------------------------------" -ForegroundColor DarkGray
     Write-Host "  Installed automatically on the guest. No files to copy." -ForegroundColor Gray
     $wingetIds = Select-WingetPackages
-    Write-Host ""
-    Write-Host "  Install Docker Desktop on the guest VM via winget? [Y/N] (default: N): " -NoNewline -ForegroundColor Yellow
-    $dockerViaWinget = (Read-Host).Trim()
-    if ($dockerViaWinget -match "^[Yy]") {
-        if ($wingetIds -notcontains "Docker.DockerDesktop") {
-            $wingetIds += "Docker.DockerDesktop"
-        }
-    }
-    if ($wingetIds.Count -gt 0) {
-        $state.WingetPkgs = [string[]]$wingetIds
-    }
+    $state.WingetPkgs = [string[]]$wingetIds
 
     if ($state.LocalFiles.Count -gt 0) {
         Write-Host ""
@@ -519,8 +533,10 @@ if ($enableSoftware -and -not $deferSoftwareSelection -and -not (Is-Done $state 
 $postgresPassword = ""
 $mssqlSaPassword  = ""
 if ($enableSoftware -and -not $deferSoftwareSelection) {
-    $hasPostgres = (($state.WingetPkgs | Where-Object { $_ -match "(?i)^PostgreSQL\.PostgreSQL(\.|$)" } | Measure-Object).Count -gt 0) -or (($state.LocalFiles | Where-Object { $_ -match "(?i)postgresql" } | Measure-Object).Count -gt 0)
-    $hasMssql    = (($state.WingetPkgs | Where-Object { $_ -match "(?i)^Microsoft\.SQLServer(\.|$)" } | Measure-Object).Count -gt 0) -or (($state.LocalFiles | Where-Object { $_ -match "(?i)sql.*server|ssei" } | Measure-Object).Count -gt 0)
+    $hasPostgres = ($state.WingetPkgs -contains "PostgreSQL.PostgreSQL.18") -or
+                   ($state.InstallMode -eq "silent" -and ($state.LocalFiles | Where-Object { $_ -match "(?i)postgresql" }).Count -gt 0)
+    $hasMssql    = ($state.WingetPkgs -contains "Microsoft.SQLServer.2022.Developer") -or
+                   ($state.InstallMode -eq "silent" -and ($state.LocalFiles | Where-Object { $_ -match "(?i)sql.*server|ssei" }).Count -gt 0)
 
     if ($hasPostgres) {
         Write-Host ""
@@ -555,6 +571,14 @@ if ($enableSoftware) {
     if ($state.LocalFiles.Count -gt 0) {
         Write-Host "  Install mode : $($state.InstallMode)" -ForegroundColor Cyan
     }
+}
+if ($postgresPassword) {
+    Write-Host "  PG user      : postgres" -ForegroundColor Cyan
+    Write-Host "  PG password  : $postgresPassword" -ForegroundColor Cyan
+}
+if ($mssqlSaPassword) {
+    Write-Host "  MSSQL user   : sa" -ForegroundColor Cyan
+    Write-Host "  MSSQL password: $mssqlSaPassword" -ForegroundColor Cyan
 }
 Write-Host ""
 
@@ -832,10 +856,12 @@ if ($deferSoftwareSelection -and -not (Is-Done $state "software-selected")) {
     Write-Host "  ----------------------------------------------------------" -ForegroundColor DarkGray
     Write-Host "  These files will be copied to C:\Install on the guest VM." -ForegroundColor Gray
     $localFiles = Select-LocalSoftwares
+    $state.LocalFiles = [string[]]$localFiles
     if ($localFiles.Count -gt 0) {
-        $state.LocalFiles = [string[]]$localFiles
         $state.InstallMode = "copy-only"
         Write-Host "  Local installers will be copied only (no auto-install)." -ForegroundColor Yellow
+    } else {
+        $state.InstallMode = ""
     }
 
     Write-Host ""
@@ -843,25 +869,17 @@ if ($deferSoftwareSelection -and -not (Is-Done $state "software-selected")) {
     Write-Host "  --------------------------" -ForegroundColor DarkGray
     Write-Host "  Winget packages are installed on the VM (not copied)." -ForegroundColor Gray
     $wingetIds = Select-WingetPackages
-    Write-Host ""
-    Write-Host "  Install Docker Desktop on the guest VM via winget? [Y/N] (default: N): " -NoNewline -ForegroundColor Yellow
-    $dockerViaWinget = (Read-Host).Trim()
-    if ($dockerViaWinget -match "^[Yy]") {
-        if ($wingetIds -notcontains "Docker.DockerDesktop") {
-            $wingetIds += "Docker.DockerDesktop"
-        }
-    }
-    if ($wingetIds.Count -gt 0) {
-        $state.WingetPkgs = [string[]]$wingetIds
-    }
+    $state.WingetPkgs = [string[]]$wingetIds
 
     Save-State $state
     Mark-Done $state "software-selected"
 }
 
 if ($enableSoftware -and $deferSoftwareSelection) {
-    $hasPostgres = (($state.WingetPkgs | Where-Object { $_ -match "(?i)^PostgreSQL\.PostgreSQL(\.|$)" } | Measure-Object).Count -gt 0) -or (($state.LocalFiles | Where-Object { $_ -match "(?i)postgresql" } | Measure-Object).Count -gt 0)
-    $hasMssql    = (($state.WingetPkgs | Where-Object { $_ -match "(?i)^Microsoft\.SQLServer(\.|$)" } | Measure-Object).Count -gt 0) -or (($state.LocalFiles | Where-Object { $_ -match "(?i)sql.*server|ssei" } | Measure-Object).Count -gt 0)
+    $hasPostgres = ($state.WingetPkgs -contains "PostgreSQL.PostgreSQL.18") -or
+                   ($state.InstallMode -eq "silent" -and ($state.LocalFiles | Where-Object { $_ -match "(?i)postgresql" }).Count -gt 0)
+    $hasMssql    = ($state.WingetPkgs -contains "Microsoft.SQLServer.2022.Developer") -or
+                   ($state.InstallMode -eq "silent" -and ($state.LocalFiles | Where-Object { $_ -match "(?i)sql.*server|ssei" }).Count -gt 0)
 
     if ($hasPostgres) {
         Write-Host ""
@@ -882,6 +900,18 @@ if ($enableSoftware -and $deferSoftwareSelection) {
             $mssqlSaPassword = Read-PlainSecret "  SQL Server sa password (hidden input)"
         }
     }
+}
+
+if ($postgresPassword -or $mssqlSaPassword) {
+    Write-Host ""
+    Write-Host "  DB credentials for this installation:" -ForegroundColor Cyan
+    if ($postgresPassword) {
+        Write-Host "    PostgreSQL  --  user: postgres    password: $postgresPassword" -ForegroundColor Cyan
+    }
+    if ($mssqlSaPassword) {
+        Write-Host "    SQL Server  --  user: sa          password: $mssqlSaPassword" -ForegroundColor Cyan
+    }
+    Write-Host ""
 }
 
 if ($enableSoftware) {
@@ -917,8 +947,6 @@ if ($enableSoftware) {
             }
             $relativeWinPath = $relativePath -replace '/', '\'
             $destPath = "C:\Install\$relativeWinPath"
-            $destDir = Split-Path -Path $destPath -Parent
-            Invoke-InVM { New-Item -ItemType Directory -Path $using:destDir -Force | Out-Null }
             Write-Host "  Copying $relativePath ..." -NoNewline
             Copy-ToVM -SourcePath $srcPath -DestinationPath $destPath
             Write-Host " done." -ForegroundColor Green
@@ -1057,6 +1085,14 @@ if ($enableWSLFull) {
 if ($enableSoftware) {
     $totalPkgs = $state.LocalFiles.Count + $state.WingetPkgs.Count
     Write-Host ("  |  Software: {0,-30}|" -f "$totalPkgs package(s) processed") -ForegroundColor Green
+}
+if ($postgresPassword) {
+    Write-Host ("  |  PG  user : {0,-30}|" -f "postgres") -ForegroundColor Green
+    Write-Host ("  |  PG  pwd  : {0,-30}|" -f $postgresPassword) -ForegroundColor Green
+}
+if ($mssqlSaPassword) {
+    Write-Host ("  |  SQL user : {0,-30}|" -f "sa") -ForegroundColor Green
+    Write-Host ("  |  SQL pwd  : {0,-30}|" -f $mssqlSaPassword) -ForegroundColor Green
 }
 Write-Host "  +=========================================+" -ForegroundColor Green
 Write-Host ""
