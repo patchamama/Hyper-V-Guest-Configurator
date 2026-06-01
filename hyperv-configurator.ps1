@@ -174,7 +174,10 @@ function Copy-ToVM([string]$SourcePath, [string]$DestinationPath) {
         }
 
         $chunkSize = 4MB
-        $fs = [System.IO.File]::OpenRead($SourcePath)
+        $fileSize  = (Get-Item $SourcePath).Length
+        $fileName  = [System.IO.Path]::GetFileName($SourcePath)
+        $fs        = [System.IO.File]::OpenRead($SourcePath)
+        $copied    = [long]0
         try {
             $buffer = New-Object byte[] $chunkSize
             $first  = $true
@@ -189,10 +192,18 @@ function Copy-ToVM([string]$SourcePath, [string]$DestinationPath) {
                     try   { $rfs.Write($bytes, 0, $bytes.Length) }
                     finally { $rfs.Close() }
                 }
-                $first = $false
+                $copied += $read
+                $first   = $false
+                $pct     = if ($fileSize -gt 0) { [int]($copied * 100 / $fileSize) } else { 100 }
+                $copiedMB = [math]::Round($copied / 1MB, 1)
+                $totalMB  = [math]::Round($fileSize / 1MB, 1)
+                Write-Progress -Id 1 -Activity "Copying to VM" `
+                    -Status "$fileName  --  $copiedMB MB / $totalMB MB" `
+                    -PercentComplete $pct
             }
         } finally {
             $fs.Close()
+            Write-Progress -Id 1 -Activity "Copying to VM" -Completed
         }
     } finally {
         Remove-PSSession $session -ErrorAction SilentlyContinue
