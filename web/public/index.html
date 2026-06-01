@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hyper-V Guest Configurator</title>
+<style>
+:root {
+  --bg:       #0d1117;
+  --sur:      #161b22;
+  --sur2:     #21262d;
+  --border:   #30363d;
+  --text:     #e6edf3;
+  --muted:    #8b949e;
+  --accent:   #58a6ff;
+  --green:    #3fb950;
+  --yellow:   #d29922;
+  --red:      #f85149;
+  --font:     -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono:     'Cascadia Code', 'Consolas', monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* Header */
+header{background:var(--sur);border-bottom:1px solid var(--border);padding:0 20px;height:48px;display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:10}
+header h1{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--border);transition:background .3s}
+.dot.on{background:var(--green)}
+.ml{margin-left:auto}
+.hbtn{background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;transition:all .15s}
+.hbtn:hover{color:var(--text);border-color:var(--muted)}
+
+/* Layout */
+.body{display:flex;flex:1;overflow:hidden}
+
+/* Sidebar */
+.sidebar{width:220px;background:var(--sur);border-right:1px solid var(--border);overflow-y:auto;padding:12px 8px;flex-shrink:0}
+.sec-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:8px 8px 4px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;cursor:pointer;transition:background .12s;user-select:none}
+.nav-item:hover{background:var(--sur2)}
+.nav-item.active{background:rgba(88,166,255,.13);color:var(--accent)}
+.nav-item.ok .num{background:var(--green);color:#000;border-color:var(--green)}
+.nav-item.err .num{background:var(--red);color:#fff;border-color:var(--red)}
+.nav-item.run .num{background:var(--accent);color:#000;border-color:var(--accent)}
+.num{width:20px;height:20px;border-radius:50%;border:1px solid var(--border);background:var(--sur2);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
+.nav-label{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Main */
+.main{flex:1;overflow-y:auto;padding:24px}
+.panel{display:none;animation:fadeIn .15s ease}
+.panel.show{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+
+/* Cards */
+.card{background:var(--sur);border:1px solid var(--border);border-radius:10px;padding:22px;margin-bottom:16px}
+.card h2{font-size:16px;font-weight:600;margin-bottom:4px}
+.card .sub{color:var(--muted);font-size:13px;margin-bottom:18px;line-height:1.5}
+
+/* Option grid */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+.opt{background:var(--sur2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;transition:border-color .15s,background .15s;user-select:none}
+.opt:hover{border-color:var(--accent)}
+.opt.sel{border-color:var(--accent);background:rgba(88,166,255,.09)}
+.opt.warn{border-color:var(--yellow)}
+.chk{width:16px;height:16px;border:1.5px solid var(--border);border-radius:3px;flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;font-size:10px;transition:all .15s}
+.opt.sel .chk{background:var(--accent);border-color:var(--accent);color:#000}
+.radio .chk{border-radius:50%}
+.opt-name{font-size:13px;font-weight:500;line-height:1.4}
+.opt-sub{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.4}
+.opt-sub.expired{color:var(--red)}
+
+/* Button row */
+.brow{display:flex;gap:8px;margin-top:18px;align-items:center}
+.btn{padding:7px 16px;border-radius:6px;border:none;font-size:13px;font-weight:500;cursor:pointer;transition:opacity .15s,transform .1s;font-family:var(--font)}
+.btn:hover{opacity:.85}
+.btn:active{transform:scale(.97)}
+.btn-p{background:var(--accent);color:#000}
+.btn-g{background:var(--green);color:#000}
+.btn-r{background:var(--red);color:#fff}
+.btn-o{background:var(--sur2);color:var(--text);border:1px solid var(--border)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* Form */
+.fg{margin-bottom:14px}
+.fl{font-size:12px;color:var(--muted);margin-bottom:6px;display:block}
+input[type=text],input[type=password]{background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:13px;padding:7px 12px;width:100%;outline:none;transition:border-color .15s}
+input:focus{border-color:var(--accent)}
+
+/* Tags */
+.tag{display:inline-flex;align-items:center;background:rgba(88,166,255,.13);border:1px solid rgba(88,166,255,.3);color:var(--accent);border-radius:4px;padding:2px 8px;font-size:11px;margin:2px;gap:6px}
+.tag .x{cursor:pointer;color:var(--muted);font-size:12px;line-height:1}
+.tag .x:hover{color:var(--red)}
+
+/* Execution steps */
+.exec-list{display:flex;flex-direction:column;gap:8px}
+.estep{background:var(--sur2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;display:flex;align-items:center;gap:14px;transition:border-color .2s}
+.estep.run{border-color:var(--accent)}
+.estep.ok{border-color:var(--green)}
+.estep.err{border-color:var(--red)}
+.estep.skip{opacity:.5}
+.eicon{font-size:20px;width:28px;text-align:center;flex-shrink:0}
+.einfo{flex:1;min-width:0}
+.ename{font-size:14px;font-weight:500}
+.esub{font-size:12px;color:var(--muted);margin-top:2px}
+.badge{font-size:11px;padding:2px 9px;border-radius:20px;font-weight:600;white-space:nowrap}
+.b-pen{background:var(--sur);color:var(--muted);border:1px solid var(--border)}
+.b-run{background:rgba(88,166,255,.2);color:var(--accent)}
+.b-ok {background:rgba(63,185,80,.2);color:var(--green)}
+.b-err{background:rgba(248,81,73,.2);color:var(--red)}
+.b-skip{background:var(--sur);color:var(--muted);border:1px solid var(--border)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.b-run{animation:pulse 1.4s infinite}
+
+/* Log panel */
+.logpanel{width:360px;background:var(--sur);border-left:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+.loghdr{padding:10px 14px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:flex;align-items:center;justify-content:space-between}
+.logbody{flex:1;overflow-y:auto;padding:10px 14px;font-family:var(--mono);font-size:11.5px;line-height:1.65}
+.ll{white-space:pre-wrap;word-break:break-all}
+.ll.err{color:var(--red)}
+.ll.sys{color:var(--muted);font-style:italic}
+.ll.ok {color:var(--green)}
+
+/* Summary box */
+.sumbox{background:var(--sur2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-top:12px}
+.sumbox table{width:100%;border-collapse:collapse}
+.sumbox td{padding:4px 0;font-size:12px;vertical-align:top}
+.sumbox td:first-child{color:var(--muted);width:140px}
+
+/* Alert */
+.alert{padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:12px;line-height:1.5}
+.al-info{background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.25)}
+.al-warn{background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.25)}
+
+/* Folder header */
+.fhdr{font-size:12px;font-weight:600;color:var(--muted);margin:14px 0 8px;display:flex;align-items:center;gap:10px}
+.flink{font-size:11px;color:var(--accent);cursor:pointer;font-weight:400}
+.flink:hover{text-decoration:underline}
+
+/* Progress bar */
+.pbar-wrap{background:var(--border);border-radius:4px;height:4px;overflow:hidden;margin-top:8px}
+.pbar{background:var(--accent);height:100%;transition:width .3s;border-radius:4px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="dot" id="wsDot"></div>
+  <h1>⚙ Hyper-V Guest Configurator</h1>
+  <div class="ml" style="display:flex;gap:8px">
+    <button class="hbtn" onclick="App.resetState()">↺ Reset</button>
+    <button class="hbtn" onclick="App.showPanel('execute')" style="color:var(--green);border-color:var(--green)">▶ Execute</button>
+  </div>
+</header>
+
+<div class="body">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main" id="main"></main>
+  <aside class="logpanel">
+    <div class="loghdr">
+      <span>Execution Log</span>
+      <button class="hbtn" onclick="Log.clear()">Clear</button>
+    </div>
+    <div class="logbody" id="logbody"></div>
+  </aside>
+</div>
+
+<script>
+// ── Log ──────────────────────────────────────────────────────────────────────
+const Log = {
+  el: () => document.getElementById('logbody'),
+  append(text, cls = '') {
+    const el = this.el();
+    const d = document.createElement('div');
+    d.className = 'll ' + cls;
+    d.textContent = text;
+    el.appendChild(d);
+    el.scrollTop = el.scrollHeight;
+  },
+  clear() { this.el().innerHTML = ''; },
+  sys(t) { this.append(t, 'sys'); },
+  ok(t)  { this.append(t, 'ok');  },
+  err(t) { this.append(t, 'err'); },
+};
+
+// ── WebSocket ────────────────────────────────────────────────────────────────
+const WS = {
+  conn: null,
+  onDone: null,
+  connect() {
+    this.conn = new WebSocket(`ws://${location.host}`);
+    this.conn.onopen  = () => document.getElementById('wsDot').className = 'dot on';
+    this.conn.onclose = () => { document.getElementById('wsDot').className = 'dot'; setTimeout(() => this.connect(), 3000); };
+    this.conn.onmessage = e => this.handle(JSON.parse(e.data));
+  },
+  handle(msg) {
+    if (msg.type === 'out')       Log.append(msg.text);
+    else if (msg.type === 'err')  Log.err(msg.text);
+    else if (msg.type === 'done') { Log.sys(`[exit ${msg.code}]`); this.onDone?.(msg.code); this.onDone = null; }
+    else if (msg.type === 'error')     Log.err('[error] ' + msg.text);
+    else if (msg.type === 'cancelled') Log.sys('[cancelled]');
+  },
+  run(script, onDone) {
+    this.onDone = onDone;
+    this.conn.send(JSON.stringify({ type: 'run', script }));
+  },
+  cancel() { this.conn.send(JSON.stringify({ type: 'cancel' })); },
+};
+
+// ── App state ────────────────────────────────────────────────────────────────
+const S = {
+  vmName: '', features: [], models: [], downloadUrls: [],
+  localFiles: [], wingetPkgs: [], installMode: 'copy-only',
+  vmUser: '', vmPass: '', completed: [],
+};
+
+let vms = [], downloads = [], softwares = [], winget = [], models = [];
+
+// ── Catalogues & helpers ──────────────────────────────────────────────────────
+const FEATURE_OPTS = [
+  { label: 'Full WSL2 + AI Stack',     sub: 'WSL + Docker + Ollama',          val: ['wsl-ai']           },
+  { label: 'Software Packages',        sub: 'Install apps on the guest VM',   val: ['software']          },
+  { label: 'WSL Preparation',          sub: 'Minimal setup, no WSL install',  val: ['wsl-prep']          },
+  { label: 'WSL Prep + Software',      sub: 'Preparation + software install', val: ['wsl-prep','software']},
+  { label: 'Full Stack + Software',    sub: 'WSL2 + AI + software packages',  val: ['wsl-ai','software'] },
+];
+const MODE_OPTS = [
+  { label: 'Silent',      sub: 'Fully automated',               val: 'silent'      },
+  { label: 'Interactive', sub: 'Launch each installer with UI', val: 'interactive' },
+  { label: 'Copy Only',   sub: 'Copy files, do not run',        val: 'copy-only'   },
+];
+const isExpired = url => { const m = url.match(/[?&]expire=(\d+)/); return m ? +m[1] < Date.now()/1000 : false; };
+const e = s => s.replace(/"/g, '`"');
+const hasSoftware = () => S.features.includes('software');
+const hasWSL      = () => S.features.includes('wsl-ai');
+const hasWSLPrep  = () => S.features.includes('wsl-prep');
+
+// ── Sidebar navigation ────────────────────────────────────────────────────────
+const NAV = [
+  { id: 'features',    label: 'Features',       sec: 'Configure' },
+  { id: 'vm',          label: 'VM',             sec: null        },
+  { id: 'models',      label: 'Ollama Models',  sec: null        },
+  { id: 'downloads',   label: 'Downloads',      sec: null        },
+  { id: 'local',       label: 'Local Files',    sec: null        },
+  { id: 'winget',      label: 'Winget',         sec: null        },
+  { id: 'installmode', label: 'Install Mode',   sec: null        },
+  { id: 'credentials', label: 'Credentials',    sec: null        },
+  { id: 'execute',     label: 'Execute',        sec: 'Run'       },
+];
+
+let currentPanel = 'features';
+
+function renderSidebar() {
+  let lastSec = '', html = '';
+  NAV.forEach((n, i) => {
+    if (n.sec && n.sec !== lastSec) { html += `<div class="sec-label">${n.sec}</div>`; lastSec = n.sec; }
+    const done = isDone(n.id);
+    const active = n.id === currentPanel;
+    html += `<div class="nav-item ${active?'active':''} ${done&&!active?'ok':''}" onclick="App.showPanel('${n.id}')">
+      <div class="num">${done ? '✓' : i+1}</div>
+      <div class="nav-label">${n.label}</div>
+    </div>`;
+  });
+  document.getElementById('sidebar').innerHTML = html;
+}
+
+function isDone(id) {
+  return {
+    features:    S.features.length > 0,
+    vm:          !!S.vmName,
+    models:      S.models.length > 0 || !hasWSL(),
+    downloads:   true,
+    local:       true,
+    winget:      true,
+    installmode: true,
+    credentials: !!S.vmUser,
+    execute:     false,
+  }[id] ?? false;
+}
+
+// ── Panel system ──────────────────────────────────────────────────────────────
+const App = {
+  showPanel(id) {
+    currentPanel = id;
+    renderSidebar();
+    document.getElementById('main').innerHTML = '';
+    const p = document.createElement('div');
+    p.className = 'panel show';
+    p.innerHTML = panels[id]?.() || '<div class="card"><h2>Coming soon</h2></div>';
+    document.getElementById('main').appendChild(p);
+  },
+  async resetState() {
+    if (!confirm('Reset all progress and selections?')) return;
+    await fetch('/api/state', { method: 'DELETE' });
+    Object.assign(S, { vmName:'', features:[], models:[], downloadUrls:[], localFiles:[], wingetPkgs:[], installMode:'copy-only', vmUser:'', vmPass:'', completed:[] });
+    renderSidebar();
+    this.showPanel('features');
+  },
+  async saveState() {
+    await fetch('/api/state', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ VMName:S.vmName, Features:S.features, Models:S.models, DownloadUrls:S.downloadUrls, LocalFiles:S.localFiles, WingetPkgs:S.wingetPkgs, InstallMode:S.installMode, Completed:S.completed }),
+    });
+  },
+};
+
+// ── Panel renderers ───────────────────────────────────────────────────────────
+const panels = {
+
+  // Feature selection
+  features() {
+    const opts = FEATURE_OPTS.map((o, i) => {
+      const sel = JSON.stringify(S.features) === JSON.stringify(o.val);
+      return `<div class="opt radio ${sel?'sel':''}" onclick="selectFeature(${i})">
+        <div class="chk">${sel?'●':''}</div>
+        <div><div class="opt-name">${o.label}</div><div class="opt-sub">${o.sub}</div></div>
+      </div>`;
+    }).join('');
+    return `<div class="card">
+      <h2>Feature Selection</h2>
+      <p class="sub">What do you want to configure on the guest VM?</p>
+      <div class="grid">${opts}</div>
+      <div class="brow"><button class="btn btn-p" onclick="App.showPanel('vm')">Continue →</button></div>
+    </div>`;
+  },
+
+  // VM selection
+  vm() {
+    const rows = vms.map(v => {
+      const sel = S.vmName === v.Name;
+      const run = v.State === 'Running';
+      return `<div class="opt radio ${sel?'sel':''}" onclick="S.vmName='${v.Name}';App.showPanel('vm')">
+        <div class="chk">${sel?'●':''}</div>
+        <div>
+          <div class="opt-name">${v.Name}</div>
+          <div class="opt-sub">State: <span style="color:${run?'var(--green)':'var(--muted)'}">${v.State}</span> &nbsp;·&nbsp; ${v.MemGB} GB</div>
+        </div>
+      </div>`;
+    }).join('') || '<p style="color:var(--muted);font-size:13px">No Hyper-V VMs found.</p>';
+    return `<div class="card">
+      <h2>VM Selection</h2>
+      <p class="sub">Select the Hyper-V guest VM to configure. Running VMs appear first.</p>
+      <div class="grid">${rows}</div>
+      <div class="brow">
+        <button class="btn btn-o" onclick="App.showPanel('features')">← Back</button>
+        <button class="btn btn-p" onclick="goFromVM()">Continue →</button>
+      </div>
+    </div>`;
+  },
+
+  // Ollama models
+  models() {
+    if (!hasWSL()) return `<div class="card"><h2>Ollama Models</h2>
+      <p class="sub">Not needed for the selected feature set.</p>
+      <div class="brow"><button class="btn btn-o" onclick="App.showPanel('vm')">← Back</button>
+      <button class="btn btn-p" onclick="App.showPanel('downloads')">Continue →</button></div></div>`;
+
+    const opts = models.map(m => {
+      const sel = S.models.includes(m.tag);
+      return `<div class="opt ${sel?'sel':''}" onclick="toggleArr(S.models,'${m.tag}');App.showPanel('models')">
+        <div class="chk">${sel?'✓':''}</div>
+        <div><div class="opt-name">${m.tag}</div><div class="opt-sub">${m.desc}</div></div>
+      </div>`;
+    }).join('');
+    const tags = S.models.map(t => `<span class="tag">${t}<span class="x" onclick="toggleArr(S.models,'${t}');App.showPanel('models')">✕</span></span>`).join('');
+    return `<div class="card">
+      <h2>Ollama Models</h2>
+      <p class="sub">Select models to pull during deployment.</p>
+      <div class="grid">${opts}</div>
+      <div style="margin-top:12px">
+        <div class="fg" style="margin-top:8px">
+          <label class="fl">Custom model tag</label>
+          <div style="display:flex;gap:8px;max-width:340px">
+            <input type="text" id="customModel" placeholder="e.g. llava:latest">
+            <button class="btn btn-o" onclick="addCustomModel()" style="white-space:nowrap">Add</button>
+          </div>
+        </div>
+        ${tags ? `<div style="margin-top:8px">${tags}</div>` : ''}
+      </div>
+      <div class="brow">
+        <button class="btn btn-o" onclick="App.showPanel('vm')">← Back</button>
+        <button class="btn btn-p" onclick="App.showPanel('downloads')">Continue →</button>
+      </div>
+    </div>`;
+  },
+
+  // Direct downloads
+  downloads() {
+    if (!downloads.length) return `<div class="card"><h2>Direct Downloads</h2>
+      <p class="sub">No entries in downloads.txt.</p>
+      <div class="brow"><button class="btn btn-o" onclick="App.showPanel('models')">← Back</button>
+      <button class="btn btn-p" onclick="App.showPanel('local')">Continue →</button></div></div>`;
+
+    const expCount = downloads.filter(d => isExpired(d.url)).length;
+    const alert = expCount ? `<div class="alert al-warn">⚠ ${expCount} URL(s) have expired tokens. Run <code>node refresh-elo-tokens.js</code> to refresh them.</div>` : '';
+    const opts = downloads.map((d, i) => {
+      const sel = S.downloadUrls.includes(d.url);
+      const exp = isExpired(d.url);
+      return `<div class="opt ${sel?'sel':''} ${exp?'warn':''}" onclick="toggleArr(S.downloadUrls,'${d.url.replace(/'/g,"\\'")}');App.showPanel('downloads')">
+        <div class="chk">${sel?'✓':''}</div>
+        <div><div class="opt-name">${d.name}</div>${exp?'<div class="opt-sub expired">⚠ Token expired</div>':''}</div>
+      </div>`;
+    }).join('');
+    return `<div class="card">
+      <h2>Direct Downloads</h2>
+      <p class="sub">Files downloaded straight into the VM from the internet.</p>
+      ${alert}
+      <div class="grid">${opts}</div>
+      <div class="brow">
+        <button class="btn btn-o" onclick="App.showPanel('models')">← Back</button>
+        <button class="btn btn-p" onclick="App.showPanel('local')">Continue →</button>
+      </div>
+    </div>`;
+  },
+
+  // Local installers
+  local() {
+    if (!softwares.length) return `<div class="card"><h2>Local Installers</h2>
+      <p class="sub">No folders found in softwares\\.</p>
+      <div class="brow"><button class="btn btn-o" onclick="App.showPanel('downloads')">← Back</button>
+      <button class="btn btn-p" onclick="App.showPanel('winget')">Continue →</button></div></div>`;
+
+    const html = softwares.map(f => {
+      const files = f.files.map(fi => {
+        const sel = S.localFiles.includes(fi.relativePath);
+        return `<div class="opt ${sel?'sel':''}" onclick="toggleArr(S.localFiles,'${fi.relativePath}');App.showPanel('local')">
+          <div class="chk">${sel?'✓':''}</div>
+          <div><div class="opt-name">${fi.name}</div></div>
+        </div>`;
+      }).join('');
+      return `<div class="fhdr">📁 ${f.folder}
+        <span class="flink" onclick="folderAll('${f.folder}',true)">All</span>
+        <span class="flink" onclick="folderAll('${f.folder}',false)">None</span>
+      </div>
+      <div class="grid">${files}</div>`;
+    }).join('');
+    return `<div class="card">
+      <h2>Local Installers</h2>
+      <p class="sub">Files from softwares\\ will be copied to C:\\Install on the guest.</p>
+      ${html}
+      <div class="brow">
+        <button class="btn btn-o" onclick="App.showPanel('downloads')">← Back</button>
+        <button class="btn btn-p" onclick="App.showPanel('winget')">Continue →</button>
+      </div>
+    </div>`;
+  },
+
+  // Winget packages
+  winget() {
+    const opts = winget.map(p => {
+      const sel = S.wingetPkgs.includes(p.id);
+      return `<div class="opt ${sel?'sel':''}" onclick="toggleArr(S.wingetPkgs,'${p.id}');App.showPanel('winget')">
+        <div class="chk">${sel?'✓':''}</div>
+        <div><div class="opt-name">${p.name}</div><div class="opt-sub">${p.id}</div></div>
+      </div>`;
+    }).join('');
+    const next = S.localFiles.length ? 'installmode' : 'credentials';
+    return `<div class="card">
+      <h2>Winget Packages</h2>
+      <p class="sub">Installed directly on the guest via Windows Package Manager.</p>
+      <div class="grid">${opts}</div>
+      <div class="brow">
+        <button class="btn btn-o" onclick="App.showPanel('local')">← Back</button>
+        <button class="btn btn-p" onclick="App.showPanel('${next}')">Continue →</button>
+      </div>
+    </div>`;
+  },
+
+  // Install mode
+  installmode() {
+    if (!S.localFiles.length) return `<div class="card"><h2>Installation Mode</h2>
+      <p class="sub">No local files selected — not applicable.</p>
+      <div class="brow"><button class="btn btn-o" onclick="App.showPanel('winget')">← Back</button>
+      <button class="btn btn-p" onclick="App.showPanel('credentials')">Continue →</button></div></div>`;
+
+    const opts = MODE_OPTS.map(m => {
+      const sel = S.installMode === m.val;
+      return `<div class="opt radio ${sel?'sel':''}" onclick="S.installMode='${m.val}';App.showPanel('installmode')">
+        <div class="chk">${sel?'●':''}</div>
+        <div><div class="opt-name">${m.label}</div><div class="opt-sub">${m.sub}</div></div>
+      </div>`;
+    }).join('');
+    return `<div class="card">
+      <h2>Installation Mode</h2>
+      <p class="sub">How should local installers be run on the guest VM?</p>
+      <div class="grid">${opts}</div>
+      <div class="brow">
+        <button class="btn btn-o" onclick="App.showPanel('winget')">← Back</button>
+        <button class="btn btn-p" onclick="App.showPanel('credentials')">Continue →</button>
+      </div>
+    </div>`;
+  },
+
+  // Credentials
+  credentials() {
+    return `<div class="card">
+      <h2>VM Credentials</h2>
+      <p class="sub">Username and password to connect to the guest VM via PSSession. Not stored on disk.</p>
+      <div style="max-width:360px">
+        <div class="fg"><label class="fl">Username</label>
+          <input type="text" id="u" value="${S.vmUser}" placeholder="Administrator"></div>
+        <div class="fg"><label class="fl">Password</label>
+          <input type="password" id="p" value="${S.vmPass}" placeholder="••••••••"></div>
+      </div>
+      <div class="brow">
+        <button class="btn btn-o" onclick="App.showPanel('installmode')">← Back</button>
+        <button class="btn btn-g" onclick="saveCreds()">Save & Review →</button>
+      </div>
+    </div>`;
+  },
+
+  // Execute
+  execute() {
+    const steps = buildSteps();
+    if (!steps.length) return `<div class="card"><h2>Nothing to execute</h2>
+      <p class="sub">Go back and select features or packages.</p>
+      <div class="brow"><button class="btn btn-o" onclick="App.showPanel('credentials')">← Back</button></div></div>`;
+
+    const rows = steps.map(s => {
+      const done = S.completed.includes(s.id);
+      return `<div class="estep ${done?'ok':''}" id="es-${s.id}">
+        <div class="eicon">${done ? '✅' : '⬜'}</div>
+        <div class="einfo">
+          <div class="ename">${s.label}</div>
+          <div class="esub">${s.sub}</div>
+          <div class="pbar-wrap" id="pb-${s.id}" style="display:none"><div class="pbar" style="width:0%"></div></div>
+        </div>
+        <span class="badge ${done?'b-ok':'b-pen'}" id="b-${s.id}">${done?'Done':'Pending'}</span>
+        <button class="btn btn-p" id="btn-${s.id}" onclick="Exec.runStep('${s.id}')" ${done?'style="display:none"':''}>Run</button>
+      </div>`;
+    }).join('');
+
+    // Config summary
+    const summary = `<div class="sumbox"><table>
+      <tr><td>VM</td><td><strong>${S.vmName||'—'}</strong></td></tr>
+      <tr><td>Features</td><td>${S.features.join(', ')||'—'}</td></tr>
+      <tr><td>Downloads</td><td>${S.downloadUrls.length} selected</td></tr>
+      <tr><td>Local files</td><td>${S.localFiles.length} selected</td></tr>
+      <tr><td>Winget packages</td><td>${S.wingetPkgs.length} selected</td></tr>
+      <tr><td>Install mode</td><td>${S.installMode||'—'}</td></tr>
+      <tr><td>Credentials</td><td>${S.vmUser ? '✓ set' : '⚠ not set'}</td></tr>
+    </table></div>`;
+
+    return `<div class="card">
+      <h2>Execute</h2>
+      <p class="sub">Run each step in order. Completed steps are skipped automatically.</p>
+      ${summary}
+      <div class="brow" style="margin-bottom:16px">
+        <button class="btn btn-g" onclick="Exec.runAll()">▶ Run All</button>
+        <button class="btn btn-r" id="cancelBtn" onclick="Exec.cancel()" style="display:none">■ Cancel</button>
+        <button class="btn btn-o" onclick="App.showPanel('credentials')">← Back</button>
+      </div>
+      <div class="exec-list">${rows}</div>
+    </div>`;
+  },
+};
+
+// ── Execution engine ──────────────────────────────────────────────────────────
+const Exec = {
+  queue: [],
+  current: null,
+
+  runAll() {
+    const steps = buildSteps().filter(s => !S.completed.includes(s.id));
+    if (!steps.length) { Log.sys('All steps already completed.'); return; }
+    this.queue = steps.slice(1).map(s => s.id);
+    this.runStep(steps[0].id);
+  },
+
+  runStep(id) {
+    const steps = buildSteps();
+    const step = steps.find(s => s.id === id);
+    if (!step) return;
+    this.current = id;
+    this.setStatus(id, 'run', 'Running…');
+    setCancelVisible(true);
+    Log.sys(`\n▶ ${step.label}\n`);
+    WS.run(step.script, code => {
+      setCancelVisible(false);
+      this.current = null;
+      if (code === 0) {
+        S.completed.push(id);
+        App.saveState();
+        this.setStatus(id, 'ok', 'Done');
+        renderSidebar();
+        if (this.queue.length) this.runStep(this.queue.shift());
+      } else {
+        this.setStatus(id, 'err', 'Error');
+        this.queue = [];
+      }
+    });
+  },
+
+  cancel() {
+    WS.cancel();
+    this.queue = [];
+    if (this.current) this.setStatus(this.current, 'err', 'Cancelled');
+    this.current = null;
+    setCancelVisible(false);
+  },
+
+  setStatus(id, cls, label) {
+    const el = document.getElementById(`es-${id}`);
+    const badge = document.getElementById(`b-${id}`);
+    const btn = document.getElementById(`btn-${id}`);
+    if (!el) return;
+    el.className = `estep ${cls}`;
+    const icons = { run:'⏳', ok:'✅', err:'❌', pen:'⬜' };
+    const bcls  = { run:'b-run', ok:'b-ok', err:'b-err', pen:'b-pen' };
+    const icon  = el.querySelector('.eicon');
+    if (icon)  icon.textContent  = icons[cls] || '⬜';
+    if (badge) { badge.className = 'badge ' + (bcls[cls]||'b-pen'); badge.textContent = label; }
+    if (btn)   btn.style.display = (cls === 'ok') ? 'none' : '';
+    if (btn)   btn.disabled = (cls === 'run');
+  },
+};
+
+function setCancelVisible(v) {
+  const b = document.getElementById('cancelBtn');
+  if (b) b.style.display = v ? '' : 'none';
+}
+
+// ── Step builders ─────────────────────────────────────────────────────────────
+function buildSteps() {
+  const steps = [];
+  if (hasSoftware() || hasWSLPrep()) {
+    steps.push({ id: 'guest-services', label: 'Enable Guest Services', sub: 'Required for VM communication', script: psGuestServices() });
+  }
+  if (S.downloadUrls.length) {
+    steps.push({ id: 'software-download', label: 'Download Installers in VM', sub: `${S.downloadUrls.length} file(s) to download directly in VM`, script: psDownload() });
+  }
+  if (S.localFiles.length) {
+    steps.push({ id: 'software-copy', label: 'Copy Local Files to VM', sub: `${S.localFiles.length} file(s) → C:\\Install`, script: psCopy() });
+  }
+  if (S.localFiles.length && S.installMode !== 'copy-only') {
+    steps.push({ id: 'software-install-local', label: 'Install Local Software', sub: `Mode: ${S.installMode}`, script: psInstallLocal() });
+  }
+  if (S.wingetPkgs.length) {
+    steps.push({ id: 'software-install-winget', label: 'Install Winget Packages', sub: `${S.wingetPkgs.length} package(s)`, script: psWinget() });
+  }
+  if (hasWSLPrep() || hasWSL()) {
+    steps.push({ id: 'nested-virt', label: 'Enable Nested Virtualization', sub: 'Required for WSL2 inside VM', script: psNestedVirt() });
+    steps.push({ id: 'wsl-features', label: 'Enable WSL Features in VM', sub: 'DISM VirtualMachinePlatform + WSL', script: psWSLFeatures() });
+  }
+  if (hasWSL()) {
+    steps.push({ id: 'wsl-install', label: 'Install WSL2 Kernel', sub: 'Downloads and installs WSL2 MSI inside VM', script: psWSLInstall() });
+    steps.push({ id: 'docker-install', label: 'Install Docker Desktop', sub: 'Chocolatey + Docker Desktop inside VM', script: psDockerInstall() });
+    steps.push({ id: 'compose-up', label: 'Deploy Ollama + Caddy', sub: `Models: ${S.models.join(', ') || 'none'}`, script: psComposeUp() });
+  }
+  return steps;
+}
+
+// ── PowerShell script builders ────────────────────────────────────────────────
+function psCred() {
+  return `$cred = New-Object PSCredential("${e(S.vmUser)}", (ConvertTo-SecureString "${e(S.vmPass)}" -AsPlainText -Force)); $VMName = "${e(S.vmName)}";\n`;
+}
+
+function psGuestServices() {
+  return psCred() + `
+$svc = (Get-VM -Name $VMName).VMIntegrationService | Where-Object { $_.Name -eq "Guest Service Interface" }
+if ($null -ne $svc -and -not $svc.Enabled) {
+    Enable-VMIntegrationService -VMName $VMName -Name "Guest Service Interface"
+    Write-Output "Guest Service Interface enabled -- restarting VM..."
+    Restart-VM $VMName -Force
+    $dl = (Get-Date).AddSeconds(300)
+    while ((Get-Date) -lt $dl) {
+        try { Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock { 1 } -ErrorAction Stop; Write-Output "VM ready."; break }
+        catch { Start-Sleep 5; Write-Output "Waiting for VM..." }
+    }
+} else { Write-Output "Guest Service Interface already active." }`;
+}
+
+function psDownload() {
+  const lines = S.downloadUrls.map(url => {
+    const fn = url.split('?')[0].split('/').pop();
+    const stem = fn.replace(/\.zip$/i, '');
+    return `Write-Output "Downloading ${fn}..."; $wc.DownloadFile("${e(url)}", "C:\\Install\\${fn}"); Write-Output "Done: ${fn}";\n` +
+           (fn.toLowerCase().endsWith('.zip') ? `Expand-Archive -Path "C:\\Install\\${fn}" -DestinationPath "C:\\Install\\${stem}" -Force; Write-Output "Extracted: ${stem}";\n` : '');
+  }).join('');
+  return psCred() + `
+Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
+    New-Item -ItemType Directory -Path "C:\\Install" -Force | Out-Null
+    $wc = [System.Net.WebClient]::new()
+    ${lines}
+}`;
+}
+
+function psCopy() {
+  const lines = S.localFiles.map(rel => {
+    const winRel = rel.replace(/\//g, '\\');
+    const src = `${e(path.join(S.scriptDir||'C:\\ollama-ssl\\installator', 'softwares'))}\\${winRel}`;
+    return `Write-Output "Copying ${winRel}..."; Copy-VMFile -Name $VMName -SourcePath "${src}" -DestinationPath "C:\\Install\\${winRel}" -FileSource Host -Force; Write-Output "Copied: ${winRel}";`;
+  }).join('\n');
+  return psCred() + `
+Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock { New-Item -ItemType Directory "C:\\Install" -Force | Out-Null }
+${lines}`;
+}
+
+function psInstallLocal() {
+  const lines = S.localFiles.map(rel => {
+    const fn = rel.split('/').pop();
+    const ext = fn.split('.').pop().toLowerCase();
+    if (ext === 'zip') return `Write-Output "[SKIP] ZIP already extracted: ${fn}";`;
+    const winRel = rel.replace(/\//g, '\\');
+    const iPath = `C:\\Install\\${winRel}`;
+    if (S.installMode === 'silent') {
+      return `Write-Output "Installing (silent): ${fn}"; Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock { $p = Start-Process -FilePath "${iPath}" -ArgumentList "/S" -Wait -PassThru; Write-Output "Exit: $($p.ExitCode)" };`;
+    }
+    return `Write-Output "Launching (interactive): ${fn}"; Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock { Start-Process "${iPath}" };`;
+  }).join('\n');
+  return psCred() + '\n' + lines;
+}
+
+function psWinget() {
+  const lines = S.wingetPkgs.map(id =>
+    `Write-Output "Installing ${id}..."; winget install --id "${id}" --source winget --exact --silent --accept-package-agreements --accept-source-agreements 2>&1`
+  ).join('\n    ');
+  return psCred() + `
+Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
+    winget source update 2>&1
+    ${lines}
+}`;
+}
+
+function psNestedVirt() {
+  return `$VMName = "${e(S.vmName)}"
+Write-Output "Stopping VM to enable nested virtualization..."
+Stop-VM $VMName -Force -ErrorAction SilentlyContinue
+Set-VMProcessor -VMName $VMName -ExposeVirtualizationExtensions $true
+Start-VM $VMName
+Write-Output "Nested virtualization enabled. VM starting."`;
+}
+
+function psWSLFeatures() {
+  return psCred() + `
+Write-Output "Enabling WSL features inside VM..."
+Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
+    dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart 2>&1
+    dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart 2>&1
+    Write-Output "WSL features enabled -- reboot required."
+}`;
+}
+
+function psWSLInstall() {
+  return psCred() + `
+Write-Output "Installing WSL2 kernel inside VM..."
+Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
+    $msi = "$env:TEMP\\wsl_kernel.msi"
+    Invoke-WebRequest -Uri "https://wslstorestorage.blob.core.windows.net/wslblob/wsl_update_x64.msi" -OutFile $msi -UseBasicParsing
+    msiexec /i $msi /quiet /norestart
+    Remove-Item $msi -ErrorAction SilentlyContinue
+    wsl --set-default-version 2
+    Write-Output "WSL2 kernel installed."
+}`;
+}
+
+function psDockerInstall() {
+  return psCred() + `
+Write-Output "Installing Chocolatey and Docker Desktop..."
+Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
+    if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+        Set-ExecutionPolicy Bypass -Scope Process -Force
+        [System.Net.ServicePointManager]::SecurityProtocol = 3072
+        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+    }
+    choco install docker-desktop -y
+    Write-Output "Docker Desktop installed."
+}`;
+}
+
+function psComposeUp() {
+  const modelPulls = S.models.map(m =>
+    `Write-Output "Pulling model ${m}..."; docker exec ollama ollama pull ${m}; Write-Output "Pulled: ${m}";`
+  ).join('\n    ');
+  return psCred() + `
+Write-Output "Deploying Ollama + Caddy..."
+Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
+    New-Item -ItemType Directory -Path "C:\\ollama-ssl" -Force | Out-Null
+    Set-Content "C:\\ollama-ssl\\docker-compose.yml" @'
+services:
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    ports: ["11434:11434"]
+    volumes: ["ollama:/root/.ollama"]
+  caddy:
+    image: caddy
+    container_name: caddy
+    ports: ["443:443","80:80"]
+    volumes: ["caddy_data:/data","caddy_config:/config"]
+volumes:
+  ollama:
+  caddy_data:
+  caddy_config:
+'@
+    docker compose -f "C:\\ollama-ssl\\docker-compose.yml" up -d --force-recreate
+    Write-Output "Containers started."
+    ${modelPulls}
+    Write-Output "Deployment complete."
+}`;
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function toggleArr(arr, val) {
+  const i = arr.indexOf(val);
+  if (i >= 0) arr.splice(i, 1); else arr.push(val);
+}
+
+function selectFeature(i) {
+  S.features = [...FEATURE_OPTS[i].val];
+  App.showPanel('features');
+}
+
+function goFromVM() {
+  if (!S.vmName) { alert('Select a VM.'); return; }
+  App.showPanel(hasWSL() ? 'models' : 'downloads');
+}
+
+function addCustomModel() {
+  const v = document.getElementById('customModel')?.value.trim();
+  if (v && !S.models.includes(v)) { S.models.push(v); App.showPanel('models'); }
+}
+
+function saveCreds() {
+  S.vmUser = document.getElementById('u')?.value.trim() || '';
+  S.vmPass = document.getElementById('p')?.value || '';
+  if (!S.vmUser) { alert('Enter VM username.'); return; }
+  App.saveState().then(() => App.showPanel('execute'));
+}
+
+function folderAll(folder, sel) {
+  const f = softwares.find(x => x.folder === folder);
+  if (!f) return;
+  f.files.forEach(fi => {
+    const i = S.localFiles.indexOf(fi.relativePath);
+    if (sel && i < 0) S.localFiles.push(fi.relativePath);
+    if (!sel && i >= 0) S.localFiles.splice(i, 1);
+  });
+  App.showPanel('local');
+}
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+async function init() {
+  await Promise.all([
+    fetch('/api/vms').then(r=>r.json()).then(d=>{ vms=d||[]; }),
+    fetch('/api/downloads').then(r=>r.json()).then(d=>{ downloads=d||[]; }),
+    fetch('/api/softwares').then(r=>r.json()).then(d=>{ softwares=d||[]; }),
+    fetch('/api/winget').then(r=>r.json()).then(d=>{ winget=d||[]; }),
+    fetch('/api/models').then(r=>r.json()).then(d=>{ models=d||[]; }),
+    fetch('/api/state').then(r=>r.json()).then(st=>{
+      if (st.VMName)       S.vmName       = st.VMName;
+      if (st.Features?.length)    S.features    = st.Features;
+      if (st.Models?.length)      S.models      = st.Models;
+      if (st.DownloadUrls?.length)S.downloadUrls= st.DownloadUrls;
+      if (st.LocalFiles?.length)  S.localFiles  = st.LocalFiles;
+      if (st.WingetPkgs?.length)  S.wingetPkgs  = st.WingetPkgs;
+      if (st.InstallMode)  S.installMode  = st.InstallMode;
+      if (st.Completed?.length)   S.completed   = st.Completed;
+    }),
+  ]);
+  WS.connect();
+  renderSidebar();
+  App.showPanel('features');
+}
+
+init();
+</script>
+</body>
+</html>
