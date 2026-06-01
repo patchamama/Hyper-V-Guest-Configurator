@@ -286,6 +286,20 @@ function Download-ToVM([string]$Url, [string]$DestinationPath) {
     }
 }
 
+function Expand-ZipInVM([string]$ZipPath) {
+    $stem    = [System.IO.Path]::GetFileNameWithoutExtension($ZipPath)
+    $destDir = "C:\Install\$stem"
+    Write-Host "  Extracting to $destDir ..." -NoNewline
+    try {
+        Invoke-InVM {
+            Expand-Archive -Path $using:ZipPath -DestinationPath $using:destDir -Force
+        }
+        Write-Host " done." -ForegroundColor Green
+    } catch {
+        Write-Host " failed: $_" -ForegroundColor Yellow
+    }
+}
+
 # =============================================================================
 # Step validators
 # =============================================================================
@@ -1197,6 +1211,9 @@ if ($enableSoftware) {
             Write-Host "  Downloading $fileName ..." -NoNewline
             Download-ToVM -Url $url -DestinationPath $destPath
             Write-Host " done." -ForegroundColor Green
+            if ([System.IO.Path]::GetExtension($fileName).ToLower() -eq ".zip") {
+                Expand-ZipInVM $destPath
+            }
         }
         Mark-Done $state "software-download"
     }
@@ -1221,6 +1238,9 @@ if ($enableSoftware) {
                 Write-Host "  Copying $relativePath ..." -NoNewline
                 Copy-ToVM -SourcePath $srcPath -DestinationPath $destPath -Session $copySession
                 Write-Host " done." -ForegroundColor Green
+                if ([System.IO.Path]::GetExtension($srcPath).ToLower() -eq ".zip") {
+                    Expand-ZipInVM $destPath
+                }
             }
         } finally {
             Remove-PSSession $copySession -ErrorAction SilentlyContinue
@@ -1240,7 +1260,8 @@ if ($enableSoftware) {
             $ext           = [System.IO.Path]::GetExtension($fileName).ToLower()
 
             if ($ext -eq ".zip") {
-                Write-Host "  [SKIP] ZIP archive -- extract manually on the VM: $fileName" -ForegroundColor Yellow
+                $stem = [System.IO.Path]::GetFileNameWithoutExtension($fileName)
+                Write-Host "  [ZIP]  Already extracted to C:\Install\$stem" -ForegroundColor Gray
                 continue
             }
 
