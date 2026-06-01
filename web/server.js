@@ -48,17 +48,27 @@ const MODELS = [
 // ── REST API ──────────────────────────────────────────────────────────────────
 
 app.get('/api/vms', (req, res) => {
+  // -AsArray requires PS 7+; use ConvertTo-Json -InputObject @(...) for PS 5.1 compat
   const cmd =
     `Import-Module Hyper-V -ErrorAction SilentlyContinue; ` +
-    `$vms = Get-VM -ErrorAction SilentlyContinue; ` +
-    `if ($vms) { $vms | Select-Object Name,State,` +
-    `@{N='MemGB';E={[math]::Round($_.MemoryAssigned/1GB,1)}} ` +
-    `| Sort-Object @{E={if($_.State -eq 'Running'){0}else{1}}},Name ` +
-    `| ConvertTo-Json -AsArray } else { Write-Output '[]' }`;
+    `$raw = @(Get-VM -ErrorAction SilentlyContinue | ` +
+    `Sort-Object @{E={if($_.State -eq "Running"){0}else{1}}},Name | ` +
+    `ForEach-Object { [PSCustomObject]@{Name=$_.Name;State="$($_.State)";MemGB=[math]::Round($_.MemoryAssigned/1GB,1)} }); ` +
+    `if ($raw.Count -gt 0) { ConvertTo-Json -InputObject $raw -Depth 2 } else { Write-Output "[]" }`;
   runPS(cmd, (out, err) => {
+    if (!out && err) { console.error('[/api/vms]', err); return res.json({ error: err }); }
     try { res.json(JSON.parse(out || '[]')); }
-    catch { res.json([]); }
+    catch (e) { console.error('[/api/vms parse]', e.message, out); res.json([]); }
   });
+});
+
+// Debug endpoint — returns raw PS stdout/stderr without parsing
+app.get('/api/vms/debug', (req, res) => {
+  runPS(
+    `Import-Module Hyper-V -ErrorAction SilentlyContinue; ` +
+    `Get-VM -ErrorAction SilentlyContinue | Select-Object Name,State | ConvertTo-Json`,
+    (out, err) => res.json({ out, err })
+  );
 });
 
 app.get('/api/state', (req, res) => {
@@ -156,10 +166,11 @@ function execute(script, ws) {
 
 function runPS(cmd, cb) {
   let out = '', err = '';
-  const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', cmd]);
+  const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', cmd]);
   ps.stdout.on('data', d => out += d);
   ps.stderr.on('data', d => err += d);
   ps.on('close', () => cb(out.trim(), err.trim() || null));
+  ps.on('error', e => cb('', e.message));
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────

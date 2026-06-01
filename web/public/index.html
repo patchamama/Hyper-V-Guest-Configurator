@@ -336,14 +336,22 @@ const panels = {
           <div class="opt-sub">State: <span style="color:${run?'var(--green)':'var(--muted)'}">${v.State}</span> &nbsp;·&nbsp; ${v.MemGB} GB</div>
         </div>
       </div>`;
-    }).join('') || '<p style="color:var(--muted);font-size:13px">No Hyper-V VMs found.</p>';
+    }).join('');
+    const noVms = !rows
+      ? `<div class="alert al-warn">
+          No Hyper-V VMs found. Make sure the server runs as <strong>Administrator</strong> and Hyper-V is installed.<br>
+          <a href="/api/vms/debug" target="_blank" style="color:var(--accent);font-size:12px">View raw debug output →</a>
+         </div>`
+      : '';
     return `<div class="card">
       <h2>VM Selection</h2>
       <p class="sub">Select the Hyper-V guest VM to configure. Running VMs appear first.</p>
+      ${noVms}
       <div class="grid">${rows}</div>
       <div class="brow">
         <button class="btn btn-o" onclick="App.showPanel('features')">← Back</button>
         <button class="btn btn-p" onclick="goFromVM()">Continue →</button>
+        <button class="hbtn" onclick="reloadVMs()" style="margin-left:4px">↺ Refresh</button>
       </div>
     </div>`;
   },
@@ -862,6 +870,11 @@ async function init() {
   WS.connect();
   renderSidebar();
   App.showPanel('features');
+}
+
+async function reloadVMs() {
+  vms = await fetch('/api/vms').then(r=>r.json()).then(d=>Array.isArray(d)?d:[]).catch(()=>[]);
+  App.showPanel('vm');
 }
 
 init();
