@@ -157,11 +157,17 @@ input:focus{border-color:var(--accent)}
 
 /* File list */
 .file-list{display:flex;flex-direction:column;gap:2px;margin-bottom:4px}
-.file-row{display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:5px;cursor:pointer;transition:background .12s;user-select:none;border:1px solid transparent}
+.file-row{display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:5px;cursor:pointer;transition:background .12s;user-select:none;border:1px solid transparent;flex-wrap:wrap}
+.copy-prog{display:none;width:100%;margin-top:5px;padding:0 2px}
+.copy-prog .pb{background:var(--border);border-radius:3px;height:3px;overflow:hidden}
+.copy-prog .pb .fill{background:var(--elo-orange);height:100%;width:0%;transition:width .4s;border-radius:3px}
+.copy-prog .lbl{color:var(--muted);font-size:10px;margin-top:2px}
 .file-row:hover{background:var(--sur2)}
 .file-row.sel{background:rgba(var(--accent-rgb),.08);border-color:rgba(var(--accent-rgb),.25)}
 .file-row .chk{width:15px;height:15px;border:1.5px solid var(--border);border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;transition:all .15s}
 .file-row.sel .chk{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+.file-row.copied{border-color:rgba(63,185,80,.35);background:rgba(63,185,80,.05)}
+.file-row.copied .file-name{color:var(--green)}
 .file-icon{font-size:14px;flex-shrink:0}
 .file-name{font-size:13px;font-family:var(--mono);color:var(--text);flex:1}
 .file-size{font-size:11px;color:var(--muted);white-space:nowrap;margin-left:auto}
@@ -173,6 +179,16 @@ input:focus{border-color:var(--accent)}
 /* Theme toggle */
 .theme-toggle{background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 10px;font-size:14px;cursor:pointer;transition:all .15s;line-height:1}
 .theme-toggle:hover{color:var(--text);border-color:var(--muted)}
+
+/* Log resize handle */
+.log-resize{height:5px;cursor:ns-resize;background:var(--border);flex-shrink:0;user-select:none;transition:background .15s}
+.log-resize:hover,.log-resize.dragging{background:var(--accent)}
+/* Notes modal */
+.notes-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;align-items:center;justify-content:center}
+.notes-modal.open{display:flex}
+.notes-box{background:var(--sur);border:1px solid var(--border);border-radius:10px;padding:22px;width:640px;max-width:92vw;display:flex;flex-direction:column;gap:12px;max-height:80vh}
+.notes-box textarea{background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:12px;padding:10px 12px;resize:vertical;min-height:220px;outline:none;line-height:1.6;flex:1}
+.notes-box textarea:focus{border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -180,7 +196,13 @@ input:focus{border-color:var(--accent)}
 <header>
   <div class="dot" id="wsDot"></div>
   <h1>⚙ Hyper-V Guest Configurator</h1>
+  <span id="vmUrlBadge" style="display:none;font-size:11px;color:var(--muted);margin-left:8px">
+    VM: <a id="vmUrlLink" href="#" style="color:var(--accent);text-decoration:none" target="_blank"></a>
+    &nbsp;·&nbsp;
+    <a id="filesUrlLink" href="#" style="color:var(--muted);text-decoration:none;font-size:10px" target="_blank">files</a>
+  </span>
   <div class="ml" style="display:flex;gap:8px">
+    <button class="hbtn" onclick="Notes.open()">📝 Notes</button>
     <button class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode">🌙</button>
     <button class="hbtn" onclick="App.resetState()">↺ Reset</button>
     <button class="hbtn" onclick="App.showPanel('execute')" style="color:var(--green);border-color:var(--green)">▶ Execute</button>
@@ -192,12 +214,28 @@ input:focus{border-color:var(--accent)}
   <main class="main" id="main"></main>
 </div>
 <footer class="logfooter">
+  <div class="log-resize" id="logResize"></div>
   <div class="loghdr">
     <span>Execution Log</span>
     <button class="hbtn" onclick="Log.clear()">Clear</button>
   </div>
   <div class="logbody" id="logbody"></div>
 </footer>
+
+<!-- Notes modal -->
+<div class="notes-modal" id="notesModal">
+  <div class="notes-box">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong style="font-size:15px">📝 Notes</strong>
+      <button class="hbtn" onclick="Notes.close()">✕</button>
+    </div>
+    <textarea id="notesText" placeholder="Write notes here — saved to notes.txt on the server (git-ignored)"></textarea>
+    <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
+      <span id="notesSaved" style="font-size:11px;color:var(--green);display:none">✓ Saved</span>
+      <button class="btn btn-p" onclick="Notes.save()">Save</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // ── Log ──────────────────────────────────────────────────────────────────────
@@ -258,10 +296,12 @@ const S = {
   localFiles: [], wingetPkgs: [], installMode: 'copy-only',
   vmUser: '', vmPass: '', completed: [],
   copyMethod: 'http',
+  copiedFiles: [],
 };
 
 let vms = [], downloads = [], softwares = [], winget = [], models = [];
 let scriptDir = 'C:\\ollama-ssl\\installator';
+let hostInfo  = null;
 
 // ── Catalogues & helpers ──────────────────────────────────────────────────────
 const FEATURE_OPTS = [
@@ -286,12 +326,12 @@ const hasWSLPrep  = () => S.features.includes('wsl-prep');
 const NAV = [
   { id: 'features',    label: 'Features',       sec: 'Configure' },
   { id: 'vm',          label: 'VM',             sec: null        },
+  { id: 'credentials', label: 'Credentials',    sec: null        },
   { id: 'models',      label: 'Ollama Models',  sec: null        },
   { id: 'downloads',   label: 'Downloads',      sec: null        },
   { id: 'local',       label: 'Local Files',    sec: null        },
   { id: 'winget',      label: 'Winget',         sec: null        },
   { id: 'installmode', label: 'Install Mode',   sec: null        },
-  { id: 'credentials', label: 'Credentials',    sec: null        },
   { id: 'execute',     label: 'Execute',        sec: 'Run'       },
   { id: 'help',        label: 'Help',           sec: 'Help'      },
 ];
@@ -316,7 +356,7 @@ function isDone(id) {
   return {
     features:    S.features.length > 0,
     vm:          !!S.vmName,
-    models:      S.models.length > 0 || !hasWSL(),
+    models:      S.models.length > 0 || (S.features.length > 0 && !hasWSL()),
     downloads:   S.downloadUrls.length > 0,
     local:       S.localFiles.length > 0,
     winget:      S.wingetPkgs.length > 0,
@@ -336,18 +376,19 @@ const App = {
     p.className = 'panel show';
     p.innerHTML = panels[id]?.() || '<div class="card"><h2>Coming soon</h2></div>';
     document.getElementById('main').appendChild(p);
+    if (id === 'execute') Exec.onPanelShow();
   },
   async resetState() {
     if (!confirm('Reset all progress and selections?')) return;
     await fetch('/api/state', { method: 'DELETE' });
-    Object.assign(S, { vmName:'', features:[], models:[], downloadUrls:[], localFiles:[], wingetPkgs:[], installMode:'copy-only', vmUser:'', vmPass:'', completed:[], copyMethod:'http' });
+    Object.assign(S, { vmName:'', features:[], models:[], downloadUrls:[], localFiles:[], wingetPkgs:[], installMode:'copy-only', vmUser:'', vmPass:'', completed:[], copyMethod:'http', copiedFiles:[] });
     renderSidebar();
     this.showPanel('features');
   },
   async saveState() {
     await fetch('/api/state', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ VMName:S.vmName, Features:S.features, Models:S.models, DownloadUrls:S.downloadUrls, LocalFiles:S.localFiles, WingetPkgs:S.wingetPkgs, InstallMode:S.installMode, Completed:S.completed, CopyMethod:S.copyMethod }),
+      body: JSON.stringify({ VMName:S.vmName, Features:S.features, Models:S.models, DownloadUrls:S.downloadUrls, LocalFiles:S.localFiles, WingetPkgs:S.wingetPkgs, InstallMode:S.installMode, Completed:S.completed, CopyMethod:S.copyMethod, CopiedFiles:S.copiedFiles }),
     });
   },
 };
@@ -433,7 +474,7 @@ const panels = {
         ${tags ? `<div style="margin-top:8px">${tags}</div>` : ''}
       </div>
       <div class="brow">
-        <button class="btn btn-o" onclick="App.showPanel('vm')">← Back</button>
+        <button class="btn btn-o" onclick="App.showPanel('credentials')">← Back</button>
         <button class="btn btn-p" onclick="App.showPanel('downloads')">Continue →</button>
       </div>
     </div>`;
@@ -481,15 +522,24 @@ const panels = {
 
     const html = softwares.map(f => {
       const files = f.files.map(fi => {
-        const sel = S.localFiles.includes(fi.relativePath);
-        const ext = fi.name.split('.').pop().toLowerCase();
+        const sel    = S.localFiles.includes(fi.relativePath);
+        const copied = S.copiedFiles.includes(fi.relativePath);
+        const ext  = fi.name.split('.').pop().toLowerCase();
         const icon = {zip:'📦', exe:'⚙', msi:'⚙', iso:'💿', pk:'🔑'}[ext] || '📄';
         const size = fi.sizeLabel ? `<span class="file-size">${fi.sizeLabel}</span>` : '';
-        return `<div class="file-row ${sel?'sel':''}" onclick="toggleArr(S.localFiles,'${fi.relativePath}');App.showPanel('local')">
+        const safeRel = fi.relativePath.replace(/'/g, "\\'");
+        const safeId  = fi.relativePath.replace(/[^a-zA-Z0-9]/g, '-');
+        return `<div class="file-row ${sel?'sel':''} ${copied?'copied':''}" onclick="toggleArr(S.localFiles,'${safeRel}');App.showPanel('local')">
           <div class="chk">${sel?'✓':''}</div>
           <span class="file-icon">${icon}</span>
           <span class="file-name">${fi.name}</span>
+          ${copied ? '<span style="color:var(--green);font-size:10px;white-space:nowrap;margin-right:2px">✓</span>' : ''}
           ${size}
+          <button class="btn btn-o" style="padding:2px 8px;font-size:11px;white-space:nowrap;flex-shrink:0;margin-left:4px" onclick="event.stopPropagation();copyFileNow('${safeRel}',this)" ${copied?'disabled title="Already copied"':''}>${copied?'✓ Done':'⬆ Copy'}</button>
+          <div class="copy-prog" id="copy-prog-${safeId}">
+            <div class="pb"><div class="fill" id="copy-bar-${safeId}"></div></div>
+            <div class="lbl" id="copy-lbl-${safeId}">0%</div>
+          </div>
         </div>`;
       }).join('');
       return `<div class="fhdr">📁 ${f.folder}
@@ -498,9 +548,13 @@ const panels = {
       </div>
       <div class="file-list">${files}</div>`;
     }).join('');
+    const filesLink = hostInfo?.filesUrl
+      ? `<div class="alert al-info" style="margin-bottom:12px">File browser accessible from VM: <a href="${hostInfo.filesUrl}" target="_blank" style="color:var(--accent)">${hostInfo.filesUrl}</a></div>`
+      : '';
     return `<div class="card">
       <h2>Local Installers</h2>
       <p class="sub">Files from softwares\\ will be copied to C:\\Install on the guest.</p>
+      ${filesLink}
       ${html}
       <div class="brow">
         <button class="btn btn-o" onclick="App.showPanel('downloads')">← Back</button>
@@ -518,7 +572,7 @@ const panels = {
         <div><div class="opt-name">${p.name}</div><div class="opt-sub">${p.id}</div></div>
       </div>`;
     }).join('');
-    const next = S.localFiles.length ? 'installmode' : 'credentials';
+    const next = S.localFiles.length ? 'installmode' : 'execute';
     return `<div class="card">
       <h2>Winget Packages</h2>
       <p class="sub">Installed directly on the guest via Windows Package Manager.</p>
@@ -535,7 +589,7 @@ const panels = {
     if (!S.localFiles.length) return `<div class="card"><h2>Installation Mode</h2>
       <p class="sub">No local files selected — not applicable.</p>
       <div class="brow"><button class="btn btn-o" onclick="App.showPanel('winget')">← Back</button>
-      <button class="btn btn-p" onclick="App.showPanel('credentials')">Continue →</button></div></div>`;
+      <button class="btn btn-p" onclick="App.showPanel('execute')">Continue →</button></div></div>`;
 
     const selHttp = S.copyMethod === 'http' ? 'sel' : '';
     const selPs   = S.copyMethod === 'pssession' ? 'sel' : '';
@@ -574,7 +628,7 @@ const panels = {
       <div class="grid">${opts}</div>
       <div class="brow">
         <button class="btn btn-o" onclick="App.showPanel('winget')">← Back</button>
-        <button class="btn btn-p" onclick="App.showPanel('credentials')">Continue →</button>
+        <button class="btn btn-p" onclick="App.showPanel('execute')">Continue →</button>
       </div>
     </div>`;
   },
@@ -591,8 +645,8 @@ const panels = {
           <input type="password" id="p" value="${S.vmPass}" placeholder="••••••••"></div>
       </div>
       <div class="brow">
-        <button class="btn btn-o" onclick="App.showPanel('installmode')">← Back</button>
-        <button class="btn btn-g" onclick="saveCreds()">Save & Review →</button>
+        <button class="btn btn-o" onclick="App.showPanel('vm')">← Back</button>
+        <button class="btn btn-g" onclick="saveCreds()">Save & Continue →</button>
       </div>
     </div>`;
   },
@@ -602,22 +656,29 @@ const panels = {
     const steps = buildSteps();
     if (!steps.length) return `<div class="card"><h2>Nothing to execute</h2>
       <p class="sub">Go back and select features or packages.</p>
-      <div class="brow"><button class="btn btn-o" onclick="App.showPanel('credentials')">← Back</button></div></div>`;
+      <div class="brow"><button class="btn btn-o" onclick="App.showPanel('installmode')">← Back</button></div></div>`;
 
     const rows = steps.map(s => {
-      const done = S.completed.includes(s.id);
-      return `<div class="estep ${done?'ok':''}" id="es-${s.id}">
-        <div class="eicon">${done ? '✅' : '⬜'}</div>
+      const done  = S.completed.includes(s.id);
+      const sv    = !done ? Exec.states[s.id] : null;
+      const cls   = done ? 'ok' : (sv?.cls   ?? '');
+      const label = done ? 'Done' : (sv?.label ?? 'Pending');
+      const bcls  = {run:'b-run',ok:'b-ok',err:'b-err'}[cls] || 'b-pen';
+      const icon  = {run:'⏳',ok:'✅',err:'❌'}[cls] || '⬜';
+      return `<div class="estep ${cls}" id="es-${s.id}">
+        <div class="eicon">${icon}</div>
         <div class="einfo">
           <div class="ename">${s.label}</div>
           <div class="esub">${s.sub}</div>
-          ${s.warn && !done ? `<div class="esub" style="color:var(--yellow);margin-top:3px">⚠ ${s.warn}</div>` : ''}
+          ${s.warn && cls !== 'ok' ? `<div class="esub" style="color:var(--yellow);margin-top:3px">⚠ ${s.warn}</div>` : ''}
           <div class="pbar-wrap" id="pb-${s.id}" style="display:none"><div class="pbar" style="width:0%"></div></div>
-          ${s.dlprog && !done ? `<div id="dlrow-${s.id}" style="display:none;margin-top:8px;max-width:440px"></div>` : ''}
-          ${s.composeprog && !done ? `<div id="subtask-${s.id}" style="display:none;font-size:11px;margin-top:5px;font-style:italic;transition:color .3s"></div>` : ''}
+          ${s.dlprog && cls !== 'ok' ? `<div id="dlrow-${s.id}" style="display:none;margin-top:8px;max-width:440px"></div>` : ''}
+          ${s.composeprog && cls !== 'ok' ? `<div id="subtask-${s.id}" style="display:none;font-size:11px;margin-top:5px;font-style:italic;transition:color .3s"></div>` : ''}
+          ${cls === 'ok' && s.doneMsg ? `<div class="esub" style="color:var(--yellow);margin-top:5px;font-style:normal">⚠ ${s.doneMsg}</div>` : ''}
+          ${s.id === 'software-copy' && S.localFiles.length > 0 ? '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px">' + S.localFiles.map(f => { const fn = f.split('/').pop(); const sf = f.replace(/'/g, "\\'"); return '<button class="btn btn-o" style="padding:2px 7px;font-size:11px" onclick="event.stopPropagation();copyFileNow(\'' + sf + '\',this)" title="Re-copy ' + fn + '">&#x21BA; ' + fn + '</button>'; }).join('') + '</div>' : ''}
         </div>
-        <span class="badge ${done?'b-ok':'b-pen'}" id="b-${s.id}">${done?'Done':'Pending'}</span>
-        <button class="btn btn-p" id="btn-${s.id}" onclick="Exec.runStep('${s.id}')" ${done?'style="display:none"':''}>Run</button>
+        <span class="badge ${bcls}" id="b-${s.id}">${label}</span>
+        <button class="btn btn-p" id="btn-${s.id}" onclick="Exec.runStep('${s.id}')" ${cls==='ok'?'style="display:none"':''} ${cls==='run'?'disabled':''}>Run</button>
       </div>`;
     }).join('');
 
@@ -639,7 +700,8 @@ const panels = {
       <div class="brow" style="margin-bottom:16px">
         <button class="btn btn-g" onclick="Exec.runAll()">▶ Run All</button>
         <button class="btn btn-r" id="cancelBtn" onclick="Exec.cancel()" style="display:none">■ Cancel</button>
-        <button class="btn btn-o" onclick="App.showPanel('credentials')">← Back</button>
+        <button class="btn btn-o" onclick="Exec.restartVM()">↺ Restart VM</button>
+        <button class="btn btn-o" onclick="App.showPanel('installmode')">← Back</button>
       </div>
       <div class="exec-list">${rows}</div>
     </div>`;
@@ -772,13 +834,15 @@ const panels = {
   <p class="sub">When <strong>HTTP Download</strong> transfer method is selected, a temporary file server runs on the host during the <em>Copy Local Files to VM</em> step.</p>
   <ol style="padding-left:18px;line-height:2;font-size:13px">
     <li>Run the <strong>Copy Local Files to VM</strong> step</li>
-    <li>Look for the URL in the Execution Log: <code>Browse shared files in VM browser: http://&lt;host-ip&gt;:&lt;port&gt;/</code></li>
+    <li>The URL is printed in the Execution Log — look for: <code>Host file server: http://172.x.x.x:52xxx</code></li>
     <li>The VM's default browser opens automatically with a directory listing</li>
     <li>Navigate folders, click files to download them manually if needed</li>
   </ol>
-  <div class="alert al-info" style="margin-top:12px">
-    The file server closes automatically ~15 seconds after all copies complete. While active, any device on the Hyper-V virtual network can browse files at that URL.
-    A temporary Windows Firewall rule (<code>HVWebCopy-&lt;port&gt;</code>) is opened for the duration and removed on cleanup.
+  <div class="alert al-warn" style="margin-top:12px">
+    The IP and port are assigned dynamically at runtime. The IP is the vEthernet (Hyper-V) adapter address on the host — typically <code>172.x.x.x</code> or <code>192.168.x.x</code>. The port is random in the range 52000–53000. Both are shown in the Execution Log when the step starts.
+  </div>
+  <div class="alert al-info" style="margin-top:8px">
+    The file server closes automatically ~15 seconds after all copies complete. A temporary Windows Firewall rule (<code>HVWebCopy-&lt;port&gt;</code>) is opened for the duration and removed on cleanup.
   </div>
 </div>`;
   },
@@ -790,6 +854,19 @@ const Exec = {
   queue: [],
   current: null,
   outHook: null,
+  states: {},
+
+  onPanelShow() {
+    if (this.current) {
+      setCancelVisible(true);
+      const pb      = document.getElementById(`pb-${this.current}`);
+      const dlRow   = document.getElementById(`dlrow-${this.current}`);
+      const subtask = document.getElementById(`subtask-${this.current}`);
+      if (pb)      pb.style.display      = '';
+      if (dlRow)   dlRow.style.display   = '';
+      if (subtask) subtask.style.display = '';
+    }
+  },
 
   runAll() {
     const steps = buildSteps().filter(s => !S.completed.includes(s.id));
@@ -908,6 +985,9 @@ const Exec = {
         this.outHook = null;
         if (code === 0) {
           S.completed.push(id);
+          if (id === 'software-copy') {
+            S.localFiles.forEach(f => { if (!S.copiedFiles.includes(f)) S.copiedFiles.push(f); });
+          }
           App.saveState().catch(err => Log.err('[save] ' + (err?.message || err)));
           this.setStatus(id, 'ok', 'Done');
           renderSidebar();
@@ -922,6 +1002,20 @@ const Exec = {
     });
   },
 
+  restartVM() {
+    if (!S.vmName) { Log.sys('[restart] No VM selected.'); return; }
+    if (Exec.current) { Log.sys('[restart] Wait for the running task to finish.'); return; }
+    if (!confirm(`Restart VM "${S.vmName}"?`)) return;
+    this.current = '_restart';
+    setCancelVisible(true);
+    Log.sys(`\n↺ Restarting VM: ${S.vmName}\n`);
+    WS.run(`Restart-VM -Name "${e(S.vmName)}" -Force; Write-Output "VM restarted."`, code => {
+      this.current = null;
+      setCancelVisible(false);
+      Log.sys(`[exit ${code}]`);
+    });
+  },
+
   cancel() {
     WS.cancel();
     this.queue = [];
@@ -932,6 +1026,7 @@ const Exec = {
   },
 
   setStatus(id, cls, label) {
+    this.states[id] = {cls, label};
     const el = document.getElementById(`es-${id}`);
     const badge = document.getElementById(`b-${id}`);
     const btn = document.getElementById(`btn-${id}`);
@@ -1027,7 +1122,7 @@ function buildSteps() {
   }
   if (hasWSL()) {
     steps.push({ id: 'wsl-install', label: 'Install WSL2 Kernel', sub: 'Downloads and installs WSL2 MSI inside VM', script: psWSLInstall() });
-    steps.push({ id: 'docker-install', label: 'Install Docker Desktop', sub: 'Chocolatey + Docker Desktop inside VM', script: psDockerInstall() });
+    steps.push({ id: 'docker-install', label: 'Install Docker Desktop', sub: 'Chocolatey + Docker Desktop inside VM', script: psDockerInstall(), doneMsg: `Switch to VM "${S.vmName}": open Docker Desktop from the desktop. If you have not restarted since enabling WSL features, restart the VM first, then open Docker Desktop.` });
     steps.push({ id: 'compose-up', label: 'Deploy Ollama + Caddy', sub: `Models: ${S.models.join(', ') || 'none'}`, composeprog: true, script: psComposeUp(), warn: 'Docker Desktop must be running inside the VM before this step.' });
   }
   return steps;
@@ -1230,7 +1325,7 @@ New-NetFirewallRule -DisplayName $script:ruleName -Direction Inbound -Protocol T
 $switchName = (Get-VMNetworkAdapter -VMName $VMName | Select-Object -First 1).SwitchName
 $script:hostIp = (Get-VMNetworkAdapter -ManagementOS |
     Where-Object { $_.SwitchName -eq $switchName } |
-    Select-Object -ExpandProperty IPAddresses |
+    ForEach-Object { $_.IPAddresses } |
     Where-Object { $_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$' -and $_ -notlike '169.254.*' } |
     Select-Object -First 1)
 if (-not $script:hostIp) {
@@ -1437,13 +1532,18 @@ function psDockerInstall() {
   return psCred() + `
 Write-Output "Installing Chocolatey and Docker Desktop..."
 Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
+    chcp 65001 | Out-Null
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
     if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
         Set-ExecutionPolicy Bypass -Scope Process -Force
         [System.Net.ServicePointManager]::SecurityProtocol = 3072
         iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
     }
     choco install docker-desktop -y
-    Write-Output "Docker Desktop installed."
+    Write-Output "Updating WSL..."
+    wsl --update
+    Write-Output "Docker Desktop installed and WSL updated."
 }`;
 }
 
@@ -1456,6 +1556,9 @@ function psComposeUp() {
   return psCred() + `
 Write-Output "TASK:Starting Docker Desktop"
 Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
+    chcp 65001 | Out-Null
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
     Start-Process "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe" -ErrorAction SilentlyContinue
     $until   = (Get-Date).AddSeconds(180)
     $ready   = $false
@@ -1509,7 +1612,7 @@ function selectFeature(i) {
 
 function goFromVM() {
   if (!S.vmName) { alert('Select a VM.'); return; }
-  App.showPanel(hasWSL() ? 'models' : 'downloads');
+  App.showPanel('credentials');
 }
 
 function addCustomModel() {
@@ -1521,7 +1624,21 @@ function saveCreds() {
   S.vmUser = document.getElementById('u')?.value.trim() || '';
   S.vmPass = document.getElementById('p')?.value || '';
   if (!S.vmUser) { alert('Enter VM username.'); return; }
-  App.saveState().then(() => App.showPanel('execute'));
+  sessionStorage.setItem('vmCreds', JSON.stringify({ user: S.vmUser, pass: S.vmPass }));
+  App.saveState().then(() => {
+    App.showPanel(hasWSL() ? 'models' : 'downloads');
+    openVMBrowser();
+  });
+}
+
+function openVMBrowser() {
+  if (!hostInfo?.filesUrl || !S.vmName || !S.vmUser || !S.vmPass) return;
+  fetch('/api/open-in-vm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vmName: S.vmName, user: S.vmUser, pass: S.vmPass, url: hostInfo.filesUrl }),
+  }).catch(() => {});
+  Log.sys(`Opening file browser in VM: ${hostInfo.filesUrl}`);
 }
 
 function folderAll(folder, sel) {
@@ -1533,6 +1650,147 @@ function folderAll(folder, sel) {
     if (!sel && i >= 0) S.localFiles.splice(i, 1);
   });
   App.showPanel('local');
+}
+
+function copyFileNow(rel, btn) {
+  if (!S.vmName) { Log.sys('[copy] No VM selected — go to the VM panel first.'); return; }
+  if (!S.vmUser) { Log.sys('[copy] Credentials not saved — go to Credentials and click "Save & Review →" first.'); return; }
+  if (Exec.current) { Log.sys('[copy] Wait for the running task to finish.'); return; }
+  const useHttp = S.copyMethod === 'http' && !!hostInfo?.filesUrl;
+  btn.disabled = true;
+  btn.textContent = '⏳';
+  Log.sys(`\n▶ Copy [${useHttp ? 'HTTP' : 'PSSession'}]: ${rel}\n`);
+
+  const safeId  = rel.replace(/[^a-zA-Z0-9]/g, '-');
+  const progEl  = document.getElementById(`copy-prog-${safeId}`);
+  const barEl   = document.getElementById(`copy-bar-${safeId}`);
+  const lblEl   = document.getElementById(`copy-lbl-${safeId}`);
+  if (progEl) progEl.style.display = '';
+
+  Exec.outHook = text => {
+    for (const line of text.split('\n')) {
+      const m = line.trim().match(/^DLPROG:(.+):([^:]+):([^:]+):(\d+)$/);
+      if (!m) continue;
+      const [, , doneMB, totalMB, pct] = m;
+      if (barEl) barEl.style.width = pct + '%';
+      if (lblEl) lblEl.textContent = totalMB === '-1'
+        ? `${doneMB} MB`
+        : `${pct}%  ·  ${doneMB} / ${totalMB} MB`;
+    }
+  };
+
+  const script = useHttp ? psCopySingleFileHttp(rel) : psCopySingleFilePSSession(rel);
+  WS.run(script, code => {
+    Exec.outHook = null;
+    if (code === 0) {
+      if (barEl) barEl.style.width = '100%';
+      if (lblEl) { lblEl.textContent = '✓ Done'; lblEl.style.color = 'var(--green)'; }
+      if (!S.copiedFiles.includes(rel)) S.copiedFiles.push(rel);
+      App.saveState().catch(err => Log.err('[save] ' + (err?.message || err)));
+      setTimeout(() => App.showPanel('local'), 600);
+    } else {
+      if (progEl) progEl.style.display = 'none';
+      btn.disabled = false;
+      btn.textContent = '⬆ Copy';
+    }
+  });
+}
+
+function psCopySingleFileHttp(rel) {
+  const winRel   = rel.replace(/\//g, '\\');
+  const dstStr   = `C:\\Install\\${winRel}`;
+  const urlPath  = rel.split('/').map(s => encodeURIComponent(s)).join('/');
+  const fileUrl  = `${hostInfo.filesUrl}${urlPath}`;
+  const fileName = rel.split('/').pop();
+  return psCred() + `
+$dst        = "${e(dstStr)}"
+$url        = "${fileUrl}"
+$fileName   = "${e(fileName)}"
+$totalBytes = [long]-1
+try {
+    $req = [System.Net.HttpWebRequest]::Create($url)
+    $req.Method = "HEAD"; $req.AllowAutoRedirect = $true
+    $resp = $req.GetResponse(); $totalBytes = $resp.ContentLength; $resp.Close()
+} catch {}
+
+$dlSess   = New-PSSession -VMName $VMName -Credential $cred
+$pollSess = New-PSSession -VMName $VMName -Credential $cred
+$dlJob    = $null
+try {
+    Invoke-Command -Session $pollSess -ScriptBlock {
+        New-Item -ItemType Directory (Split-Path $using:dst -Parent) -Force | Out-Null
+    }
+    $dlJob = Invoke-Command -Session $dlSess -AsJob -ScriptBlock {
+        (New-Object System.Net.WebClient).DownloadFile($using:url, $using:dst)
+    }
+    while ($dlJob.State -eq 'Running') {
+        Start-Sleep -Seconds 1
+        try {
+            $done = Invoke-Command -Session $pollSess -ScriptBlock {
+                if (Test-Path $using:dst) { (Get-Item $using:dst).Length } else { [long]0 }
+            }
+            $doneMB = [math]::Round($done / 1MB, 1)
+            if ($totalBytes -gt 0) {
+                $pct     = [int]([math]::Min(99, $done * 100 / $totalBytes))
+                $totalMB = [math]::Round($totalBytes / 1MB, 1)
+                Write-Output ("DLPROG:{0}:{1}:{2}:{3}" -f $fileName, $doneMB, $totalMB, $pct)
+            } else {
+                Write-Output ("DLPROG:{0}:{1}:-1:0" -f $fileName, $doneMB)
+            }
+        } catch {}
+    }
+    $copyErr = $null
+    try { Receive-Job $dlJob -Wait -ErrorAction Stop | Out-Null }
+    catch { $copyErr = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message } }
+    if ($copyErr) { throw "Copy failed: $copyErr" }
+} finally {
+    if ($null -ne $dlJob) { Remove-Job $dlJob -Force -ErrorAction SilentlyContinue }
+    Remove-PSSession $dlSess, $pollSess -ErrorAction SilentlyContinue
+}
+Write-Output "Copied."`;
+}
+
+function psCopySingleFilePSSession(rel) {
+  const winRel   = rel.replace(/\//g, '\\');
+  const srcStr   = `${scriptDir}\\softwares\\${winRel}`;
+  const dstStr   = `C:\\Install\\${winRel}`;
+  const fileName = rel.split('/').pop();
+  return psCred() + `
+$src       = "${e(srcStr)}"
+$dst       = "${e(dstStr)}"
+$fileName  = "${e(fileName)}"
+$sess      = New-PSSession -VMName $VMName -Credential $cred
+try {
+    Invoke-Command -Session $sess -ScriptBlock { New-Item -ItemType Directory (Split-Path $using:dst -Parent) -Force | Out-Null }
+    $fileSize  = (Get-Item $src).Length
+    $chunkSize = 8MB
+    $fs        = [System.IO.File]::OpenRead($src)
+    $first     = $true
+    $copied    = [long]0
+    try {
+        $buf = New-Object byte[] $chunkSize
+        while (($read = $fs.Read($buf, 0, $chunkSize)) -gt 0) {
+            $chunk = New-Object byte[] $read
+            [Buffer]::BlockCopy($buf, 0, $chunk, 0, $read)
+            $isFirst = $first
+            Invoke-Command -Session $sess -ScriptBlock {
+                $mode  = if ($using:isFirst) { [System.IO.FileMode]::Create } else { [System.IO.FileMode]::Append }
+                $bytes = [byte[]]$using:chunk
+                $rfs   = [System.IO.File]::Open($using:dst, $mode)
+                try { $rfs.Write($bytes, 0, $bytes.Length) } finally { $rfs.Close() }
+            }
+            $copied += $read
+            $first   = $false
+            $pct     = if ($fileSize -gt 0) { [int]([math]::Min(99, $copied * 100 / $fileSize)) } else { 0 }
+            $doneMB  = [math]::Round($copied / 1MB, 1)
+            $totalMB = [math]::Round($fileSize / 1MB, 1)
+            Write-Output ("DLPROG:{0}:{1}:{2}:{3}" -f $fileName, $doneMB, $totalMB, $pct)
+        }
+    } finally { $fs.Close() }
+    Write-Output "Copied."
+} finally {
+    Remove-PSSession $sess -ErrorAction SilentlyContinue
+}`;
 }
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
@@ -1562,6 +1820,17 @@ async function init() {
   const toArr = d => Array.isArray(d) ? d : [];
   await Promise.all([
     fetch('/api/config').then(r=>r.json()).then(d=>{ if(d.scriptDir) scriptDir=d.scriptDir; }).catch(()=>{}),
+    fetch('/api/host-info').then(r=>r.json()).then(d=>{
+      hostInfo = d;
+      if (d.ip && d.ip !== '127.0.0.1') {
+        const badge = document.getElementById('vmUrlBadge');
+        const wLink = document.getElementById('vmUrlLink');
+        const fLink = document.getElementById('filesUrlLink');
+        if (badge) badge.style.display = '';
+        if (wLink) { wLink.href = d.webUrl;   wLink.textContent = d.webUrl; }
+        if (fLink) { fLink.href = d.filesUrl; }
+      }
+    }).catch(()=>{}),
     fetch('/api/vms').then(r=>r.json()).then(d=>{ vms=toArr(d); }).catch(()=>{}),
     fetch('/api/downloads').then(r=>r.json()).then(d=>{ downloads=toArr(d); }).catch(()=>{}),
     fetch('/api/softwares').then(r=>r.json()).then(d=>{ softwares=toArr(d); }).catch(()=>{}),
@@ -1577,8 +1846,19 @@ async function init() {
       if (st.InstallMode)  S.installMode  = st.InstallMode;
       if (st.CopyMethod)   S.copyMethod   = st.CopyMethod;
       if (st.Completed?.length)   S.completed   = st.Completed;
+      if (st.CopiedFiles?.length) S.copiedFiles = st.CopiedFiles;
     }),
   ]);
+  if (!S.vmName) {
+    const running = vms.find(v => v.State === 'Running');
+    if (running) S.vmName = running.Name;
+  }
+  const savedCreds = JSON.parse(sessionStorage.getItem('vmCreds') || 'null');
+  if (savedCreds && !S.vmUser) {
+    S.vmUser = savedCreds.user || '';
+    S.vmPass = savedCreds.pass || '';
+  }
+  if (S.vmName && S.vmUser && S.vmPass) openVMBrowser();
   WS.connect();
   renderSidebar();
   App.showPanel('features');
@@ -1589,6 +1869,61 @@ async function reloadVMs() {
   vms = await fetch('/api/vms').then(r=>r.json()).then(d=>Array.isArray(d)?d:[]).catch(()=>[]);
   App.showPanel('vm');
 }
+
+// ── Notes ─────────────────────────────────────────────────────────────────────
+const Notes = {
+  _timer: null,
+  async open() {
+    const modal = document.getElementById('notesModal');
+    const ta    = document.getElementById('notesText');
+    const saved = document.getElementById('notesSaved');
+    if (!modal || !ta) return;
+    const r = await fetch('/api/notes').then(r=>r.json()).catch(()=>({content:''}));
+    ta.value = r.content || '';
+    if (saved) saved.style.display = 'none';
+    modal.classList.add('open');
+    ta.focus();
+  },
+  close() { document.getElementById('notesModal')?.classList.remove('open'); },
+  async save() {
+    const ta    = document.getElementById('notesText');
+    const saved = document.getElementById('notesSaved');
+    if (!ta) return;
+    await fetch('/api/notes', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({content: ta.value}),
+    }).catch(()=>{});
+    if (saved) { saved.style.display = ''; setTimeout(() => { saved.style.display = 'none'; }, 2000); }
+  },
+};
+
+// ── Log resize ────────────────────────────────────────────────────────────────
+(function initLogResize() {
+  const footer = document.querySelector('.logfooter');
+  const handle = document.getElementById('logResize');
+  if (!footer || !handle) return;
+  const savedH = parseInt(localStorage.getItem('logHeight') || '190', 10);
+  footer.style.height = Math.max(60, savedH) + 'px';
+  let startY, startH;
+  handle.addEventListener('mousedown', ev => {
+    startY = ev.clientY; startH = footer.offsetHeight;
+    handle.classList.add('dragging');
+    const onMove = ev => {
+      const h = Math.max(60, Math.min(window.innerHeight * 0.75, startH + (startY - ev.clientY)));
+      footer.style.height = h + 'px';
+    };
+    const onUp = () => {
+      handle.classList.remove('dragging');
+      localStorage.setItem('logHeight', footer.offsetHeight);
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    ev.preventDefault();
+  });
+})();
 
 init();
 </script>

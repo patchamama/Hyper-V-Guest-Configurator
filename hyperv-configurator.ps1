@@ -334,6 +334,13 @@ function Stop-HostFileServer {
     $script:_srvPsCmd    = $null; $script:_srvRuleName = $null
 }
 
+function Show-VMFilesUrl {
+    $ip = Get-HyperVHostIp $VMName
+    if ($ip) {
+        Write-Host "  Files URL (open in VM browser): http://${ip}:3000/files/" -ForegroundColor Green
+    }
+}
+
 function Copy-ToVM-ViaHttp([string]$SourcePath, [string]$DestinationPath) {
     $fileName  = [System.IO.Path]::GetFileName($SourcePath)
     $relParts  = $SourcePath.Replace($SoftwaresPath, '').TrimStart('\', '/').Replace('\', '/').Split('/') |
@@ -954,8 +961,10 @@ if ($vmState -ne 'Running') {
     Write-Host "  VM is not running (state: $vmState) -- starting..." -ForegroundColor Yellow
     Start-VMWithMemoryFallback $VMName
     Wait-VMReady $VMName $cred -TimeoutSec 300
+    Show-VMFilesUrl
 } elseif ($resumeVMName) {
     Wait-VMReady $VMName $cred -TimeoutSec 300
+    Show-VMFilesUrl
 }
 
 # =============================================================================
@@ -972,6 +981,7 @@ if ($enableWSL) {
         Set-VMProcessor -VMName $VMName -ExposeVirtualizationExtensions $true
         Start-VMWithMemoryFallback $VMName
         Wait-VMReady $VMName $cred
+        Show-VMFilesUrl
         Mark-Done $state "nested-virt"
     }
 
@@ -990,6 +1000,7 @@ if ($enableWSL) {
         Write-Host "  Rebooting VM to apply WSL features..."
         Restart-VM $VMName -Force
         Wait-VMReady $VMName $cred -TimeoutSec 300
+        Show-VMFilesUrl
         Mark-Done $state "wsl-reboot"
     }
 
@@ -1055,6 +1066,7 @@ if ($enableWSL) {
             Write-Host "  Rebooting VM to finalise WSL installation..."
             Restart-VM $VMName -Force
             Wait-VMReady $VMName $cred -TimeoutSec 300
+            Show-VMFilesUrl
             Mark-Done $state "wsl-install"
         }
 
@@ -1094,6 +1106,7 @@ if ($enableWSL) {
         Stop-VM $VMName -Force -ErrorAction SilentlyContinue
         Start-VMWithMemoryFallback $VMName
         Wait-VMReady $VMName $cred -TimeoutSec 300
+        Show-VMFilesUrl
         Mark-Done $state "docker-reboot"
     }
 
@@ -1290,6 +1303,7 @@ if ($enableSoftware) {
             Write-Host "  Guest Service Interface enabled -- rebooting VM to activate it..." -ForegroundColor Green
             Restart-VM $VMName -Force
             Wait-VMReady $VMName $cred -TimeoutSec 300
+            Show-VMFilesUrl
         } else {
             Write-Host "  Guest Service Interface already active." -ForegroundColor Gray
         }

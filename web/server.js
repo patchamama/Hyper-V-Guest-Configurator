@@ -5,6 +5,7 @@ const { WebSocketServer } = require('ws');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs   = require('fs');
+const os   = require('os');
 
 const PORT        = 3000;
 const SCRIPT_DIR  = path.join(__dirname, '..');
@@ -14,6 +15,28 @@ function toWinPath(p) {
   const m = p.match(/^\/mnt\/([a-z])\/(.*)/i);
   if (m) return m[1].toUpperCase() + ':\\' + m[2].replace(/\//g, '\\');
   return p;
+}
+
+function getHostIP() {
+  const nets = os.networkInterfaces();
+  // Prefer vEthernet (Hyper-V virtual switch) adapters
+  for (const [name, addrs] of Object.entries(nets)) {
+    if (!name.toLowerCase().includes('hyper-v') && !name.toLowerCase().includes('vethernet')) continue;
+    const v4 = addrs.find(a => a.family === 'IPv4' && !a.internal && !a.address.startsWith('169.254.'));
+    if (v4) return v4.address;
+  }
+  // Fallback: any non-loopback, non-APIPA IPv4
+  for (const [, addrs] of Object.entries(nets)) {
+    const v4 = addrs.find(a => a.family === 'IPv4' && !a.internal &&
+                                !a.address.startsWith('169.254.') && !a.address.startsWith('127.'));
+    if (v4) return v4.address;
+  }
+  return '127.0.0.1';
+}
+
+function formatSize(bytes) {
+  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+  return `${Math.round(bytes / 1024)} KB`;
 }
 const DOWNLOADS    = path.join(SCRIPT_DIR, 'downloads.txt');
 const SOFTWARES    = path.join(SCRIPT_DIR, 'softwares');
@@ -151,6 +174,81 @@ app.get('/api/winget', (req, res) => res.json(WINGET));
 // Always reads from disk so edits to ollama-models.json take effect without restart
 app.get('/api/models', (req, res) => res.json(loadModels()));
 
+app.get('/api/host-info', (req, res) => {
+  const ip = getHostIP();
+  res.json({
+    ip,
+    port:     PORT,
+    webUrl:   `http://${ip}:${PORT}`,
+    filesUrl: `http://${ip}:${PORT}/files/`,
+  });
+});
+
+app.post('/api/open-in-vm', (req, res) => {
+  const { vmName, user, pass, url } = req.body;
+  if (!vmName || !user || !pass || !url) return res.status(400).json({ error: 'Missing fields' });
+  const esc = s => String(s).replace(/"/g, '`"');
+  const cmd = `$cred = New-Object PSCredential("${esc(user)}", (ConvertTo-SecureString "${esc(pass)}" -AsPlainText -Force)); ` +
+              `Invoke-Command -VMName "${esc(vmName)}" -Credential $cred ` +
+              `-ScriptBlock { Start-Process "explorer.exe" -ArgumentList $using:url } -ErrorAction SilentlyContinue`;
+  runPS(cmd, () => {});
+  res.json({ ok: true });
+});
+
+// ── File browser (VM-accessible at /files/) ───────────────────────────────────
+
+const SOFTWARES_ABS = path.resolve(SOFTWARES);
+
+app.use('/files', (req, res) => {
+  try {
+    const rel = decodeURIComponent(req.path);
+    const abs = path.resolve(path.join(SOFTWARES, rel));
+    if (!abs.startsWith(SOFTWARES_ABS)) return res.status(403).send('Forbidden');
+    if (!fs.existsSync(abs)) return res.status(404).send('Not found');
+
+    const stat = fs.statSync(abs);
+
+    if (stat.isFile()) {
+      res.setHeader('Content-Disposition', `attachment; filename="${path.basename(abs)}"`);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      fs.createReadStream(abs).pipe(res);
+      return;
+    }
+
+    if (stat.isDirectory()) {
+      const items = fs.readdirSync(abs, { withFileTypes: true })
+        .map(d => ({
+          name:  d.name,
+          isDir: d.isDirectory(),
+          size:  d.isDirectory() ? '' : formatSize(fs.statSync(path.join(abs, d.name)).size),
+        }))
+        .sort((a, b) => (a.isDir !== b.isDir ? (a.isDir ? -1 : 1) : a.name.localeCompare(b.name)));
+
+      const relDisp   = rel.replace(/^\//, '');
+      const parentRow = relDisp ? `<tr><td colspan="2"><a href="../">&#8593; Parent directory</a></td></tr>` : '';
+      const rows = items.map(item => {
+        const enc  = encodeURIComponent(item.name) + (item.isDir ? '/' : '');
+        const icon = item.isDir ? '&#128193;' : '&#128196;';
+        return `<tr><td>${icon} <a href="${enc}">${item.name}</a></td>` +
+               `<td style="text-align:right;color:#8b949e;padding-left:24px;white-space:nowrap">${item.size}</td></tr>`;
+      }).join('');
+
+      const title = relDisp || 'Shared Files';
+      const css   = '*{box-sizing:border-box}body{font-family:-apple-system,sans-serif;background:#0d1117;color:#e6edf3;padding:24px;margin:0}' +
+                    'h2{color:#E8820C;margin-bottom:16px;font-size:18px}' +
+                    'table{border-collapse:collapse;width:100%;max-width:720px}' +
+                    'td{padding:8px 14px;border-bottom:1px solid #30363d;font-size:14px}' +
+                    'tr:hover td{background:#161b22}a{color:#58a6ff;text-decoration:none}a:hover{color:#E8820C;text-decoration:underline}' +
+                    '.note{color:#8b949e;font-size:12px;margin-top:16px}';
+      const html  = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title><style>${css}</style></head>` +
+                    `<body><h2>${title}</h2><table>${parentRow}${rows}</table>` +
+                    `<p class="note">Hyper-V Configurator — host file browser</p></body></html>`;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(html);
+    }
+  } catch (e) { res.status(500).send(e.message); }
+});
+
 // ── ELO token refresh ─────────────────────────────────────────────────────────
 
 let eloRefreshProc = null;
@@ -178,6 +276,36 @@ app.get('/api/refresh-elo-tokens/status', (req, res) => {
   res.json({ running: !!eloRefreshProc });
 });
 
+// ── Notes ─────────────────────────────────────────────────────────────────────
+
+const NOTES_FILE = path.join(SCRIPT_DIR, 'notes.txt');
+
+app.get('/api/notes', (req, res) => {
+  try {
+    const content = fs.existsSync(NOTES_FILE) ? fs.readFileSync(NOTES_FILE, 'utf8') : '';
+    res.json({ content });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/notes', (req, res) => {
+  try {
+    fs.writeFileSync(NOTES_FILE, req.body.content ?? '', 'utf8');
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Output helpers ────────────────────────────────────────────────────────────
+
+// Force PowerShell to emit UTF-8 on both stdout and stderr
+const PS_UTF8 = 'chcp 65001 | Out-Null; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $OutputEncoding = [System.Text.Encoding]::UTF8; ';
+
+// Strip ANSI/VT CSI escape sequences (progress bars, cursor moves, etc.) and bare CR
+function cleanOutput(text) {
+  return text
+    .replace(/\x1b\[[\x20-\x3f]*[\x40-\x7e]/g, '')
+    .replace(/\r/g, '');
+}
+
 // ── WebSocket execution ───────────────────────────────────────────────────────
 
 let activeProc = null;
@@ -204,25 +332,44 @@ wss.on('connection', ws => {
 });
 
 function execute(script, ws) {
-  const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script]);
+  const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', PS_UTF8 + script]);
   activeProc = ps;
-  ps.stdout.on('data', d => ws.send(JSON.stringify({ type: 'out', text: d.toString() })));
-  ps.stderr.on('data', d => ws.send(JSON.stringify({ type: 'err', text: d.toString() })));
+  ps.stdout.on('data', d => ws.send(JSON.stringify({ type: 'out', text: cleanOutput(d.toString('utf8')) })));
+  ps.stderr.on('data', d => ws.send(JSON.stringify({ type: 'err', text: cleanOutput(d.toString('utf8')) })));
   ps.on('close',  code => { activeProc = null; ws.send(JSON.stringify({ type: 'done', code })); });
   ps.on('error',  err  => { activeProc = null; ws.send(JSON.stringify({ type: 'error', text: err.message })); });
 }
 
 function runPS(cmd, cb) {
   let out = '', err = '';
-  const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', cmd]);
-  ps.stdout.on('data', d => out += d);
-  ps.stderr.on('data', d => err += d);
+  const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', PS_UTF8 + cmd]);
+  ps.stdout.on('data', d => out += d.toString('utf8'));
+  ps.stderr.on('data', d => err += d.toString('utf8'));
   ps.on('close', () => cb(out.trim(), err.trim() || null));
   ps.on('error', e => cb('', e.message));
 }
 
+// ── Redirect bare softwares paths → /files/ (backwards-compat with PS server) ─
+
+app.use((req, res, next) => {
+  const rel = decodeURIComponent(req.path);
+  if (rel === '/') return next();
+  try {
+    const abs = path.resolve(path.join(SOFTWARES, rel));
+    if (abs.startsWith(SOFTWARES_ABS) && fs.existsSync(abs)) {
+      return res.redirect('/files' + req.path);
+    }
+  } catch (_) {}
+  next();
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Hyper-V Web Configurator → http://127.0.0.1:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  const ip = getHostIP();
+  console.log(`Hyper-V Web Configurator → http://127.0.0.1:${PORT}  (localhost)`);
+  if (ip !== '127.0.0.1') {
+    console.log(`Hyper-V Web Configurator → http://${ip}:${PORT}  (VM-accessible)`);
+    console.log(`File browser (from VM)   → http://${ip}:${PORT}/files/`);
+  }
 });

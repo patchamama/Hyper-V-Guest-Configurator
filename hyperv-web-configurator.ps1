@@ -166,6 +166,32 @@ if (-not $ready) {
 OK "Server running at $url  (PID $($proc.Id))"
 Write-Host ""
 
+# Fetch VM-accessible URL from server
+$vmUrl   = $null
+$filesUrl = $null
+try {
+    $info = Invoke-RestMethod -Uri "http://127.0.0.1:$PORT/api/host-info" -ErrorAction Stop
+    if ($info.ip -and $info.ip -ne '127.0.0.1') {
+        $vmUrl    = $info.webUrl
+        $filesUrl = $info.filesUrl
+    }
+} catch {}
+
+Write-Host "  +---------------------------------------------------------+" -ForegroundColor Cyan
+Write-Host ("  |  Local (host browser)  : {0,-30}|" -f $url) -ForegroundColor Cyan
+if ($vmUrl) {
+    Write-Host ("  |  VM browser (Web UI)   : {0,-30}|" -f $vmUrl)    -ForegroundColor Green
+    Write-Host ("  |  VM browser (Files)    : {0,-30}|" -f $filesUrl) -ForegroundColor Green
+} else {
+    Write-Host "  |  VM URL    : not detected (no vEthernet adapter found)   |" -ForegroundColor Yellow
+}
+Write-Host "  +---------------------------------------------------------+" -ForegroundColor Cyan
+Write-Host ""
+if ($vmUrl) {
+    Write-Host "  TIP: Open the VM and navigate to the Files URL above to browse shared files." -ForegroundColor Gray
+}
+Write-Host ""
+
 # Open default browser without admin elevation (avoids browser warnings)
 Start-Process -FilePath "explorer.exe" -ArgumentList $url
 Write-Host "  Browser opened at $url" -ForegroundColor Green
