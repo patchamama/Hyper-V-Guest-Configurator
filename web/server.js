@@ -85,7 +85,7 @@ app.get('/api/vms/debug', (req, res) => {
 });
 
 app.get('/api/state', (req, res) => {
-  const blank = { VMName: '', Completed: [], Models: [], Features: [], LocalFiles: [], WingetPkgs: [], DownloadUrls: [], InstallMode: '' };
+  const blank = { VMName: '', Completed: [], Models: [], Features: [], LocalFiles: [], WingetPkgs: [], DownloadUrls: [], InstallMode: '', CopyMethod: 'http' };
   try {
     if (!fs.existsSync(STATE_FILE)) return res.json(blank);
     res.json({ ...blank, ...JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) });
@@ -150,6 +150,33 @@ app.get('/api/config', (req, res) => res.json({ scriptDir: toWinPath(SCRIPT_DIR)
 app.get('/api/winget', (req, res) => res.json(WINGET));
 // Always reads from disk so edits to ollama-models.json take effect without restart
 app.get('/api/models', (req, res) => res.json(loadModels()));
+
+// ── ELO token refresh ─────────────────────────────────────────────────────────
+
+let eloRefreshProc = null;
+
+app.post('/api/refresh-elo-tokens/start', (req, res) => {
+  if (eloRefreshProc) return res.status(409).json({ error: 'Already running' });
+  const script = path.join(SCRIPT_DIR, 'refresh-elo-tokens.js');
+  if (!fs.existsSync(script)) return res.status(404).json({ error: 'refresh-elo-tokens.js not found' });
+  eloRefreshProc = spawn('node', [script], {
+    env: { ...process.env, WEB_MODE: '1' },
+    cwd: SCRIPT_DIR,
+    stdio: 'pipe',
+  });
+  eloRefreshProc.on('close', () => { eloRefreshProc = null; });
+  res.json({ ok: true });
+});
+
+app.post('/api/refresh-elo-tokens/done', (req, res) => {
+  const sig = path.join(SCRIPT_DIR, '.elo-refresh-done');
+  try { fs.writeFileSync(sig, '1', 'utf8'); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/refresh-elo-tokens/status', (req, res) => {
+  res.json({ running: !!eloRefreshProc });
+});
 
 // ── WebSocket execution ───────────────────────────────────────────────────────
 

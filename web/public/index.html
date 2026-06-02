@@ -6,18 +6,36 @@
 <title>Hyper-V Guest Configurator</title>
 <style>
 :root {
-  --bg:       #0d1117;
-  --sur:      #161b22;
-  --sur2:     #21262d;
-  --border:   #30363d;
-  --text:     #e6edf3;
-  --muted:    #8b949e;
-  --accent:   #58a6ff;
-  --green:    #3fb950;
-  --yellow:   #d29922;
-  --red:      #f85149;
-  --font:     -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --mono:     'Cascadia Code', 'Consolas', monospace;
+  --bg:         #0d1117;
+  --sur:        #161b22;
+  --sur2:       #21262d;
+  --border:     #30363d;
+  --text:       #e6edf3;
+  --muted:      #8b949e;
+  --accent:     #58a6ff;
+  --accent-rgb: 88, 166, 255;
+  --green:      #3fb950;
+  --yellow:     #d29922;
+  --red:        #f85149;
+  --elo-orange: #E8820C;
+  --elo-blue:   #4a9fd4;
+  --font:       -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono:       'Cascadia Code', 'Consolas', monospace;
+}
+[data-theme="light"] {
+  --bg:         #FFFFFF;
+  --sur:        #F5F5F5;
+  --sur2:       #EBEBEB;
+  --border:     #CCCCCC;
+  --text:       #1A1A1A;
+  --muted:      #666666;
+  --accent:     #0060A8;
+  --accent-rgb: 0, 96, 168;
+  --green:      #2E7D32;
+  --yellow:     #C65100;
+  --red:        #C62828;
+  --elo-orange: #E8820C;
+  --elo-blue:   #0060A8;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
@@ -39,10 +57,10 @@ header h1{font-size:15px;font-weight:600;letter-spacing:-.01em}
 .sec-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:8px 8px 4px}
 .nav-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;cursor:pointer;transition:background .12s;user-select:none}
 .nav-item:hover{background:var(--sur2)}
-.nav-item.active{background:rgba(88,166,255,.13);color:var(--accent)}
-.nav-item.ok .num{background:var(--green);color:#000;border-color:var(--green)}
+.nav-item.active{background:rgba(var(--accent-rgb),.13);color:var(--accent)}
+.nav-item.ok .num{background:var(--green);color:var(--bg);border-color:var(--green)}
 .nav-item.err .num{background:var(--red);color:#fff;border-color:var(--red)}
-.nav-item.run .num{background:var(--accent);color:#000;border-color:var(--accent)}
+.nav-item.run .num{background:var(--accent);color:var(--bg);border-color:var(--accent)}
 .num{width:20px;height:20px;border-radius:50%;border:1px solid var(--border);background:var(--sur2);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
 .nav-label{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
@@ -61,10 +79,10 @@ header h1{font-size:15px;font-weight:600;letter-spacing:-.01em}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
 .opt{background:var(--sur2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;transition:border-color .15s,background .15s;user-select:none}
 .opt:hover{border-color:var(--accent)}
-.opt.sel{border-color:var(--accent);background:rgba(88,166,255,.09)}
+.opt.sel{border-color:var(--accent);background:rgba(var(--accent-rgb),.09)}
 .opt.warn{border-color:var(--yellow)}
 .chk{width:16px;height:16px;border:1.5px solid var(--border);border-radius:3px;flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;font-size:10px;transition:all .15s}
-.opt.sel .chk{background:var(--accent);border-color:var(--accent);color:#000}
+.opt.sel .chk{background:var(--accent);border-color:var(--accent);color:var(--bg)}
 .radio .chk{border-radius:50%}
 .opt-name{font-size:13px;font-weight:500;line-height:1.4}
 .opt-sub{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.4}
@@ -75,8 +93,8 @@ header h1{font-size:15px;font-weight:600;letter-spacing:-.01em}
 .btn{padding:7px 16px;border-radius:6px;border:none;font-size:13px;font-weight:500;cursor:pointer;transition:opacity .15s,transform .1s;font-family:var(--font)}
 .btn:hover{opacity:.85}
 .btn:active{transform:scale(.97)}
-.btn-p{background:var(--accent);color:#000}
-.btn-g{background:var(--green);color:#000}
+.btn-p{background:var(--elo-orange);color:#fff}
+.btn-g{background:var(--green);color:var(--bg)}
 .btn-r{background:var(--red);color:#fff}
 .btn-o{background:var(--sur2);color:var(--text);border:1px solid var(--border)}
 .btn:disabled{opacity:.4;cursor:not-allowed}
@@ -88,7 +106,7 @@ input[type=text],input[type=password]{background:var(--sur2);border:1px solid va
 input:focus{border-color:var(--accent)}
 
 /* Tags */
-.tag{display:inline-flex;align-items:center;background:rgba(88,166,255,.13);border:1px solid rgba(88,166,255,.3);color:var(--accent);border-radius:4px;padding:2px 8px;font-size:11px;margin:2px;gap:6px}
+.tag{display:inline-flex;align-items:center;background:rgba(var(--accent-rgb),.13);border:1px solid rgba(var(--accent-rgb),.3);color:var(--accent);border-radius:4px;padding:2px 8px;font-size:11px;margin:2px;gap:6px}
 .tag .x{cursor:pointer;color:var(--muted);font-size:12px;line-height:1}
 .tag .x:hover{color:var(--red)}
 
@@ -105,7 +123,7 @@ input:focus{border-color:var(--accent)}
 .esub{font-size:12px;color:var(--muted);margin-top:2px}
 .badge{font-size:11px;padding:2px 9px;border-radius:20px;font-weight:600;white-space:nowrap}
 .b-pen{background:var(--sur);color:var(--muted);border:1px solid var(--border)}
-.b-run{background:rgba(88,166,255,.2);color:var(--accent)}
+.b-run{background:rgba(var(--accent-rgb),.2);color:var(--accent)}
 .b-ok {background:rgba(63,185,80,.2);color:var(--green)}
 .b-err{background:rgba(248,81,73,.2);color:var(--red)}
 .b-skip{background:var(--sur);color:var(--muted);border:1px solid var(--border)}
@@ -129,7 +147,7 @@ input:focus{border-color:var(--accent)}
 
 /* Alert */
 .alert{padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:12px;line-height:1.5}
-.al-info{background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.25)}
+.al-info{background:rgba(var(--accent-rgb),.1);border:1px solid rgba(var(--accent-rgb),.25)}
 .al-warn{background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.25)}
 
 /* Folder header */
@@ -141,16 +159,20 @@ input:focus{border-color:var(--accent)}
 .file-list{display:flex;flex-direction:column;gap:2px;margin-bottom:4px}
 .file-row{display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:5px;cursor:pointer;transition:background .12s;user-select:none;border:1px solid transparent}
 .file-row:hover{background:var(--sur2)}
-.file-row.sel{background:rgba(88,166,255,.08);border-color:rgba(88,166,255,.25)}
+.file-row.sel{background:rgba(var(--accent-rgb),.08);border-color:rgba(var(--accent-rgb),.25)}
 .file-row .chk{width:15px;height:15px;border:1.5px solid var(--border);border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;transition:all .15s}
-.file-row.sel .chk{background:var(--accent);border-color:var(--accent);color:#000}
+.file-row.sel .chk{background:var(--accent);border-color:var(--accent);color:var(--bg)}
 .file-icon{font-size:14px;flex-shrink:0}
 .file-name{font-size:13px;font-family:var(--mono);color:var(--text);flex:1}
 .file-size{font-size:11px;color:var(--muted);white-space:nowrap;margin-left:auto}
 
 /* Progress bar */
 .pbar-wrap{background:var(--border);border-radius:4px;height:4px;overflow:hidden;margin-top:8px}
-.pbar{background:var(--accent);height:100%;transition:width .3s;border-radius:4px}
+.pbar{background:var(--elo-orange);height:100%;transition:width .3s;border-radius:4px}
+
+/* Theme toggle */
+.theme-toggle{background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 10px;font-size:14px;cursor:pointer;transition:all .15s;line-height:1}
+.theme-toggle:hover{color:var(--text);border-color:var(--muted)}
 </style>
 </head>
 <body>
@@ -159,6 +181,7 @@ input:focus{border-color:var(--accent)}
   <div class="dot" id="wsDot"></div>
   <h1>⚙ Hyper-V Guest Configurator</h1>
   <div class="ml" style="display:flex;gap:8px">
+    <button class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode">🌙</button>
     <button class="hbtn" onclick="App.resetState()">↺ Reset</button>
     <button class="hbtn" onclick="App.showPanel('execute')" style="color:var(--green);border-color:var(--green)">▶ Execute</button>
   </div>
@@ -206,7 +229,7 @@ const WS = {
   },
   handle(msg) {
     if (msg.type === 'out') {
-      Log.append(msg.text);
+      if (!/^DLPROG:/.test(msg.text.trim())) Log.append(msg.text);
       try { Exec.outHook?.(msg.text); } catch (e) { /* ignore hook errors */ }
     }
     else if (msg.type === 'err')  Log.err(msg.text);
@@ -233,6 +256,7 @@ const S = {
   vmName: '', features: [], models: [], downloadUrls: [],
   localFiles: [], wingetPkgs: [], installMode: 'copy-only',
   vmUser: '', vmPass: '', completed: [],
+  copyMethod: 'http',
 };
 
 let vms = [], downloads = [], softwares = [], winget = [], models = [];
@@ -315,14 +339,14 @@ const App = {
   async resetState() {
     if (!confirm('Reset all progress and selections?')) return;
     await fetch('/api/state', { method: 'DELETE' });
-    Object.assign(S, { vmName:'', features:[], models:[], downloadUrls:[], localFiles:[], wingetPkgs:[], installMode:'copy-only', vmUser:'', vmPass:'', completed:[] });
+    Object.assign(S, { vmName:'', features:[], models:[], downloadUrls:[], localFiles:[], wingetPkgs:[], installMode:'copy-only', vmUser:'', vmPass:'', completed:[], copyMethod:'http' });
     renderSidebar();
     this.showPanel('features');
   },
   async saveState() {
     await fetch('/api/state', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ VMName:S.vmName, Features:S.features, Models:S.models, DownloadUrls:S.downloadUrls, LocalFiles:S.localFiles, WingetPkgs:S.wingetPkgs, InstallMode:S.installMode, Completed:S.completed }),
+      body: JSON.stringify({ VMName:S.vmName, Features:S.features, Models:S.models, DownloadUrls:S.downloadUrls, LocalFiles:S.localFiles, WingetPkgs:S.wingetPkgs, InstallMode:S.installMode, Completed:S.completed, CopyMethod:S.copyMethod }),
     });
   },
 };
@@ -422,7 +446,11 @@ const panels = {
       <button class="btn btn-p" onclick="App.showPanel('local')">Continue →</button></div></div>`;
 
     const expCount = downloads.filter(d => isExpired(d.url)).length;
-    const alert = expCount ? `<div class="alert al-warn">⚠ ${expCount} URL(s) have expired tokens. Run <code>node refresh-elo-tokens.js</code> to refresh them.</div>` : '';
+    const alert = expCount ? `<div class="alert al-warn" style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px">⚠ ${expCount} URL(s) have expired tokens — downloads will fail without refreshing.</div>
+      <button class="btn btn-o" style="flex-shrink:0" onclick="EloRefresh.start()">↻ Refresh Tokens</button>
+    </div>
+    <div id="eloRefreshBox" style="display:none"></div>` : '';
     const opts = downloads.map((d, i) => {
       const sel = S.downloadUrls.includes(d.url);
       const exp = isExpired(d.url);
@@ -508,6 +536,29 @@ const panels = {
       <div class="brow"><button class="btn btn-o" onclick="App.showPanel('winget')">← Back</button>
       <button class="btn btn-p" onclick="App.showPanel('credentials')">Continue →</button></div></div>`;
 
+    const selHttp = S.copyMethod === 'http' ? 'sel' : '';
+    const selPs   = S.copyMethod === 'pssession' ? 'sel' : '';
+    const transferCard = `<div class="card">
+      <h2>Transfer Method</h2>
+      <p class="sub">How should local files be transferred to the guest VM?</p>
+      <div class="grid">
+        <div class="opt radio ${selHttp}" onclick="S.copyMethod='http';App.showPanel('installmode')">
+          <div class="chk">${selHttp?'●':''}</div>
+          <div>
+            <div class="opt-name">HTTP Download <span style="color:var(--green);font-size:11px;margin-left:4px">(Recommended — Faster)</span></div>
+            <div class="opt-sub">Host runs a temporary HTTP server. VM downloads directly via the Hyper-V virtual switch. A temporary Windows Firewall rule is opened and removed automatically.</div>
+          </div>
+        </div>
+        <div class="opt radio ${selPs}" onclick="S.copyMethod='pssession';App.showPanel('installmode')">
+          <div class="chk">${selPs?'●':''}</div>
+          <div>
+            <div class="opt-name">PSSession Copy</div>
+            <div class="opt-sub">Chunked transfer via PowerShell remoting (8 MB chunks). Slower for large files. No firewall changes required.</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
     const opts = MODE_OPTS.map(m => {
       const sel = S.installMode === m.val;
       return `<div class="opt radio ${sel?'sel':''}" onclick="S.installMode='${m.val}';App.showPanel('installmode')">
@@ -515,7 +566,8 @@ const panels = {
         <div><div class="opt-name">${m.label}</div><div class="opt-sub">${m.sub}</div></div>
       </div>`;
     }).join('');
-    return `<div class="card">
+    return `${transferCard}
+    <div class="card">
       <h2>Installation Mode</h2>
       <p class="sub">How should local installers be run on the guest VM?</p>
       <div class="grid">${opts}</div>
@@ -560,6 +612,7 @@ const panels = {
           <div class="esub">${s.sub}</div>
           ${s.warn && !done ? `<div class="esub" style="color:var(--yellow);margin-top:3px">⚠ ${s.warn}</div>` : ''}
           <div class="pbar-wrap" id="pb-${s.id}" style="display:none"><div class="pbar" style="width:0%"></div></div>
+          ${s.dlprog && !done ? `<div id="dlrow-${s.id}" style="display:none;margin-top:8px;max-width:440px"></div>` : ''}
         </div>
         <span class="badge ${done?'b-ok':'b-pen'}" id="b-${s.id}">${done?'Done':'Pending'}</span>
         <button class="btn btn-p" id="btn-${s.id}" onclick="Exec.runStep('${s.id}')" ${done?'style="display:none"':''}>Run</button>
@@ -652,6 +705,79 @@ const panels = {
     <a href="https://winget.run" target="_blank" style="color:var(--accent)">winget.run</a>
     and copy the package ID from there.
   </p>
+</div>
+
+<div class="card">
+  <h2>Manual: Enable Guest Services</h2>
+  <p class="sub">Run on the <strong>Hyper-V HOST</strong> — Administrator PowerShell. Required for VM file copy.</p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:12px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:12px">
+    <span style="color:var(--muted)"># HOST — Administrator PowerShell</span><br>
+    Enable-VMIntegrationService -VMName "YourVM" -Name "Guest Service Interface"<br>
+    Restart-VM -VMName "YourVM" -Force
+  </div>
+  <div class="alert al-info">
+    The VM restarts automatically. Wait for it to come back online before running further steps.
+  </div>
+</div>
+
+<div class="card">
+  <h2>Manual: Enable Nested Virtualization</h2>
+  <p class="sub">Run on the <strong>Hyper-V HOST</strong> — VM must be <strong>OFF</strong>. Required for WSL2 inside the VM.</p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:12px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:12px">
+    <span style="color:var(--muted)"># HOST — Administrator PowerShell. VM must be stopped first.</span><br>
+    Stop-VM -Name "YourVM" -Force<br>
+    Set-VMProcessor -VMName "YourVM" -ExposeVirtualizationExtensions $true<br>
+    Start-VM -Name "YourVM"
+  </div>
+  <div class="alert al-info">
+    <code>ExposeVirtualizationExtensions</code> cannot be set while the VM is running — always stop it first.
+  </div>
+</div>
+
+<div class="card">
+  <h2>Manual: Enable WSL Features in VM</h2>
+  <p class="sub">Run <strong>inside the VM</strong> — Administrator PowerShell. Both DISM features are required.</p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:12px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:12px">
+    <span style="color:var(--muted)"># INSIDE the VM — Administrator PowerShell</span><br>
+    dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart<br>
+    dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart<br>
+    <span style="color:var(--muted)"># Restart the VM after both commands complete</span>
+  </div>
+  <div class="alert al-warn">
+    A restart is required after enabling these features before installing the WSL2 kernel.
+  </div>
+</div>
+
+<div class="card">
+  <h2>Manual: Install WSL2 Kernel</h2>
+  <p class="sub">Run <strong>inside the VM</strong> after enabling WSL features and restarting.</p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:12px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:12px">
+    <span style="color:var(--muted)"># INSIDE the VM — Administrator PowerShell</span><br>
+    $msi = "$env:TEMP\wsl_kernel.msi"<br>
+    Invoke-WebRequest -Uri "https://wslstorestorage.blob.core.windows.net/wslblob/wsl_update_x64.msi" \<br>
+    &nbsp;&nbsp;-OutFile $msi -UseBasicParsing<br>
+    msiexec /i $msi /quiet /norestart<br>
+    Remove-Item $msi -ErrorAction SilentlyContinue<br>
+    wsl --set-default-version 2
+  </div>
+  <div class="alert al-info">
+    Run <code>wsl --set-default-version 2</code> to ensure all new WSL distros default to WSL2.
+  </div>
+</div>
+
+<div class="card">
+  <h2>Browse Shared Files from the VM</h2>
+  <p class="sub">When <strong>HTTP Download</strong> transfer method is selected, a temporary file server runs on the host during the <em>Copy Local Files to VM</em> step.</p>
+  <ol style="padding-left:18px;line-height:2;font-size:13px">
+    <li>Run the <strong>Copy Local Files to VM</strong> step</li>
+    <li>Look for the URL in the Execution Log: <code>Browse shared files in VM browser: http://&lt;host-ip&gt;:&lt;port&gt;/</code></li>
+    <li>The VM's default browser opens automatically with a directory listing</li>
+    <li>Navigate folders, click files to download them manually if needed</li>
+  </ol>
+  <div class="alert al-info" style="margin-top:12px">
+    The file server closes automatically ~15 seconds after all copies complete. While active, any device on the Hyper-V virtual network can browse files at that URL.
+    A temporary Windows Firewall rule (<code>HVWebCopy-&lt;port&gt;</code>) is opened for the duration and removed on cleanup.
+  </div>
 </div>`;
   },
 
@@ -679,7 +805,58 @@ const Exec = {
     setCancelVisible(true);
     Log.sys(`\n▶ ${step.label}\n`);
 
-    if (step.progress) {
+    if (step.dlprog) {
+      const wrap  = document.getElementById(`pb-${id}`);
+      const dlRow = document.getElementById(`dlrow-${id}`);
+      if (wrap)  wrap.style.display  = '';
+      if (dlRow) dlRow.style.display = '';
+      const fileNames = (step.dlFilesFrom === 'localFiles' ? S.localFiles : S.downloadUrls)
+        .map(u => u.split('?')[0].split('/').pop());
+      const total = fileNames.length;
+      let done = 0;
+      if (dlRow) {
+        dlRow.innerHTML = fileNames.map((fn, i) => `
+          <div style="margin-top:6px">
+            <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${fn}">${fn}</div>
+            <div style="background:var(--border);border-radius:3px;height:3px;overflow:hidden;margin-top:2px">
+              <div id="dlbar-${id}-${i}" style="background:var(--elo-orange);height:100%;width:0%;transition:width .5s;border-radius:3px"></div>
+            </div>
+            <div id="dllabel-${id}-${i}" style="color:var(--muted);font-size:10px;margin-top:1px">Waiting…</div>
+          </div>`).join('');
+      }
+      const fnToIdx = {};
+      fileNames.forEach((fn, i) => { fnToIdx[fn] = i; });
+      this.outHook = text => {
+        for (const line of text.split('\n')) {
+          const l = line.trim();
+          const m = l.match(/^DLPROG:(.+):([^:]+):([^:]+):(\d+)$/);
+          if (m) {
+            const [, fn, doneMB, totalMB, pct] = m;
+            const idx = fnToIdx[fn];
+            if (idx !== undefined) {
+              const bar = document.getElementById(`dlbar-${id}-${idx}`);
+              const lbl = document.getElementById(`dllabel-${id}-${idx}`);
+              if (bar) bar.style.width = pct + '%';
+              if (lbl) lbl.textContent = totalMB === '-1' ? `${doneMB} MB` : `${doneMB} / ${totalMB} MB`;
+            }
+            continue;
+          }
+          if (/^Done: /.test(l)) {
+            done++;
+            const overall = wrap?.querySelector('.pbar');
+            if (overall) overall.style.width = Math.min(100, Math.round(done / total * 100)) + '%';
+            const fn = l.slice(6).trim();
+            const idx = fnToIdx[fn];
+            if (idx !== undefined) {
+              const fbar = document.getElementById(`dlbar-${id}-${idx}`);
+              const flbl = document.getElementById(`dllabel-${id}-${idx}`);
+              if (fbar) fbar.style.width = '100%';
+              if (flbl) { flbl.textContent = '✓ Done'; flbl.style.color = 'var(--green)'; }
+            }
+          }
+        }
+      };
+    } else if (step.progress) {
       const { total, pattern } = step.progress;
       const wrap = document.getElementById(`pb-${id}`);
       if (wrap) wrap.style.display = '';
@@ -746,6 +923,56 @@ function setCancelVisible(v) {
   if (b) b.style.display = v ? '' : 'none';
 }
 
+// ── ELO token refresh flow ────────────────────────────────────────────────────
+const EloRefresh = {
+  async start() {
+    const box = document.getElementById('eloRefreshBox');
+    if (!box) return;
+    box.style.display = '';
+    box.innerHTML = `<div class="alert al-info" style="margin-top:8px">
+      <strong>Playwright browser launching…</strong><br><br>
+      <ol style="padding-left:20px;line-height:2.2;margin-bottom:12px">
+        <li>Log in at <a href="https://partner.elo.com" target="_blank" style="color:var(--accent)">partner.elo.com</a></li>
+        <li>Navigate to <strong>Software Downloads</strong></li>
+        <li>Click each download link you need (ELO Server Setup, Java Client, XC…)</li>
+        <li>Return here and click <strong>Done</strong></li>
+      </ol>
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="btn btn-g" id="eloDoneBtn" onclick="EloRefresh.done(this)">&#10003; Done — close browser &amp; save tokens</button>
+        <span id="eloStatus" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+    </div>`;
+    const r = await fetch('/api/refresh-elo-tokens/start', { method: 'POST' })
+      .then(x => x.json()).catch(e => ({ error: e.message }));
+    if (r.error) {
+      const s = document.getElementById('eloStatus');
+      if (s) s.textContent = 'Error: ' + r.error;
+    }
+  },
+
+  async done(btn) {
+    const s = document.getElementById('eloStatus');
+    if (btn) btn.disabled = true;
+    if (s) s.textContent = 'Closing browser…';
+    await fetch('/api/refresh-elo-tokens/done', { method: 'POST' }).catch(() => {});
+    // Poll until the node process exits
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 500));
+      const st = await fetch('/api/refresh-elo-tokens/status').then(r => r.json()).catch(() => ({ running: true }));
+      if (!st.running) break;
+    }
+    if (s) s.textContent = 'Reloading downloads…';
+    const fresh = await fetch('/api/downloads').then(r => r.json()).catch(() => []);
+    downloads = Array.isArray(fresh) ? fresh : [];
+    // Remap selected URLs to fresh ones by filename
+    const fnMap = {};
+    downloads.forEach(d => { const fn = d.url.split('?')[0].split('/').pop(); fnMap[fn] = d.url; });
+    S.downloadUrls = S.downloadUrls.map(url => { const fn = url.split('?')[0].split('/').pop(); return fnMap[fn] || url; });
+    await App.saveState().catch(() => {});
+    App.showPanel('downloads');
+  },
+};
+
 // ── Step builders ─────────────────────────────────────────────────────────────
 function buildSteps() {
   const steps = [];
@@ -753,10 +980,11 @@ function buildSteps() {
     steps.push({ id: 'guest-services', label: 'Enable Guest Services', sub: 'Required for VM communication', script: psGuestServices() });
   }
   if (S.downloadUrls.length) {
-    steps.push({ id: 'software-download', label: 'Download Installers in VM', sub: `${S.downloadUrls.length} file(s) to download directly in VM`, script: psDownload(), progress: { total: S.downloadUrls.length, pattern: /^Done: / } });
+    const hasExpiredTokens = S.downloadUrls.some(isExpired);
+    steps.push({ id: 'software-download', label: 'Download Installers in VM', sub: `${S.downloadUrls.length} file(s) to download directly in VM`, warn: hasExpiredTokens ? 'Expired tokens detected — refresh them in the Downloads panel before running.' : null, dlprog: true, script: psDownload() });
   }
   if (S.localFiles.length) {
-    steps.push({ id: 'software-copy', label: 'Copy Local Files to VM', sub: `${S.localFiles.length} file(s) → C:\\Install`, script: psCopy(), progress: { total: S.localFiles.length, pattern: /^Copied: / } });
+    steps.push({ id: 'software-copy', label: 'Copy Local Files to VM', sub: `${S.localFiles.length} file(s) → C:\\Install  [${S.copyMethod === 'http' ? 'HTTP' : 'PSSession'}]`, dlprog: S.copyMethod === 'http', dlFilesFrom: 'localFiles', progress: S.copyMethod === 'http' ? null : { total: S.localFiles.length, pattern: /^Copied: / }, script: psCopy() });
   }
   if (S.localFiles.length && S.installMode !== 'copy-only') {
     steps.push({ id: 'software-install-local', label: 'Install Local Software', sub: `Mode: ${S.installMode}`, script: psInstallLocal() });
@@ -797,21 +1025,85 @@ if ($null -ne $svc -and -not $svc.Enabled) {
 }
 
 function psDownload() {
-  const lines = S.downloadUrls.map(url => {
+  const perFile = S.downloadUrls.map(url => {
     const fn = url.split('?')[0].split('/').pop();
     const stem = fn.replace(/\.zip$/i, '');
-    return `Write-Output "Downloading ${fn}..."; $wc.DownloadFile("${e(url)}", "C:\\Install\\${fn}"); Write-Output "Done: ${fn}";\n` +
-           (fn.toLowerCase().endsWith('.zip') ? `Expand-Archive -Path "C:\\Install\\${fn}" -DestinationPath "C:\\Install\\${stem}" -Force; Write-Output "Extracted: ${stem}";\n` : '');
-  }).join('');
-  return psCred() + `
-Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
-    New-Item -ItemType Directory -Path "C:\\Install" -Force | Out-Null
-    $wc = [System.Net.WebClient]::new()
-    ${lines}
+    const expand = fn.toLowerCase().endsWith('.zip')
+      ? `\n    Expand-Archive -Path "C:\\Install\\${fn}" -DestinationPath "C:\\Install\\${stem}" -Force\n    Write-Output "Extracted: ${stem}"`
+      : '';
+    return `Write-Output "Downloading ${fn}..."
+try {
+    Invoke-VMDownload "${e(url)}" "C:\\Install\\${fn}"
+    Write-Output "Done: ${fn}"${expand}
+} catch {
+    $script:failed += "${fn}"
+    Write-Output "FAILED: ${fn} -- $($_.Exception.Message)"
 }`;
+  }).join('\n\n');
+
+  return psCred() + `
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
+function Invoke-VMDownload([string]$Url, [string]$DestPath) {
+    $fileName   = $Url.Split('?')[0].Split('/')[-1]
+    $totalBytes = [long]-1
+    try {
+        $req = [System.Net.HttpWebRequest]::Create($Url)
+        $req.Method = "HEAD"; $req.AllowAutoRedirect = $true
+        $resp = $req.GetResponse(); $totalBytes = $resp.ContentLength; $resp.Close()
+    } catch {}
+
+    $dlSess   = New-PSSession -VMName $script:VMName -Credential $script:cred
+    $pollSess = New-PSSession -VMName $script:VMName -Credential $script:cred
+    $dlJob    = $null
+    try {
+        Invoke-Command -Session $pollSess -ScriptBlock {
+            New-Item -ItemType Directory -Path (Split-Path $using:DestPath -Parent) -Force | Out-Null
+        }
+        $dlJob = Invoke-Command -Session $dlSess -AsJob -ScriptBlock {
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+            (New-Object System.Net.WebClient).DownloadFile($using:Url, $using:DestPath)
+        }
+        while ($dlJob.State -eq 'Running') {
+            Start-Sleep -Seconds 2
+            try {
+                $done = Invoke-Command -Session $pollSess -ScriptBlock {
+                    if (Test-Path $using:DestPath) { (Get-Item $using:DestPath).Length } else { [long]0 }
+                }
+                $doneMB = [math]::Round($done / 1MB, 1)
+                if ($totalBytes -gt 0) {
+                    $pct     = [int]([math]::Min(99, $done * 100 / $totalBytes))
+                    $totalMB = [math]::Round($totalBytes / 1MB, 1)
+                    Write-Output ("DLPROG:{0}:{1}:{2}:{3}" -f $fileName, $doneMB, $totalMB, $pct)
+                } else {
+                    Write-Output ("DLPROG:{0}:{1}:-1:0" -f $fileName, $doneMB)
+                }
+            } catch {}
+        }
+        $msg = $null
+        try { Receive-Job $dlJob -Wait -ErrorAction Stop | Out-Null }
+        catch {
+            $msg = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
+        }
+        if ($msg) { throw "Download failed for '$fileName': $msg" }
+    } finally {
+        if ($null -ne $dlJob) { Remove-Job $dlJob -Force -ErrorAction SilentlyContinue }
+        Remove-PSSession $dlSess   -ErrorAction SilentlyContinue
+        Remove-PSSession $pollSess -ErrorAction SilentlyContinue
+    }
+}
+
+$script:failed = @()
+${perFile}
+if ($script:failed.Count -gt 0) { throw "Downloads failed: $($script:failed -join ', ')" }
+`;
 }
 
 function psCopy() {
+  return S.copyMethod === 'http' ? psCopyViaHttp() : psCopyViaPSSession();
+}
+
+function psCopyViaPSSession() {
   const lines = S.localFiles.map(rel => {
     const winRel = rel.replace(/\//g, '\\');
     const src = `${scriptDir}\\softwares\\${winRel}`;
@@ -831,7 +1123,6 @@ Invoke-Command -Session $copySession -ScriptBlock {
 }
 
 function Invoke-VMFileCopy($Src, $Dst) {
-    # Primary: chunked PSSession transfer — 8 MB chunks, single reused session
     try {
         $fileSize  = (Get-Item $Src).Length
         $chunkSize = 8MB
@@ -859,7 +1150,6 @@ function Invoke-VMFileCopy($Src, $Dst) {
         } finally { $fs.Close() }
         return
     } catch { Write-Output "  PSSession chunk failed: $($_.Exception.Message)" }
-    # Fallback: Copy-VMFile
     Write-Output "  Trying Copy-VMFile..."
     $max = 3; $n = 0
     while ($true) {
@@ -874,6 +1164,169 @@ function Invoke-VMFileCopy($Src, $Dst) {
 }
 ${lines}
 Remove-PSSession $copySession -ErrorAction SilentlyContinue`;
+}
+
+function psCopyViaHttp() {
+  const softRoot = `${scriptDir}\\softwares`;
+  const perFile = S.localFiles.map(rel => {
+    const winRel = rel.replace(/\//g, '\\');
+    const fn = rel.split('/').pop();
+    const stem = fn.replace(/\.zip$/i, '');
+    const expand = fn.toLowerCase().endsWith('.zip')
+      ? `\n    Invoke-Command -VMName $script:VMName -Credential $script:cred -ScriptBlock { Expand-Archive -Path "C:\\Install\\${winRel}" -DestinationPath "C:\\Install\\${stem}" -Force }\n    Write-Output "Extracted: ${stem}"`
+      : '';
+    return `Write-Output "Copying ${winRel}..."
+try {
+    Copy-ViaHttp "${winRel}"
+    Write-Output "Done: ${fn}"${expand}
+} catch {
+    $script:failed += "${fn}"
+    Write-Output "FAILED: ${fn} -- $($_.Exception.Message)"
+}`;
+  }).join('\n\n');
+
+  return psCred() + `
+$script:softRoot = "${e(softRoot)}"
+$script:port     = Get-Random -Minimum 52000 -Maximum 53000
+$script:ruleName = "HVWebCopy-$script:port"
+$script:hostIp   = $null
+
+$listener = [System.Net.HttpListener]::new()
+$listener.Prefixes.Add("http://+:$script:port/")
+$listener.Start()
+
+New-NetFirewallRule -DisplayName $script:ruleName -Direction Inbound -Protocol TCP \`
+    -LocalPort $script:port -Action Allow -ErrorAction SilentlyContinue | Out-Null
+
+$switchName = (Get-VMNetworkAdapter -VMName $VMName | Select-Object -First 1).SwitchName
+$script:hostIp = (Get-VMNetworkAdapter -ManagementOS |
+    Where-Object { $_.SwitchName -eq $switchName } |
+    Select-Object -ExpandProperty IPAddresses |
+    Where-Object { $_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$' -and $_ -notlike '169.254.*' } |
+    Select-Object -First 1)
+if (-not $script:hostIp) {
+    $script:hostIp = (Get-NetIPAddress -AddressFamily IPv4 |
+        Where-Object { ($_.InterfaceAlias -like '*Hyper-V*' -or $_.InterfaceAlias -like '*vEthernet*') \`
+                       -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
+        Select-Object -First 1).IPAddress
+}
+if (-not $script:hostIp) { throw "Cannot detect Hyper-V host IP. Ensure VM uses Internal or Default switch." }
+Write-Output "Host file server: http://$script:hostIp\`:$script:port"
+
+$runspace = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
+$runspace.Open()
+$psCmd = [System.Management.Automation.PowerShell]::Create()
+$psCmd.Runspace = $runspace
+$psCmd.AddScript({
+    param($lsnr, $root)
+    while ($lsnr.IsListening) {
+        try {
+            $ctx  = $lsnr.GetContext()
+            $resp = $ctx.Response
+            $rel  = [System.Uri]::UnescapeDataString(
+                        $ctx.Request.Url.AbsolutePath.TrimStart('/').Replace('/', '\\'))
+            $path = Join-Path $root $rel
+            if (Test-Path $path -PathType Leaf) {
+                $resp.ContentType     = 'application/octet-stream'
+                $resp.ContentLength64 = (Get-Item $path).Length
+                $fs = [System.IO.File]::OpenRead($path)
+                try   { $fs.CopyTo($resp.OutputStream) }
+                finally { $fs.Close() }
+                $resp.StatusCode = 200
+            } elseif (Test-Path $path -PathType Container) {
+                $relDisp  = $rel.TrimStart('\')
+                $parentLi = if ($relDisp) { '<tr><td colspan="2"><a href="../">&#8593; Parent directory</a></td></tr>' } else { '' }
+                $items    = @(Get-ChildItem $path | Sort-Object @{E={if ($_ -is [System.IO.DirectoryInfo]) {0} else {1}}}, Name)
+                $rows     = $items | ForEach-Object {
+                    $isDir = $_ -is [System.IO.DirectoryInfo]
+                    $href  = if ($isDir) { $_.Name + '/' } else { $_.Name }
+                    $size  = if ($isDir) { '' } else { ('{0:N1} MB' -f ($_.Length / 1MB)) }
+                    $ico   = if ($isDir) { '&#128193;' } else { '&#128196;' }
+                    '<tr><td>' + $ico + ' <a href="' + $href + '">' + $_.Name + '</a></td><td style="text-align:right;color:#8b949e;padding-left:24px;white-space:nowrap">' + $size + '</td></tr>'
+                }
+                $t    = if ($relDisp) { $relDisp } else { 'Shared files' }
+                $css  = '*{box-sizing:border-box}body{font-family:-apple-system,sans-serif;background:#0d1117;color:#e6edf3;padding:24px;margin:0}h2{color:#E8820C;margin-bottom:16px;font-size:18px}table{border-collapse:collapse;width:100%;max-width:720px}td{padding:8px 14px;border-bottom:1px solid #30363d;font-size:14px}tr:hover td{background:#161b22}a{color:#58a6ff;text-decoration:none}a:hover{color:#E8820C;text-decoration:underline}.note{color:#8b949e;font-size:12px;margin-top:16px}'
+                $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + $t + '</title><style>' + $css + '</style></head><body><h2>' + $t + '</h2><table>' + $parentLi + ($rows -join '') + '</table><p class="note">Temporary host file server. Available while Copy Local Files step is running.</p></body></html>'
+                $enc  = [System.Text.Encoding]::UTF8.GetBytes($html)
+                $resp.ContentType     = 'text/html; charset=utf-8'
+                $resp.ContentLength64 = $enc.Length
+                $resp.OutputStream.Write($enc, 0, $enc.Length)
+                $resp.StatusCode = 200
+            } else { $resp.StatusCode = 404 }
+        } catch {}
+        finally { try { $ctx.Response.Close() } catch {} }
+    }
+}).AddParameter('lsnr', $listener).AddParameter('root', $script:softRoot) | Out-Null
+$serverHandle = $psCmd.BeginInvoke()
+
+$script:browseUrl = 'http://' + $script:hostIp + ':' + $script:port + '/'
+Write-Output "Browse shared files in VM browser: $script:browseUrl"
+try {
+    $url = $script:browseUrl
+    Invoke-Command -VMName $script:VMName -Credential $script:cred -ScriptBlock {
+        Start-Process $using:url
+    } -ErrorAction SilentlyContinue
+} catch {}
+
+function Copy-ViaHttp([string]$RelPath) {
+    $fileName   = Split-Path $RelPath -Leaf
+    $encodedRel = $RelPath.Replace('\\', '/').Split('/') | ForEach-Object { [Uri]::EscapeDataString($_) }
+    $fileUrl    = "http://$script:hostIp\`:$script:port/$($encodedRel -join '/')"
+    $destPath   = "C:\\Install\\$RelPath"
+    $totalBytes = (Get-Item (Join-Path $script:softRoot $RelPath)).Length
+
+    $dlSess   = New-PSSession -VMName $script:VMName -Credential $script:cred
+    $pollSess = New-PSSession -VMName $script:VMName -Credential $script:cred
+    $dlJob    = $null
+    try {
+        Invoke-Command -Session $pollSess -ScriptBlock {
+            New-Item -ItemType Directory (Split-Path $using:destPath -Parent) -Force | Out-Null
+        }
+        $dlJob = Invoke-Command -Session $dlSess -AsJob -ScriptBlock {
+            (New-Object System.Net.WebClient).DownloadFile($using:fileUrl, $using:destPath)
+        }
+        while ($dlJob.State -eq 'Running') {
+            Start-Sleep -Seconds 2
+            try {
+                $done = Invoke-Command -Session $pollSess -ScriptBlock {
+                    if (Test-Path $using:destPath) { (Get-Item $using:destPath).Length } else { [long]0 }
+                }
+                $doneMB  = [math]::Round($done / 1MB, 1)
+                $totalMB = [math]::Round($totalBytes / 1MB, 1)
+                $pct     = [int]([math]::Min(99, $done * 100 / $totalBytes))
+                Write-Output ("DLPROG:{0}:{1}:{2}:{3}" -f $fileName, $doneMB, $totalMB, $pct)
+            } catch {}
+        }
+        try { Receive-Job $dlJob -Wait -ErrorAction Stop | Out-Null }
+        catch {
+            $msg = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
+            throw "Copy failed for '$fileName': $msg"
+        }
+    } finally {
+        if ($null -ne $dlJob) { Remove-Job $dlJob -Force -ErrorAction SilentlyContinue }
+        Remove-PSSession $dlSess, $pollSess -ErrorAction SilentlyContinue
+    }
+}
+
+$script:failed = @()
+try {
+${perFile}
+    if ($script:failed.Count -gt 0) { throw "Copies failed: $($script:failed -join ', ')" }
+    Write-Output "All files copied. Verify in VM browser: $script:browseUrl"
+    try {
+        $url = $script:browseUrl
+        Invoke-Command -VMName $script:VMName -Credential $script:cred -ScriptBlock {
+            Start-Process $using:url
+        } -ErrorAction SilentlyContinue
+    } catch {}
+    Start-Sleep -Seconds 15
+} finally {
+    $listener.Stop(); $listener.Close()
+    try { $psCmd.Stop() } catch {}
+    $runspace.Close(); $runspace.Dispose()
+    Remove-NetFirewallRule -DisplayName $script:ruleName -ErrorAction SilentlyContinue
+}
+`;
 }
 
 function psInstallLocal() {
@@ -1049,6 +1502,28 @@ function folderAll(folder, sel) {
   App.showPanel('local');
 }
 
+// ── Theme ─────────────────────────────────────────────────────────────────────
+function initTheme() {
+  const saved = localStorage.getItem('theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const theme = saved || (prefersDark ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme', theme);
+  updateThemeBtn(theme);
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+  updateThemeBtn(next);
+}
+
+function updateThemeBtn(theme) {
+  const btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = theme === 'dark' ? '☀' : '🌙';
+}
+
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 async function init() {
   const toArr = d => Array.isArray(d) ? d : [];
@@ -1067,12 +1542,14 @@ async function init() {
       if (st.LocalFiles?.length)  S.localFiles  = st.LocalFiles;
       if (st.WingetPkgs?.length)  S.wingetPkgs  = st.WingetPkgs;
       if (st.InstallMode)  S.installMode  = st.InstallMode;
+      if (st.CopyMethod)   S.copyMethod   = st.CopyMethod;
       if (st.Completed?.length)   S.completed   = st.Completed;
     }),
   ]);
   WS.connect();
   renderSidebar();
   App.showPanel('features');
+  initTheme();
 }
 
 async function reloadVMs() {

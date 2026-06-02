@@ -78,10 +78,24 @@ async function main() {
 
   await page.goto('https://partner.elo.com');
 
-  await new Promise(resolve => {
-    process.stdin.resume();
-    process.stdin.once('data', () => { process.stdin.pause(); resolve(); });
-  });
+  if (process.env.WEB_MODE) {
+    const signalFile = path.join(__dirname, '.elo-refresh-done');
+    console.log('  Waiting for "Done" signal from web UI…');
+    await new Promise(resolve => {
+      const t = setInterval(() => {
+        if (fs.existsSync(signalFile)) {
+          try { fs.unlinkSync(signalFile); } catch {}
+          clearInterval(t);
+          resolve();
+        }
+      }, 1000);
+    });
+  } else {
+    await new Promise(resolve => {
+      process.stdin.resume();
+      process.stdin.once('data', () => { process.stdin.pause(); resolve(); });
+    });
+  }
 
   await browser.close();
 

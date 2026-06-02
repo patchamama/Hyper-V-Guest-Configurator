@@ -222,6 +222,160 @@ function Copy-ToVM([string]$SourcePath, [string]$DestinationPath,
     }
 }
 
+# ── HTTP file server (fast host-to-VM transfer) ───────────────────────────────
+# Serves the softwares\ directory over HTTP so the VM can download directly,
+# bypassing slow PSSession serialisation. Falls back to Copy-ToVM on failure.
+
+$script:_srvListener = $null
+$script:_srvRunspace = $null
+$script:_srvPsCmd    = $null
+$script:_srvRuleName = $null
+$script:_srvPort     = 0
+$script:_srvHostIp   = $null
+
+function Get-HyperVHostIp([string]$VMNameParam) {
+    try {
+        $sw = (Get-VMNetworkAdapter -VMName $VMNameParam | Select-Object -First 1).SwitchName
+        $ip = (Get-VMNetworkAdapter -ManagementOS |
+            Where-Object { $_.SwitchName -eq $sw } |
+            Select-Object -ExpandProperty IPAddresses |
+            Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' -and $_ -notlike '169.254.*' } |
+            Select-Object -First 1)
+        if (-not $ip) {
+            $ip = (Get-NetIPAddress -AddressFamily IPv4 |
+                Where-Object { ($_.InterfaceAlias -like '*Hyper-V*' -or $_.InterfaceAlias -like '*vEthernet*') `
+                               -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
+                Select-Object -First 1).IPAddress
+        }
+        return $ip
+    } catch { return $null }
+}
+
+function Start-HostFileServer([string]$Root) {
+    $p = Get-Random -Minimum 52000 -Maximum 53000
+    $script:_srvPort     = $p
+    $script:_srvRuleName = "HVCopy-$p"
+
+    $listener = [System.Net.HttpListener]::new()
+    $listener.Prefixes.Add("http://+:$p/")
+    $listener.Start()
+    New-NetFirewallRule -DisplayName $script:_srvRuleName -Direction Inbound -Protocol TCP `
+        -LocalPort $p -Action Allow -ErrorAction SilentlyContinue | Out-Null
+
+    $rs    = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
+    $rs.Open()
+    $psCmd = [System.Management.Automation.PowerShell]::Create()
+    $psCmd.Runspace = $rs
+    $null  = $psCmd.AddScript({
+        param($lsnr, $root)
+        while ($lsnr.IsListening) {
+            try {
+                $ctx  = $lsnr.GetContext()
+                $resp = $ctx.Response
+                $rel  = [System.Uri]::UnescapeDataString(
+                            $ctx.Request.Url.AbsolutePath.TrimStart('/').Replace('/', '\'))
+                $path = Join-Path $root $rel
+                if (Test-Path $path -PathType Leaf) {
+                    $resp.ContentType     = 'application/octet-stream'
+                    $resp.ContentLength64 = (Get-Item $path).Length
+                    $fs = [System.IO.File]::OpenRead($path)
+                    try   { $fs.CopyTo($resp.OutputStream) }
+                    finally { $fs.Close() }
+                    $resp.StatusCode = 200
+                } elseif (Test-Path $path -PathType Container) {
+                    $relDisp  = $rel.TrimStart('\')
+                    $parentLi = if ($relDisp) { '<tr><td colspan="2"><a href="../">&uarr; Parent</a></td></tr>' } else { '' }
+                    $items    = @(Get-ChildItem $path | Sort-Object @{E={if ($_ -is [System.IO.DirectoryInfo]) {0} else {1}}}, Name)
+                    $rows     = @($items | ForEach-Object {
+                        $isDir = $_ -is [System.IO.DirectoryInfo]
+                        $href  = if ($isDir) { $_.Name + '/' } else { $_.Name }
+                        $size  = if ($isDir) { '' } else { ('{0:N1} MB' -f ($_.Length / 1MB)) }
+                        '<tr><td><a href="' + $href + '">' + $_.Name + '</a></td>' +
+                        '<td style="text-align:right;color:#8b949e;padding-left:20px">' + $size + '</td></tr>'
+                    })
+                    $t   = if ($relDisp) { $relDisp } else { 'Shared files' }
+                    $css = 'body{font-family:sans-serif;background:#0d1117;color:#e6edf3;padding:20px;margin:0}' +
+                           'h2{color:#E8820C;margin-bottom:12px}' +
+                           'table{border-collapse:collapse;width:100%;max-width:700px}' +
+                           'td{padding:7px 12px;border-bottom:1px solid #30363d}' +
+                           'tr:hover td{background:#161b22}a{color:#58a6ff;text-decoration:none}a:hover{color:#E8820C}'
+                    $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + $t +
+                            '</title><style>' + $css + '</style></head><body><h2>' + $t +
+                            '</h2><table>' + $parentLi + ($rows -join '') + '</table></body></html>'
+                    $enc  = [System.Text.Encoding]::UTF8.GetBytes($html)
+                    $resp.ContentType     = 'text/html; charset=utf-8'
+                    $resp.ContentLength64 = $enc.Length
+                    $resp.OutputStream.Write($enc, 0, $enc.Length)
+                    $resp.StatusCode = 200
+                } else { $resp.StatusCode = 404 }
+            } catch {}
+            finally { try { $ctx.Response.Close() } catch {} }
+        }
+    }).AddParameter('lsnr', $listener).AddParameter('root', $Root)
+    $psCmd.BeginInvoke() | Out-Null
+
+    $script:_srvListener = $listener
+    $script:_srvRunspace = $rs
+    $script:_srvPsCmd    = $psCmd
+}
+
+function Stop-HostFileServer {
+    if ($script:_srvListener) {
+        try { $script:_srvListener.Stop(); $script:_srvListener.Close() } catch {}
+    }
+    if ($script:_srvPsCmd)    { try { $script:_srvPsCmd.Stop() } catch {} }
+    if ($script:_srvRunspace) {
+        try { $script:_srvRunspace.Close(); $script:_srvRunspace.Dispose() } catch {}
+    }
+    if ($script:_srvRuleName) {
+        Remove-NetFirewallRule -DisplayName $script:_srvRuleName -ErrorAction SilentlyContinue
+    }
+    $script:_srvListener = $null; $script:_srvRunspace = $null
+    $script:_srvPsCmd    = $null; $script:_srvRuleName = $null
+}
+
+function Copy-ToVM-ViaHttp([string]$SourcePath, [string]$DestinationPath) {
+    $fileName  = [System.IO.Path]::GetFileName($SourcePath)
+    $relParts  = $SourcePath.Replace($SoftwaresPath, '').TrimStart('\', '/').Replace('\', '/').Split('/') |
+                     ForEach-Object { [Uri]::EscapeDataString($_) }
+    $fileUrl   = 'http://' + $script:_srvHostIp + ':' + $script:_srvPort + '/' + ($relParts -join '/')
+    $totalBytes = (Get-Item $SourcePath).Length
+
+    $dlSession   = New-PSSession -VMName $VMName -Credential $cred
+    $pollSession = New-PSSession -VMName $VMName -Credential $cred
+    $dlJob       = $null
+    try {
+        Invoke-Command -Session $pollSession -ScriptBlock {
+            New-Item -ItemType Directory -Path (Split-Path $using:DestinationPath -Parent) -Force | Out-Null
+        }
+        $dlJob = Invoke-Command -Session $dlSession -AsJob -ScriptBlock {
+            (New-Object System.Net.WebClient).DownloadFile($using:fileUrl, $using:DestinationPath)
+        }
+        while ($dlJob.State -eq 'Running') {
+            Start-Sleep -Seconds 2
+            try {
+                $done    = Invoke-Command -Session $pollSession -ScriptBlock {
+                    if (Test-Path $using:DestinationPath) { (Get-Item $using:DestinationPath).Length } else { [long]0 }
+                }
+                $doneMB  = [math]::Round($done / 1MB, 1)
+                $totalMB = [math]::Round($totalBytes / 1MB, 1)
+                $pct     = if ($totalBytes -gt 0) { [int]([math]::Min(99, $done * 100 / $totalBytes)) } else { 0 }
+                Write-Progress -Id 1 -Activity "HTTP -> VM" `
+                    -Status "$fileName  $doneMB / $totalMB MB" -PercentComplete $pct
+            } catch {}
+        }
+        Write-Progress -Id 1 -Activity "HTTP -> VM" -Completed
+        try { Receive-Job $dlJob -Wait -ErrorAction Stop | Out-Null }
+        catch {
+            $msg = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
+            throw "HTTP copy failed for '${fileName}': $msg"
+        }
+    } finally {
+        if ($null -ne $dlJob) { Remove-Job $dlJob -Force -ErrorAction SilentlyContinue }
+        Remove-PSSession $dlSession, $pollSession -ErrorAction SilentlyContinue
+    }
+}
+
 function Test-UrlExpired([string]$Url) {
     if ($Url -match '[?&]expire=(\d+)') {
         $expireAt = [long]$Matches[1]
@@ -1233,7 +1387,24 @@ if ($enableSoftware) {
 
         Invoke-InVM { New-Item -ItemType Directory -Path "C:\Install" -Force | Out-Null }
 
-        $copySession = New-PSSession -VMName $VMName -Credential $cred
+        # Prefer HTTP transfer (faster); fall back to PSSession if host IP not detected
+        $script:_srvHostIp = Get-HyperVHostIp $VMName
+        $useHttp = $null -ne $script:_srvHostIp
+
+        if ($useHttp) {
+            Write-Host "  Transfer method: HTTP (host IP: $($script:_srvHostIp))" -ForegroundColor Cyan
+            Start-HostFileServer $SoftwaresPath
+            $browseUrl = 'http://' + $script:_srvHostIp + ':' + $script:_srvPort + '/'
+            Write-Host "  Browse in VM browser: $browseUrl" -ForegroundColor Gray
+            try {
+                $url = $browseUrl
+                Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock { Start-Process $using:url } -ErrorAction SilentlyContinue
+            } catch {}
+        } else {
+            Write-Host "  Transfer method: PSSession (HTTP host IP not detected)" -ForegroundColor Yellow
+        }
+
+        $copySession = if (-not $useHttp) { New-PSSession -VMName $VMName -Credential $cred } else { $null }
         try {
             foreach ($relativePath in $state.LocalFiles) {
                 $srcPath = Join-Path $SoftwaresPath $relativePath
@@ -1242,16 +1413,31 @@ if ($enableSoftware) {
                     continue
                 }
                 $relativeWinPath = $relativePath -replace '/', '\'
-                $destPath = "C:\Install\$relativeWinPath"
+                $destPath        = "C:\Install\$relativeWinPath"
                 Write-Host "  Copying $relativePath ..." -NoNewline
-                Copy-ToVM -SourcePath $srcPath -DestinationPath $destPath -Session $copySession
+                if ($useHttp) {
+                    Copy-ToVM-ViaHttp -SourcePath $srcPath -DestinationPath $destPath
+                } else {
+                    Copy-ToVM -SourcePath $srcPath -DestinationPath $destPath -Session $copySession
+                }
                 Write-Host " done." -ForegroundColor Green
                 if ([System.IO.Path]::GetExtension($srcPath).ToLower() -eq ".zip") {
                     Expand-ZipInVM $destPath
                 }
             }
+            if ($useHttp) {
+                Write-Host ""
+                Write-Host "  All files copied. Verify in VM browser: $browseUrl" -ForegroundColor Green
+                try {
+                    $url = $browseUrl
+                    Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock { Start-Process $using:url } -ErrorAction SilentlyContinue
+                } catch {}
+                Write-Host "  Server closes in 15s..." -ForegroundColor Gray
+                Start-Sleep -Seconds 15
+            }
         } finally {
-            Remove-PSSession $copySession -ErrorAction SilentlyContinue
+            if ($null -ne $copySession) { Remove-PSSession $copySession -ErrorAction SilentlyContinue }
+            if ($useHttp)               { Stop-HostFileServer }
         }
         Mark-Done $state "software-copy"
     }

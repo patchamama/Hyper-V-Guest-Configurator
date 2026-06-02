@@ -1,0 +1,210 @@
+========================================================
+  Hyper-V Guest Configurator — Erste Schritte
+========================================================
+
+WAS IST DAS?
+------------
+Zwei Werkzeuge zur automatisierten Einrichtung von Windows-VMs unter Hyper-V.
+Sie installieren WSL2, Docker Desktop, Ollama (KI-Engine), benutzerdefinierte
+Software-Pakete und mehr – ohne manuellen Eingriff in der VM.
+
+  hyperv-configurator.ps1     — Interaktives Kommandozeilen-Tool
+  hyperv-web-configurator.ps1 — Browser-basierte Oberfläche (einfacher)
+
+
+VORAUSSETZUNGEN
+---------------
+Auf dem HOST (dem PC mit Hyper-V):
+  - Windows 10 Pro/Enterprise, Windows 11 oder Windows Server 2016+
+  - Hyper-V aktiviert (Systemsteuerung → Programme → Windows-Features)
+  - Mindestens eine Hyper-V-VM bereits erstellt
+  - PowerShell 5.1 oder höher (auf Windows 10+ vorinstalliert)
+  - Alles als Administrator ausführen
+
+Auf der GAST-VM:
+  - Windows 10/11 oder Windows Server 2019/2022
+  - PowerShell-Remoting aktiviert (standardmäßig meist aktiv)
+  - VM an einem Internen oder Standard-Hyper-V-Switch angeschlossen
+    (KEIN Privater Switch – der Host muss die VM erreichen können)
+
+Optional – nur für ELO-Software-Downloads:
+  - Node.js (wird automatisch per winget installiert falls fehlend)
+  - Gültiges Konto auf partner.elo.com
+
+
+SCHRITT 1 — DATEIEN BEREITSTELLEN
+-----------------------------------
+Den gesamten installator\-Ordner auf den Host-Rechner kopieren.
+Alle Skripte müssen im selben Ordner bleiben.
+
+Empfohlener Speicherort:  C:\ollama-ssl\installator\
+
+
+SCHRITT 2A — WEB-KONFIGURATOR STARTEN (empfohlen für Einsteiger)
+-----------------------------------------------------------------
+1. PowerShell rechtsklicken → "Als Administrator ausführen"
+2. Zum Ordner navigieren:
+     cd C:\ollama-ssl\installator
+3. Falls nötig, Skriptausführung erlauben:
+     Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+4. Starten:
+     .\hyperv-web-configurator.ps1
+5. Ein Browser-Fenster öffnet sich unter http://127.0.0.1:3000
+
+Im Browser die Schritte in der linken Seitenleiste durchführen:
+
+  FEATURES
+    Wählen, was konfiguriert werden soll:
+    - "Full WSL2 + AI Stack"  → WSL2, Docker, Ollama installieren
+    - "Software Packages"     → Dateien aus softwares\ kopieren/installieren
+    - Kombinationen sind ebenfalls verfügbar
+
+  VM
+    Die zu konfigurierende virtuelle Maschine aus der Liste auswählen.
+
+  OLLAMA MODELS (nur bei AI Stack)
+    KI-Modelle zum Herunterladen auswählen (z.B. llama3.1:8b, phi4:latest).
+    Eigene Model-Tags können hinzugefügt werden.
+
+  DOWNLOADS (optional)
+    URLs aus downloads.txt, die die VM direkt aus dem Internet lädt.
+    Abgelaufene ELO-CDN-Tokens können mit "Refresh Tokens" erneuert werden.
+
+  LOCAL FILES (optional)
+    Dateien aus softwares\-Unterordnern, die nach C:\Install auf der VM
+    kopiert werden. Installer (.exe/.msi/.zip) vorher dort ablegen.
+
+  WINGET (optional)
+    Windows-Pakete, die per winget in der VM installiert werden
+    (z.B. Firefox, Git, VS Code, PostgreSQL).
+
+  INSTALL MODE (erscheint bei lokalen Dateien)
+    - Übertragungsmethode: HTTP Download (empfohlen, schneller)
+      oder PSSession Copy (langsamer, immer verfügbar)
+    - Installationsmodus: Lautlos / Interaktiv / Nur kopieren
+
+  CREDENTIALS
+    Benutzername und Passwort des VM-Administratorkontos eingeben.
+
+  EXECUTE
+    Schritte einzeln ausführen oder "Run All" klicken.
+    Das Log unten zeigt die Ausgabe in Echtzeit.
+
+
+SCHRITT 2B — CLI-KONFIGURATOR STARTEN (für erfahrene Nutzer)
+------------------------------------------------------------
+1. PowerShell rechtsklicken → "Als Administrator ausführen"
+2. Zum Ordner navigieren:
+     cd C:\ollama-ssl\installator
+3. Skriptausführung erlauben:
+     Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+4. Starten:
+     .\hyperv-configurator.ps1
+
+Das Skript verwendet Pfeiltasten-Menüs – mit OBEN/UNTEN navigieren,
+mit LEERTASTE (Mehrfachauswahl) oder ENTER (Einzelauswahl) bestätigen.
+A drücken zum Alles auswählen.
+
+Den interaktiven Anweisungen folgen:
+  - Bei unterbrochener vorheriger Sitzung: Fortsetzen oder neu starten
+  - Features → VM → Ollama-Modelle (falls zutreffend) auswählen
+  - Download-URLs, lokale Dateien, Winget-Pakete, Installationsmodus wählen
+  - VM-Anmeldedaten eingeben wenn abgefragt
+  - Das Skript führt alle Schritte automatisch aus und setzt fort wenn nötig
+
+
+KONFIGURATIONSDATEIEN
+----------------------
+downloads.txt
+  Liste von URLs zum direkten Herunterladen in der VM.
+  Format:  Anzeigename | https://url-zur-datei
+  ELO-CDN-URLs enthalten token=... und expire=...
+  Bei Ablauf ausführen:  node refresh-elo-tokens.js
+
+ollama-models.json
+  Liste der Ollama-Modelle im Modell-Auswahlmenü.
+  Format:  [{"tag": "llama3.1:8b", "desc": "Beschreibung"}]
+  Tags finden unter https://ollama.com/library
+
+softwares\
+  Installer-Dateien in Unterordnern ablegen.
+  Beispiel:
+    softwares\ELO\serversetup.zip
+    softwares\PostgreSQL\postgresql-18.exe
+
+
+ÜBERTRAGUNGSMETHODEN (LOKALE DATEIEN)
+--------------------------------------
+HTTP Download (Standard – empfohlen):
+  Der Host startet einen temporären HTTP-Server. Die VM lädt Dateien
+  direkt darüber per Hyper-V-Virtual-Switch.
+  Geschwindigkeit: ~500 MB/s bis 1 GB/s
+  Voraussetzung: Interner oder Standard-Switch (kein Privater).
+  Öffnet einen Browser in der VM zur Überprüfung der Dateien.
+
+PSSession Copy (Fallback):
+  Dateien werden in 8-MB-Paketen per PowerShell-Remoting übertragen.
+  Geschwindigkeit: ~50-100 MB/s
+  Immer verfügbar, keine Netzwerkkonfiguration erforderlich.
+
+
+NACH UNTERBRECHUNG FORTSETZEN
+------------------------------
+Beide Tools speichern den Fortschritt in C:\ollama-ssl\deploy-state.json.
+Bei Unterbrechung (Neustart, Netzwerkausfall usw.) einfach erneut starten.
+Die CLI-Version fragt, ob fortgesetzt oder neu begonnen werden soll.
+Die Web-Version zeigt bereits abgeschlossene Schritte mit grünem Häkchen.
+"Reset" (Web) löscht den gespeicherten Zustand vollständig.
+
+
+ELO TOKEN-ERNEUERUNG
+----------------------
+ELO-CDN-Download-URLs laufen nach wenigen Stunden ab.
+Bei "abgelaufener Token"-Warnungen:
+
+  Web-Version:
+    Downloads → "Refresh Tokens" klicken.
+    Ein Chromium-Browser öffnet sich. Bei partner.elo.com einloggen,
+    jeden Download anklicken, dann "Done" klicken.
+
+  CLI-Version:
+    Das Skript erkennt den Ablauf automatisch und startet:
+      node refresh-elo-tokens.js
+    Bei partner.elo.com einloggen, Downloads anklicken,
+    ENTER im PowerShell-Fenster drücken.
+
+
+FEHLERBEHEBUNG
+--------------
+"VM nicht gefunden" oder leere VM-Liste
+  → Als Administrator ausführen. Das Hyper-V-Modul benötigt Admin-Rechte.
+
+"Verbindung zur VM fehlgeschlagen"
+  → Prüfen ob VM läuft und keinen Privaten Switch verwendet.
+  → Zugangsdaten prüfen (Domäne\Benutzer oder nur Benutzer für lokale Konten).
+
+"HTTP host IP not detected" / "Hyper-V Host-IP nicht erkennbar"
+  → VM verwendet Privaten Switch. Auf Internen oder Standard wechseln.
+  → CLI verwendet automatisch PSSession als Fallback.
+
+ELO-Download schlägt mit WebException fehl
+  → Token abgelaufen. Erneuerungsschritte oben folgen.
+
+"npm install failed" oder "playwright not found"
+  → Node.js muss installiert sein. Der Web-Konfigurator installiert es
+    automatisch per winget. Für CLI manuell installieren:
+    https://nodejs.org
+
+Firewall-Regel nach Absturz verblieben
+  → Ausführen:  Get-NetFirewallRule -DisplayName "HVCopy-*" | Remove-NetFirewallRule
+  → Oder:       Get-NetFirewallRule -DisplayName "HVWebCopy-*" | Remove-NetFirewallRule
+
+
+WAS WIRD IN DER VM ERSTELLT
+----------------------------
+  C:\Install\           Alle kopierten/heruntergeladenen Installer-Dateien
+  C:\ollama-ssl\        Docker Compose und Caddyfile (KI-Stack)
+  WSL2-Kernel           Bei ausgewähltem WSL2-Pipeline
+  Docker Desktop        Installiert per Chocolatey
+  Ollama-Container      Laufen per Docker Compose auf Port 11443
+  Caddy Reverse Proxy   HTTPS auf Port 443
