@@ -1160,10 +1160,6 @@ function buildSteps() {
   if (S.wingetPkgs.length) {
     steps.push({ id: 'software-install-winget', label: 'Install Winget Packages', sub: `${S.wingetPkgs.length} package(s)`, script: psWinget() });
   }
-  if (S.tools.length) {
-    const toolNames = S.tools.map(id => tools.find(t => t.id === id)?.name || id).join(', ');
-    steps.push({ id: 'tools-install', label: 'Install Tools', sub: toolNames, script: psTools() });
-  }
   if (hasWSLPrep() || hasWSL()) {
     steps.push({ id: 'nested-virt', label: 'Enable Nested Virtualization', sub: 'Required for WSL2 inside VM', script: psNestedVirt() });
     steps.push({ id: 'wsl-features', label: 'Enable WSL Features in VM', sub: 'DISM VirtualMachinePlatform + WSL', script: psWSLFeatures() });
@@ -1172,6 +1168,10 @@ function buildSteps() {
     steps.push({ id: 'wsl-install', label: 'Install WSL2 Kernel', sub: 'Downloads and installs WSL2 MSI inside VM', script: psWSLInstall() });
     steps.push({ id: 'docker-install', label: 'Install Docker Desktop', sub: 'Chocolatey + Docker Desktop inside VM', script: psDockerInstall(), doneMsg: `Switch to VM "${S.vmName}": open Docker Desktop from the desktop. If you have not restarted since enabling WSL features, restart the VM first, then open Docker Desktop.` });
     steps.push({ id: 'compose-up', label: 'Deploy Ollama + Caddy', sub: `Models: ${S.models.join(', ') || 'none'}`, composeprog: true, script: psComposeUp(), warn: 'Docker Desktop must be running inside the VM before this step.' });
+  }
+  if (S.tools.length) {
+    const toolNames = S.tools.map(id => tools.find(t => t.id === id)?.name || id).join(', ');
+    steps.push({ id: 'tools-install', label: 'Install Tools', sub: toolNames, script: psTools() });
   }
   return steps;
 }
