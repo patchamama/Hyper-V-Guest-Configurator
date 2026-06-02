@@ -1,0 +1,17 @@
+[
+  {
+    "id": "elo_log_viewer",
+    "name": "ELO Log Viewer",
+    "description": "ELO server log viewer and analyzer",
+    "repo": "https://github.com/patchamama/elo_log_viewer",
+    "folder": "elo_log_viewer",
+    "installTo": "C:\\tools",
+    "requires": {
+      "winget": [
+        { "id": "Git.Git",              "name": "Git"         },
+        { "id": "Python.Python.3.12",   "name": "Python 3.12" }
+      ]
+    },
+    "runAfterClone": ["deploy.bat", "start.bat"]
+  }
+]

@@ -293,13 +293,13 @@ const WS = {
 // ── App state ────────────────────────────────────────────────────────────────
 const S = {
   vmName: '', features: [], models: [], downloadUrls: [],
-  localFiles: [], wingetPkgs: [], installMode: 'copy-only',
+  localFiles: [], wingetPkgs: [], tools: [], installMode: 'copy-only',
   vmUser: '', vmPass: '', completed: [],
   copyMethod: 'http',
   copiedFiles: [],
 };
 
-let vms = [], downloads = [], softwares = [], winget = [], models = [];
+let vms = [], downloads = [], softwares = [], winget = [], models = [], tools = [];
 let scriptDir = 'C:\\ollama-ssl\\installator';
 let hostInfo  = null;
 
@@ -331,6 +331,7 @@ const NAV = [
   { id: 'downloads',   label: 'Downloads',      sec: null        },
   { id: 'local',       label: 'Local Files',    sec: null        },
   { id: 'winget',      label: 'Winget',         sec: null        },
+  { id: 'tools',       label: 'Tools',          sec: null        },
   { id: 'installmode', label: 'Install Mode',   sec: null        },
   { id: 'execute',     label: 'Execute',        sec: 'Run'       },
   { id: 'help',        label: 'Help',           sec: 'Help'      },
@@ -360,6 +361,7 @@ function isDone(id) {
     downloads:   S.downloadUrls.length > 0,
     local:       S.localFiles.length > 0,
     winget:      S.wingetPkgs.length > 0,
+    tools:       S.tools.length > 0 || tools.length === 0,
     installmode: S.localFiles.length > 0,
     credentials: !!S.vmUser,
     execute:     false,
@@ -381,14 +383,14 @@ const App = {
   async resetState() {
     if (!confirm('Reset all progress and selections?')) return;
     await fetch('/api/state', { method: 'DELETE' });
-    Object.assign(S, { vmName:'', features:[], models:[], downloadUrls:[], localFiles:[], wingetPkgs:[], installMode:'copy-only', vmUser:'', vmPass:'', completed:[], copyMethod:'http', copiedFiles:[] });
+    Object.assign(S, { vmName:'', features:[], models:[], downloadUrls:[], localFiles:[], wingetPkgs:[], tools:[], installMode:'copy-only', vmUser:'', vmPass:'', completed:[], copyMethod:'http', copiedFiles:[] });
     renderSidebar();
     this.showPanel('features');
   },
   async saveState() {
     await fetch('/api/state', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ VMName:S.vmName, Features:S.features, Models:S.models, DownloadUrls:S.downloadUrls, LocalFiles:S.localFiles, WingetPkgs:S.wingetPkgs, InstallMode:S.installMode, Completed:S.completed, CopyMethod:S.copyMethod, CopiedFiles:S.copiedFiles }),
+      body: JSON.stringify({ VMName:S.vmName, Features:S.features, Models:S.models, DownloadUrls:S.downloadUrls, LocalFiles:S.localFiles, WingetPkgs:S.wingetPkgs, Tools:S.tools, InstallMode:S.installMode, Completed:S.completed, CopyMethod:S.copyMethod, CopiedFiles:S.copiedFiles }),
     });
   },
 };
@@ -572,7 +574,7 @@ const panels = {
         <div><div class="opt-name">${p.name}</div><div class="opt-sub">${p.id}</div></div>
       </div>`;
     }).join('');
-    const next = S.localFiles.length ? 'installmode' : 'execute';
+    const next = 'tools';
     return `<div class="card">
       <h2>Winget Packages</h2>
       <p class="sub">Installed directly on the guest via Windows Package Manager.</p>
@@ -584,11 +586,53 @@ const panels = {
     </div>`;
   },
 
+  // Tools
+  tools() {
+    if (!tools.length) return `<div class="card"><h2>Tools</h2>
+      <p class="sub">No tools defined — add entries to <code>tools.json</code> in the project root.</p>
+      <div class="brow"><button class="btn btn-o" onclick="App.showPanel('winget')">← Back</button>
+      <button class="btn btn-p" onclick="App.showPanel('installmode')">Continue →</button></div></div>`;
+
+    const opts = tools.map(t => {
+      const sel  = S.tools.includes(t.id);
+      const deps = (t.requires?.winget || []).map(d => d.name).join(', ');
+      const repoName = t.repo.replace('https://github.com/', '');
+      return `<div class="opt ${sel?'sel':''}" onclick="toggleArr(S.tools,'${t.id}');App.showPanel('tools')">
+        <div class="chk">${sel?'✓':''}</div>
+        <div style="min-width:0">
+          <div class="opt-name">${t.name}</div>
+          <div class="opt-sub">${t.description || ''}</div>
+          <div class="opt-sub" style="margin-top:3px">
+            <a href="${t.repo}" target="_blank" style="color:var(--accent);text-decoration:none" onclick="event.stopPropagation()">⎋ ${repoName}</a>
+          </div>
+          ${deps ? `<div class="opt-sub" style="margin-top:2px">Requires: ${deps}</div>` : ''}
+          <div class="opt-sub" style="margin-top:2px">Installs to: <code>${(t.installTo||'C:\\tools')}\\${t.folder||t.id}</code></div>
+        </div>
+      </div>`;
+    }).join('');
+
+    const tags = S.tools.map(id => {
+      const t = tools.find(x => x.id === id);
+      return t ? `<span class="tag">${t.name}<span class="x" onclick="toggleArr(S.tools,'${id}');App.showPanel('tools')">✕</span></span>` : '';
+    }).join('');
+
+    return `<div class="card">
+      <h2>Tools</h2>
+      <p class="sub">Git-based tools cloned to the VM and set up automatically. Dependencies are installed via winget.</p>
+      <div class="grid">${opts}</div>
+      ${tags ? `<div style="margin-top:12px">${tags}</div>` : ''}
+      <div class="brow">
+        <button class="btn btn-o" onclick="App.showPanel('winget')">← Back</button>
+        <button class="btn btn-p" onclick="App.showPanel('installmode')">Continue →</button>
+      </div>
+    </div>`;
+  },
+
   // Install mode
   installmode() {
     if (!S.localFiles.length) return `<div class="card"><h2>Installation Mode</h2>
       <p class="sub">No local files selected — not applicable.</p>
-      <div class="brow"><button class="btn btn-o" onclick="App.showPanel('winget')">← Back</button>
+      <div class="brow"><button class="btn btn-o" onclick="App.showPanel('tools')">← Back</button>
       <button class="btn btn-p" onclick="App.showPanel('execute')">Continue →</button></div></div>`;
 
     const selHttp = S.copyMethod === 'http' ? 'sel' : '';
@@ -627,7 +671,7 @@ const panels = {
       <p class="sub">How should local installers be run on the guest VM?</p>
       <div class="grid">${opts}</div>
       <div class="brow">
-        <button class="btn btn-o" onclick="App.showPanel('winget')">← Back</button>
+        <button class="btn btn-o" onclick="App.showPanel('tools')">← Back</button>
         <button class="btn btn-p" onclick="App.showPanel('execute')">Continue →</button>
       </div>
     </div>`;
@@ -1116,6 +1160,10 @@ function buildSteps() {
   if (S.wingetPkgs.length) {
     steps.push({ id: 'software-install-winget', label: 'Install Winget Packages', sub: `${S.wingetPkgs.length} package(s)`, script: psWinget() });
   }
+  if (S.tools.length) {
+    const toolNames = S.tools.map(id => tools.find(t => t.id === id)?.name || id).join(', ');
+    steps.push({ id: 'tools-install', label: 'Install Tools', sub: toolNames, script: psTools() });
+  }
   if (hasWSLPrep() || hasWSL()) {
     steps.push({ id: 'nested-virt', label: 'Enable Nested Virtualization', sub: 'Required for WSL2 inside VM', script: psNestedVirt() });
     steps.push({ id: 'wsl-features', label: 'Enable WSL Features in VM', sub: 'DISM VirtualMachinePlatform + WSL', script: psWSLFeatures() });
@@ -1482,6 +1530,54 @@ Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
 exit 0`;
 }
 
+function psTools() {
+  const selected = tools.filter(t => S.tools.includes(t.id));
+  const blocks = selected.map(t => {
+    const installTo = (t.installTo || 'C:\\tools').replace(/\//g, '\\');
+    const folder    = `${installTo}\\${t.folder || t.id}`;
+    const deps      = (t.requires?.winget || []);
+    const scripts   = (t.runAfterClone || []);
+    const depLines  = deps.map(d =>
+      `    Write-Output "Dependency: ${e(d.name)}"\n` +
+      `    winget install --id "${e(d.id)}" --source winget --exact --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null`
+    ).join('\n');
+    const scriptLines = scripts.map(s =>
+      `    if (-not $ranScript -and (Test-Path "${e(folder)}\\${s}")) {\n` +
+      `        Write-Output "Running ${s}..."\n` +
+      `        Push-Location "${e(folder)}"; & ".\\${s}"; Pop-Location; $ranScript = $true\n` +
+      `    }`
+    ).join('\n');
+    return (
+      `    Write-Output ""\n` +
+      `    Write-Output ">>> Tool: ${e(t.name)}"\n` +
+      (depLines ? depLines + '\n' : '') +
+      `    $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH","User")\n` +
+      `    if (Test-Path "${e(folder)}") {\n` +
+      `        Write-Output "Updating ${e(t.name)}..."\n` +
+      `        git -C "${e(folder)}" pull\n` +
+      `    } else {\n` +
+      `        Write-Output "Cloning ${e(t.name)}..."\n` +
+      `        New-Item -ItemType Directory -Path "${e(installTo)}" -Force | Out-Null\n` +
+      `        git clone "${t.repo}" "${e(folder)}"\n` +
+      `    }\n` +
+      `    $ranScript = $false\n` +
+      (scriptLines ? scriptLines + '\n' : '') +
+      `    if (-not $ranScript) { Write-Output "No setup script found (checked: ${scripts.join(', ') || 'none'})" }\n` +
+      `    Write-Output "Done: ${e(t.name)}"`
+    );
+  }).join('\n');
+
+  return psCred() + `
+Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
+    chcp 65001 | Out-Null
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+${blocks}
+    Write-Output ""
+    Write-Output "All tools installed."
+}`;
+}
+
 function psNestedVirt() {
   return `$VMName = "${e(S.vmName)}"
 Write-Output "Stopping VM to enable nested virtualization..."
@@ -1836,6 +1932,7 @@ async function init() {
     fetch('/api/softwares').then(r=>r.json()).then(d=>{ softwares=toArr(d); }).catch(()=>{}),
     fetch('/api/winget').then(r=>r.json()).then(d=>{ winget=toArr(d); }).catch(()=>{}),
     fetch('/api/models').then(r=>r.json()).then(d=>{ models=toArr(d); }).catch(()=>{}),
+    fetch('/api/tools').then(r=>r.json()).then(d=>{ tools=toArr(d); }).catch(()=>{}),
     fetch('/api/state').then(r=>r.json()).then(st=>{
       if (st.VMName)       S.vmName       = st.VMName;
       if (st.Features?.length)    S.features    = st.Features;
@@ -1847,6 +1944,7 @@ async function init() {
       if (st.CopyMethod)   S.copyMethod   = st.CopyMethod;
       if (st.Completed?.length)   S.completed   = st.Completed;
       if (st.CopiedFiles?.length) S.copiedFiles = st.CopiedFiles;
+      if (st.Tools?.length)       S.tools       = st.Tools;
     }),
   ]);
   if (!S.vmName) {

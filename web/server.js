@@ -41,6 +41,7 @@ function formatSize(bytes) {
 const DOWNLOADS    = path.join(SCRIPT_DIR, 'downloads.txt');
 const SOFTWARES    = path.join(SCRIPT_DIR, 'softwares');
 const MODELS_FILE  = path.join(SCRIPT_DIR, 'ollama-models.json');
+const TOOLS_FILE   = path.join(SCRIPT_DIR, 'tools.json');
 
 function loadModels() {
   try {
@@ -173,6 +174,13 @@ app.get('/api/config', (req, res) => res.json({ scriptDir: toWinPath(SCRIPT_DIR)
 app.get('/api/winget', (req, res) => res.json(WINGET));
 // Always reads from disk so edits to ollama-models.json take effect without restart
 app.get('/api/models', (req, res) => res.json(loadModels()));
+// Always reads from disk so edits to tools.json take effect without restart
+app.get('/api/tools', (req, res) => {
+  try {
+    if (!fs.existsSync(TOOLS_FILE)) return res.json([]);
+    res.json(JSON.parse(fs.readFileSync(TOOLS_FILE, 'utf8')));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 app.get('/api/host-info', (req, res) => {
   const ip = getHostIP();
