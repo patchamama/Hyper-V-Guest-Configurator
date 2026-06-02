@@ -229,7 +229,8 @@ const WS = {
   },
   handle(msg) {
     if (msg.type === 'out') {
-      if (!/^DLPROG:/.test(msg.text.trim())) Log.append(msg.text);
+      const _t = msg.text.trim();
+      if (!_t.startsWith('DLPROG:') && !_t.startsWith('TASK:')) Log.append(msg.text);
       try { Exec.outHook?.(msg.text); } catch (e) { /* ignore hook errors */ }
     }
     else if (msg.type === 'err')  Log.err(msg.text);
@@ -613,6 +614,7 @@ const panels = {
           ${s.warn && !done ? `<div class="esub" style="color:var(--yellow);margin-top:3px">⚠ ${s.warn}</div>` : ''}
           <div class="pbar-wrap" id="pb-${s.id}" style="display:none"><div class="pbar" style="width:0%"></div></div>
           ${s.dlprog && !done ? `<div id="dlrow-${s.id}" style="display:none;margin-top:8px;max-width:440px"></div>` : ''}
+          ${s.composeprog && !done ? `<div id="subtask-${s.id}" style="display:none;font-size:11px;margin-top:5px;font-style:italic;transition:color .3s"></div>` : ''}
         </div>
         <span class="badge ${done?'b-ok':'b-pen'}" id="b-${s.id}">${done?'Done':'Pending'}</span>
         <button class="btn btn-p" id="btn-${s.id}" onclick="Exec.runStep('${s.id}')" ${done?'style="display:none"':''}>Run</button>
@@ -856,6 +858,33 @@ const Exec = {
           }
         }
       };
+    } else if (step.composeprog) {
+      const wrap   = document.getElementById(`pb-${id}`);
+      const taskEl = document.getElementById(`subtask-${id}`);
+      if (wrap)   wrap.style.display   = '';
+      if (taskEl) taskEl.style.display = '';
+      const totalModels = S.models.length;
+      let doneModels    = 0;
+      this.outHook = text => {
+        for (const line of text.split('\n')) {
+          const l = line.trim();
+          if (!l.startsWith('TASK:')) continue;
+          const task = l.slice(5);
+          if (taskEl) {
+            taskEl.textContent = task;
+            const done = task.includes(' ready') || task === 'Deployment complete' || task === 'Containers started' || task === 'Docker daemon ready';
+            taskEl.style.color = done ? 'var(--green)' : 'var(--accent)';
+          }
+          const bar = wrap?.querySelector('.pbar');
+          if (bar) {
+            if (task.includes(' ready (') && totalModels > 0) {
+              doneModels++;
+              bar.style.width = Math.min(99, Math.round(doneModels / totalModels * 100)) + '%';
+            }
+            if (task === 'Deployment complete') bar.style.width = '100%';
+          }
+        }
+      };
     } else if (step.progress) {
       const { total, pattern } = step.progress;
       const wrap = document.getElementById(`pb-${id}`);
@@ -999,7 +1028,7 @@ function buildSteps() {
   if (hasWSL()) {
     steps.push({ id: 'wsl-install', label: 'Install WSL2 Kernel', sub: 'Downloads and installs WSL2 MSI inside VM', script: psWSLInstall() });
     steps.push({ id: 'docker-install', label: 'Install Docker Desktop', sub: 'Chocolatey + Docker Desktop inside VM', script: psDockerInstall() });
-    steps.push({ id: 'compose-up', label: 'Deploy Ollama + Caddy', sub: `Models: ${S.models.join(', ') || 'none'}`, script: psComposeUp(), warn: 'Docker Desktop must be running inside the VM before this step.' });
+    steps.push({ id: 'compose-up', label: 'Deploy Ollama + Caddy', sub: `Models: ${S.models.join(', ') || 'none'}`, composeprog: true, script: psComposeUp(), warn: 'Docker Desktop must be running inside the VM before this step.' });
   }
   return steps;
 }
@@ -1419,25 +1448,28 @@ Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
 }
 
 function psComposeUp() {
-  const modelPulls = S.models.map(m =>
-    `Write-Output "Pulling model ${m}..."; docker exec ollama ollama pull ${m}; Write-Output "Pulled: ${m}";`
-  ).join('\n    ');
+  const total = S.models.length;
+  const modelPulls = S.models.map((m, i) => {
+    const n = i + 1;
+    return `Write-Output "TASK:Pulling model: ${m} (${n}/${total})"\n    docker exec ollama ollama pull ${m} 2>&1\n    if ($LASTEXITCODE -ne 0) { Write-Output "  [WARN] pull exited $LASTEXITCODE" }\n    Write-Output "TASK:Model ${m} ready (${n}/${total})"`;
+  }).join('\n    ');
   return psCred() + `
-Write-Output "Deploying Ollama + Caddy..."
+Write-Output "TASK:Starting Docker Desktop"
 Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
-    # Start Docker Desktop and wait for daemon (up to 3 minutes)
-    Write-Output "Starting Docker Desktop..."
     Start-Process "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe" -ErrorAction SilentlyContinue
-    $until = (Get-Date).AddSeconds(180)
-    $ready = $false
+    $until   = (Get-Date).AddSeconds(180)
+    $ready   = $false
+    $attempt = 0
     while ((Get-Date) -lt $until) {
         docker info 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) { Write-Output "Docker daemon ready."; $ready = $true; break }
-        Write-Output "Waiting for Docker daemon..."
+        if ($LASTEXITCODE -eq 0) { Write-Output "TASK:Docker daemon ready"; $ready = $true; break }
+        $attempt++
+        Write-Output "TASK:Waiting for Docker daemon (attempt $attempt)"
         Start-Sleep 10
     }
     if (-not $ready) { throw "Docker daemon did not become ready within 180s" }
 
+    Write-Output "TASK:Writing docker-compose.yml"
     New-Item -ItemType Directory -Path "C:\\ollama-ssl" -Force | Out-Null
     Set-Content "C:\\ollama-ssl\\docker-compose.yml" @'
 services:
@@ -1456,10 +1488,11 @@ volumes:
   caddy_data:
   caddy_config:
 '@
+    Write-Output "TASK:Starting containers (docker compose up)"
     docker compose -f "C:\\ollama-ssl\\docker-compose.yml" up -d --force-recreate
-    Write-Output "Containers started."
+    Write-Output "TASK:Containers started"
     ${modelPulls}
-    Write-Output "Deployment complete."
+    Write-Output "TASK:Deployment complete"
 }`;
 }
 
