@@ -438,15 +438,18 @@ function Enable-VMFullExposure {
     Write-Host "  +--------------------------------------------------+" -ForegroundColor Green
 
     # Persist exposure state for the web configurator UI
-    $expState = [PSCustomObject]@{
-        vmName    = $VM
-        vmIp      = $VmIp
-        hostIp    = if ($hostExtIp) { $hostExtIp } else { $displayIp }
-        rdp       = $EnableRDP
-        ports     = @($vmPorts)
-        timestamp = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-    } | ConvertTo-Json -Compress
-    try { $expState | Out-File "C:\ollama-ssl\vm-exposure.json" -Encoding utf8 } catch {}
+    try {
+        $expJson = [ordered]@{
+            vmName    = "$VM"
+            vmIp      = "$VmIp"
+            hostIp    = "$(if ($hostExtIp) { $hostExtIp } else { $displayIp })"
+            rdp       = [bool]$EnableRDP
+            ports     = @($vmPorts | ForEach-Object { [int]$_ })
+            timestamp = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+        } | ConvertTo-Json -Compress
+        $utf8 = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText("C:\ollama-ssl\vm-exposure.json", $expJson, $utf8)
+    } catch { Write-Host "  [WARN] Could not save exposure state: $_" -ForegroundColor Yellow }
 }
 
 # ── Connectivity probe test ───────────────────────────────────────────────────

@@ -222,6 +222,26 @@ input:focus{border-color:var(--accent)}
   <div class="logbody" id="logbody"></div>
 </footer>
 
+<!-- Port Config modal -->
+<div class="notes-modal" id="portCfgModal">
+  <div class="notes-box" style="width:700px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong style="font-size:15px">&#9998; Port Service Configuration</strong>
+      <button class="hbtn" onclick="PortCfg.close()">&#x2715;</button>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-top:4px">
+      Provide a JSON object mapping port numbers to service descriptors. Each entry can be an object <code>&#123; label, url, note &#125;</code> or an array of such objects.
+      Leave empty <code>&#123;&#125;</code> to use built-in defaults. Example:<br>
+      <code style="font-size:11px">&#123; "8080": &#123; "label": "My App", "url": "http://&#123;host&#125;:8080/" &#125; &#125;</code>
+    </p>
+    <textarea id="portCfgText" style="min-height:300px;font-family:var(--mono);font-size:12px"></textarea>
+    <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
+      <button class="hbtn" style="color:var(--red)" onclick="PortCfg.reset()">Reset to defaults</button>
+      <button class="btn btn-p" onclick="PortCfg.save()">Save &amp; Apply</button>
+    </div>
+  </div>
+</div>
+
 <!-- Notes modal -->
 <div class="notes-modal" id="notesModal">
   <div class="notes-box">
@@ -293,7 +313,7 @@ const WS = {
 // ── App state ────────────────────────────────────────────────────────────────
 const S = {
   vmName: '', features: [], models: [], downloadUrls: [],
-  localFiles: [], wingetPkgs: [], tools: [], installMode: 'copy-only',
+  localFiles: [], wingetPkgs: [], wingetConfig: {}, tools: [], installMode: 'copy-only',
   vmUser: '', vmPass: '', completed: [],
   copyMethod: 'http',
   copiedFiles: [],
@@ -335,6 +355,8 @@ const NAV = [
   { id: 'installmode', label: 'Install Mode',   sec: null        },
   { id: 'execute',     label: 'Execute',        sec: 'Run'       },
   { id: 'vmexposure',  label: 'VM Exposure',    sec: 'Status'    },
+  { id: 'dbadmin',     label: 'DB Admin',       sec: null        },
+  { id: 'vmtools',     label: 'VM Tools',       sec: null        },
   { id: 'help',        label: 'Help',           sec: 'Help'      },
 ];
 
@@ -380,19 +402,21 @@ const App = {
     p.innerHTML = panels[id]?.() || '<div class="card"><h2>Coming soon</h2></div>';
     document.getElementById('main').appendChild(p);
     if (id === 'execute')    Exec.onPanelShow();
-    if (id === 'vmexposure') App.loadVMExposure();
+    if (id === 'vmexposure') { App.loadPortServices().then(() => App.loadVMExposure()); }
+    if (id === 'dbadmin')    DB.init();
+    if (id === 'vmtools')    VMTools.initPanel();
   },
   async resetState() {
     if (!confirm('Reset all progress and selections?')) return;
     await fetch('/api/state', { method: 'DELETE' });
-    Object.assign(S, { vmName:'', features:[], models:[], downloadUrls:[], localFiles:[], wingetPkgs:[], tools:[], installMode:'copy-only', vmUser:'', vmPass:'', completed:[], copyMethod:'http', copiedFiles:[] });
+    Object.assign(S, { vmName:'', features:[], models:[], downloadUrls:[], localFiles:[], wingetPkgs:[], wingetConfig:{}, tools:[], installMode:'copy-only', vmUser:'', vmPass:'', completed:[], copyMethod:'http', copiedFiles:[] });
     renderSidebar();
     this.showPanel('features');
   },
   async saveState() {
     await fetch('/api/state', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ VMName:S.vmName, Features:S.features, Models:S.models, DownloadUrls:S.downloadUrls, LocalFiles:S.localFiles, WingetPkgs:S.wingetPkgs, Tools:S.tools, InstallMode:S.installMode, Completed:S.completed, CopyMethod:S.copyMethod, CopiedFiles:S.copiedFiles }),
+      body: JSON.stringify({ VMName:S.vmName, Features:S.features, Models:S.models, DownloadUrls:S.downloadUrls, LocalFiles:S.localFiles, WingetPkgs:S.wingetPkgs, WingetConfig:S.wingetConfig, Tools:S.tools, InstallMode:S.installMode, Completed:S.completed, CopyMethod:S.copyMethod, CopiedFiles:S.copiedFiles }),
     });
   },
   async loadVMExposure() {
@@ -403,26 +427,473 @@ const App = {
       el.innerHTML = `<div class="alert al-info" style="margin-top:8px">No active VM exposure found. Run <em>Full VM exposure</em> from <code>hyperv-web-configurator.ps1</code> or <code>hyperv-configurator.ps1</code> to populate this panel.</div>`;
       return;
     }
-    const hostIp = d.hostIp || 'host-ip';
-    const vmIp   = d.vmIp   || 'vm-ip';
-    const webPorts = (d.ports || []).filter(p => p !== 3389);
-    const rdpRow = d.rdp ? `<tr><td style="padding:5px 10px 5px 0;color:var(--muted)">RDP</td><td style="padding:5px 0;font-family:var(--mono);font-size:12px"><a href="#" onclick="navigator.clipboard.writeText('${hostIp}');return false" title="Copy host IP" style="color:var(--accent)">${hostIp}:3389</a>&nbsp;<span style="color:var(--muted);font-size:11px">mstsc /v:${hostIp}:3389</span></td></tr>` : '';
-    const webRows = webPorts.slice(0, 12).map(p =>
-      `<tr><td style="padding:5px 10px 5px 0;color:var(--muted)">:${p}</td><td style="padding:5px 0;font-family:var(--mono);font-size:12px"><a href="http://${hostIp}:${p}/" target="_blank" style="color:var(--accent)">http://${hostIp}:${p}/</a>&nbsp;<span style="color:var(--muted);font-size:11px">via host IP</span></td></tr>`
-    ).join('');
-    const moreRow = webPorts.length > 12 ? `<tr><td colspan="2" style="color:var(--muted);font-size:11px;padding-top:4px">...and ${webPorts.length - 12} more port(s)</td></tr>` : '';
+    const h = d.hostIp || 'host-ip';
+    const v = d.vmIp   || 'vm-ip';
+    const archiveName = (document.getElementById('eloArchiveName')?.value || 'ix-Repository1').trim() || 'ix-Repository1';
+
+    // Port → service/link descriptors. Each entry: { label, url, note }
+    // ELO-specific ports use full deep URLs; generic ports use simple links.
+    const SERVICE_MAP = {
+      21:   [{ label:'FTP',               url:`ftp://${h}:21/` }],
+      22:   [{ label:'SSH',               url:null, note:`ssh user@${h}` }],
+      25:   [{ label:'SMTP',              url:null, note:`port 25` }],
+      80:   [{ label:'HTTP',              url:`http://${h}/` }],
+      110:  [{ label:'POP3',              url:null, note:`port 110` }],
+      143:  [{ label:'IMAP',              url:null, note:`port 143` }],
+      389:  [{ label:'LDAP',              url:null, note:`port 389` }],
+      443:  [{ label:'HTTPS',             url:`https://${h}/` }],
+      3306: [{ label:'MySQL',             url:null, note:`port 3306` }],
+      3389: [{ label:'RDP',              url:null, note:`mstsc /v:${h}:3389` }],
+      5000: [{ label:'ELO Log Viewer',   url:`http://${h}:5000/` }],
+      5432: [{ label:'PostgreSQL',       url:null, note:`port 5432` }],
+      5900: [{ label:'VNC',              url:null, note:`port 5900` }],
+      6379: [{ label:'Redis',            url:null, note:`port 6379` }],
+      8080: [{ label:'HTTP (alt)',        url:`http://${h}:8080/` }],
+      8101: [{ label:'ELO Service',      url:`http://${h}:8101/` }],
+      9000: [{ label:'ELO IndexServer',  url:`http://${h}:9000/ix-JuS/` }],
+      9060: [{ label:'ELO IX',           url:`http://${h}:9060/` }],
+      9061: [{ label:'ELO IX',           url:`http://${h}:9061/` }],
+      9070: [{ label:'ELO IX',           url:`http://${h}:9070/` }],
+      9071: [{ label:'ELO IX',           url:`http://${h}:9071/` }],
+      9074: [{ label:'ELO IX',           url:`http://${h}:9074/` }],
+      9080: [{ label:'ELO IX',           url:`http://${h}:9080/` }],
+      9081: [{ label:'ELO IX',           url:`http://${h}:9081/` }],
+      9084: [{ label:'ELO IX',           url:`http://${h}:9084/` }],
+      9090: [
+        { label:'ELO Web Client',        url:`http://${h}:9090/${archiveName}/plugin/de.elo.ix.plugin.proxy/web/` },
+        { label:'ELO Admin Console',     url:`http://${h}:9090/${archiveName}/plugin/de.elo.ix.plugin.proxy/ac/` },
+        { label:'ELO Auth2 Admin',       url:`http://${h}:9090/ix-JuS/plugin/auth2/admin` },
+      ],
+      9091: [{ label:'ELO IX',           url:`http://${h}:9091/` }],
+      9094: [{ label:'ELO IX',           url:`http://${h}:9094/` }],
+      9200: [{ label:'Elasticsearch',    url:`http://${h}:9200/` }],
+      9201: [{ label:'Elasticsearch',    url:`http://${h}:9201/` }],
+      9204: [{ label:'Elasticsearch',    url:`http://${h}:9204/` }],
+      9999: [{ label:'ELO Service',      url:`http://${h}:9999/` }],
+      11434:[{ label:'Ollama API',       url:`http://${h}:11434/`,      note:'ollama direct' }],
+      11443:[{ label:'Ollama (SSL)',     url:`https://${h}:11443/`,     note:'Docker + SSL'  }],
+      11444:[{ label:'Ollama',           url:`http://${h}:11444/`                            }],
+      27017:[{ label:'MongoDB',          url:null, note:`port 27017` }],
+    };
+    // Merge custom port-services overrides if loaded
+    if (window._portServices) {
+      for (const [k, v] of Object.entries(window._portServices)) {
+        SERVICE_MAP[+k] = Array.isArray(v) ? v : [v];
+      }
+    }
+
+    const td0 = `style="padding:5px 10px 5px 0;color:var(--muted);white-space:nowrap;vertical-align:top"`;
+    const td1 = `style="padding:5px 0;font-family:var(--mono);font-size:12px"`;
+
+    function renderPort(p) {
+      const entries = SERVICE_MAP[p];
+      if (!entries) {
+        return `<tr>
+          <td ${td0}>:${p}</td>
+          <td ${td1}><a href="http://${h}:${p}/" target="_blank" style="color:var(--accent)">http://${h}:${p}/</a></td>
+        </tr>`;
+      }
+      return entries.map((e, i) => `<tr>
+        <td ${td0}>${i === 0 ? ':' + p : ''}</td>
+        <td ${td1}>
+          ${e.url ? `<a href="${e.url}" target="_blank" style="color:var(--accent)">${e.url}</a>` : ''}
+          <span style="color:var(--muted);margin-left:4px">${e.note ? e.note : ''} &nbsp; ${e.label}</span>
+        </td>
+      </tr>`).join('');
+    }
+
+    const rdpRow = d.rdp
+      ? `<tr><td ${td0}>:3389</td><td ${td1}><a href="#" onclick="downloadRdp('${h}',3389,'Administrator');return false;" style="color:var(--accent)">⬇ Open RDP</a> <span style="color:var(--muted);font-size:11px;margin-left:6px">Administrator @ ${h}:3389</span></td></tr>`
+      : '';
+    const ports  = (d.ports || []).filter(p => p !== 3389);
+    const portRows = ports.map(renderPort).join('');
+
     el.innerHTML = `
       <table style="border-collapse:collapse;width:100%;margin-top:4px">
-        <tr><td style="padding:5px 10px 5px 0;color:var(--muted)">VM</td><td style="padding:5px 0;font-family:var(--mono);font-size:12px">${d.vmName}</td></tr>
-        <tr><td style="padding:5px 10px 5px 0;color:var(--muted)">VM IP</td><td style="padding:5px 0;font-family:var(--mono);font-size:12px">${vmIp}</td></tr>
-        <tr><td style="padding:5px 10px 5px 0;color:var(--muted)">Host IP</td><td style="padding:5px 0;font-family:var(--mono);font-size:12px;color:var(--green)">${hostIp}</td></tr>
+        <tr><td ${td0}>VM</td><td ${td1} style="color:var(--green)">${d.vmName || ''}</td></tr>
+        <tr><td ${td0}>VM IP</td><td ${td1}>${v}</td></tr>
+        <tr><td ${td0}>Host IP</td><td ${td1} style="color:var(--green)">${h}</td></tr>
+        <tr><td colspan="2" style="border-top:1px solid var(--border);padding-top:8px"></td></tr>
         ${rdpRow}
-        ${webRows}
-        ${moreRow}
+        ${portRows}
       </table>
-      <div style="margin-top:10px;font-size:11px;color:var(--muted)">Active since: ${d.timestamp || 'unknown'} &nbsp;
+      <div style="margin-top:10px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span>Active since: ${d.timestamp || 'unknown'}</span>
         <button class="hbtn" style="font-size:11px" onclick="fetch('/api/vm-exposure',{method:'DELETE'}).then(()=>App.loadVMExposure())">Clear</button>
+        <button class="hbtn" style="font-size:11px" onclick="App.loadVMExposure()">&#8635; Refresh</button>
+        <button class="hbtn" style="font-size:11px;margin-left:auto" onclick="PortCfg.openModal()">&#9998; Edit Port Config</button>
       </div>`;
+  },
+
+  async loadPortServices() {
+    const d = await fetch('/api/port-services').then(r => r.json()).catch(() => null);
+    if (d) window._portServices = d;
+  },
+};
+
+// ── RDP helper ────────────────────────────────────────────────────────────────
+function downloadRdp(host, port, user) {
+  const content = [
+    `full address:s:${host}:${port}`,
+    `username:s:${user}`,
+    `prompt for credentials:i:0`,
+    `authentication level:i:0`,
+    `redirectclipboard:i:1`,
+    `redirectprinters:i:0`,
+    `screen mode id:i:2`,
+    `desktopwidth:i:1920`,
+    `desktopheight:i:1080`,
+  ].join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type: 'application/x-rdp' }));
+  a.download = `${host}_${port}.rdp`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+// ── DB Admin ──────────────────────────────────────────────────────────────────
+const DB = {
+  conn: null,
+  tables: [],
+
+  async init() {
+    const typeEl = document.getElementById('db-type');
+    if (!typeEl) return;
+    typeEl.onchange = () => {
+      const portEl = document.getElementById('db-port');
+      if (portEl) portEl.value = { postgresql:'5432', mysql:'3306', mssql:'1433' }[typeEl.value] || '5432';
+    };
+    const hostEl = document.getElementById('db-host');
+    if (hostEl && !hostEl.value) {
+      const d = await fetch('/api/vm-exposure').then(r => r.json()).catch(() => null);
+      if (d?.hostIp) hostEl.value = d.hostIp;
+    }
+  },
+
+  getConn() {
+    return {
+      type:     document.getElementById('db-type')?.value     || 'postgresql',
+      host:     document.getElementById('db-host')?.value     || '',
+      port:     document.getElementById('db-port')?.value     || '5432',
+      database: document.getElementById('db-database')?.value || 'postgres',
+      user:     document.getElementById('db-user')?.value     || '',
+      password: document.getElementById('db-pass')?.value     || '',
+    };
+  },
+
+  async connect() {
+    const conn = this.getConn();
+    const btn = document.getElementById('db-connect-btn');
+    const res = document.getElementById('db-connect-result');
+    if (!conn.host || !conn.user) { res.innerHTML = '<span style="color:var(--red)">Host and user are required.</span>'; return; }
+    btn.disabled = true; btn.textContent = 'Connecting…';
+    const r = await fetch('/api/db/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(conn) }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }));
+    btn.disabled = false; btn.textContent = 'Test Connection';
+    if (!r.ok) { res.innerHTML = `<span style="color:var(--red)">✗ ${r.error}</span>`; return; }
+    this.conn = conn;
+    res.innerHTML = `<span style="color:var(--green)">✓ Connected — ${(r.databases || []).length} database(s)</span>`;
+    const dbSel = document.getElementById('db-database-sel');
+    if (dbSel) {
+      dbSel.innerHTML = (r.databases || []).map(d => `<option value="${d}" ${d === conn.database ? 'selected' : ''}>${d}</option>`).join('');
+      document.getElementById('db-tables-section').style.display = '';
+      dbSel.onchange = () => { document.getElementById('db-database').value = dbSel.value; this.conn.database = dbSel.value; this.loadTables(dbSel.value); };
+      this.loadTables(dbSel.value || r.databases?.[0] || conn.database);
+    }
+  },
+
+  async loadTables(database) {
+    if (!this.conn) return;
+    this.conn = { ...this.conn, database };
+    const r = await fetch('/api/db/tables', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.conn) }).then(r => r.json()).catch(() => ({ ok: false, tables: [] }));
+    this.tables = (r.tables || []).map(t => t.table_name);
+    const tsel = document.getElementById('db-table-sel');
+    if (tsel) {
+      tsel.innerHTML = this.tables.map(t => `<option value="${t}">${t}</option>`).join('');
+      tsel.onchange = () => this.selectTable(tsel.value);
+      if (this.tables.length) this.selectTable(this.tables[0]);
+    }
+  },
+
+  async selectTable(table) {
+    if (!this.conn || !table) return;
+    const r = await fetch('/api/db/columns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...this.conn, table }) }).then(r => r.json()).catch(() => ({ ok: false, columns: [] }));
+    const cols = (r.columns || []).map(c => c.column_name);
+    const qid = n => this.conn.type === 'postgresql' ? `"${n}"` : this.conn.type === 'mssql' ? `[${n}]` : `\`${n}\``;
+    const limit = this.conn.type === 'mssql' ? `SELECT TOP 100 ` : `SELECT `;
+    const limitSuffix = this.conn.type === 'mssql' ? ';' : '\nLIMIT 100;';
+    const ed = document.getElementById('db-sql-editor');
+    if (ed) ed.value = `${limit}${cols.length ? cols.map(qid).join(', ') : '*'}\nFROM ${qid(table)}${limitSuffix}`;
+  },
+
+  async runQuery() {
+    if (!this.conn) { alert('Connect first.'); return; }
+    const sql = document.getElementById('db-sql-editor')?.value?.trim();
+    if (!sql) return;
+    const out = document.getElementById('db-query-out');
+    out.innerHTML = '<span style="color:var(--muted)">Executing…</span>';
+    const r = await fetch('/api/db/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...this.conn, sql }) }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }));
+    if (!r.ok) { out.innerHTML = `<span style="color:var(--red)">✗ ${r.error}</span>`; return; }
+    if (!r.rows?.length) { out.innerHTML = '<span style="color:var(--muted)">Query completed — no rows returned.</span>'; return; }
+    const fields = r.fields?.length ? r.fields : Object.keys(r.rows[0] || {});
+    const th = `style="padding:4px 8px;text-align:left;white-space:nowrap;color:var(--muted);font-size:11px;border-bottom:1px solid var(--border)"`;
+    const td = `style="padding:3px 8px;font-size:11px;font-family:var(--mono);border-bottom:1px solid var(--sur2);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis"`;
+    const hdr = `<tr>${fields.map(f => `<th ${th}>${f}</th>`).join('')}</tr>`;
+    const rows = r.rows.slice(0, 500).map(row => `<tr>${fields.map(f => `<td ${td}>${row[f] ?? ''}</td>`).join('')}</tr>`).join('');
+    out.innerHTML = `<div style="overflow:auto;max-height:320px"><table style="border-collapse:collapse">${hdr}${rows}</table></div><div style="color:var(--muted);font-size:11px;margin-top:4px">${r.rows.length} row(s)${r.total > 500 ? ' (limited to 500)' : ''}</div>`;
+  },
+
+  async search() {
+    if (!this.conn) { alert('Connect first.'); return; }
+    const q = document.getElementById('db-search-input')?.value?.trim();
+    if (!q) return;
+    const out = document.getElementById('db-query-out');
+    out.innerHTML = '<span style="color:var(--muted)">Searching…</span>';
+    const r = await fetch('/api/db/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...this.conn, query: q, tableList: this.tables }) }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }));
+    if (!r.ok) { out.innerHTML = `<span style="color:var(--red)">✗ ${r.error}</span>`; return; }
+    if (!r.results?.length) { out.innerHTML = `<span style="color:var(--muted)">No matches found (searched ${r.searched || 0} table(s)).</span>`; return; }
+    const th = `style="padding:4px 8px;text-align:left;white-space:nowrap;color:var(--muted);font-size:11px;border-bottom:1px solid var(--border)"`;
+    const td = `style="padding:3px 8px;font-size:11px;font-family:var(--mono);border-bottom:1px solid var(--sur2);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis"`;
+    let html = `<div style="color:var(--muted);font-size:11px;margin-bottom:8px">Found in ${r.results.length} table(s), searched ${r.searched} total</div>`;
+    for (const { table, columns, rows } of r.results) {
+      const hdr = `<tr>${columns.map(c => `<th ${th}>${c}</th>`).join('')}</tr>`;
+      const rws = rows.map(row => `<tr>${columns.map(c => `<td ${td}>${row[c] ?? ''}</td>`).join('')}</tr>`).join('');
+      html += `<div style="margin-bottom:12px"><div style="font-weight:600;color:var(--accent);font-size:12px;margin-bottom:4px">▸ ${table} — ${rows.length} match${rows.length !== 1 ? 'es' : ''}</div><div style="overflow:auto;max-height:200px"><table style="border-collapse:collapse">${hdr}${rws}</table></div></div>`;
+    }
+    out.innerHTML = html;
+  },
+
+  async exportDb() {
+    if (!this.conn) { alert('Connect first.'); return; }
+    const r = await fetch('/api/db/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.conn) });
+    if (!r.ok) { alert('Export failed.'); return; }
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${this.conn.database}_export.sql`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  },
+};
+
+// ── VM Tools ──────────────────────────────────────────────────────────────────
+const VMTools = {
+  getConn() {
+    return {
+      vmName: document.getElementById('vmt-vmname')?.value || '',
+      user:   document.getElementById('vmt-user')?.value   || '',
+      pass:   document.getElementById('vmt-pass')?.value   || '',
+    };
+  },
+
+  initPanel() {
+    const el = document.getElementById('vmt-vmname'); if (el && !el.value && S.vmName) el.value = S.vmName;
+    const uel = document.getElementById('vmt-user');  if (uel && !uel.value && S.vmUser) uel.value = S.vmUser;
+    const pel = document.getElementById('vmt-pass');  if (pel && !pel.value && S.vmPass) pel.value = S.vmPass;
+  },
+
+  async enableRdp() {
+    const conn = this.getConn();
+    if (!conn.vmName || !conn.user || !conn.pass) { alert('VM Name, user and password are required.'); return; }
+    const btn = document.getElementById('vmt-rdp-btn');
+    const res = document.getElementById('vmt-rdp-result');
+    btn.disabled = true; btn.textContent = 'Enabling…';
+    const r = await fetch('/api/vm-tools/enable-rdp', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(conn) }).then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
+    btn.disabled = false; btn.textContent = '🔓 Enable Remote Desktop (RDP)';
+    res.innerHTML = r.ok
+      ? `<span style="color:var(--green)">&#10003; RDP enabled — connect with <a href="#" onclick="downloadRdp('${conn.vmName}',3389,'Administrator');return false;" style="color:var(--accent)">⬇ .rdp file</a></span>`
+      : `<span style="color:var(--red)">&#10007; ${r.error}</span>`;
+  },
+
+  install(tool) {
+    const conn = this.getConn();
+    if (!conn.vmName || !conn.user || !conn.pass) { alert('VM Name, user and password are required.'); return; }
+    const isAI = ['claude','opencode','codex'].includes(tool);
+    const outId = isAI ? 'vmt-install-out-ai' : 'vmt-install-out';
+    const out = document.getElementById(outId);
+    out.style.display = ''; out.innerHTML = '';
+    const btn = document.getElementById(`vmt-btn-${tool}`);
+    if (btn) btn.disabled = true;
+    const labels = { ssh:'OpenSSH Server', ftp:'FTP (GlFTPD)', proftpd:'WinSCP/FTP alt', xampp:'XAMPP 8.2', mysql:'MySQL Server', nodejs:'Node.js LTS' };
+    const hd = document.createElement('div');
+    hd.style.cssText = 'color:var(--accent);font-size:12px;font-family:var(--mono);margin-bottom:4px';
+    hd.textContent = `▶ Installing ${labels[tool] || tool}…`;
+    out.appendChild(hd);
+    fetch('/api/vm-tools/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...conn, tool }) })
+      .then(async resp => {
+        const reader = resp.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split('\n'); buf = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const text = line.slice(6);
+            const d = document.createElement('div');
+            d.style.cssText = 'font-family:var(--mono);font-size:11px;line-height:1.5';
+            d.style.color = text.startsWith('[ERR]') ? 'var(--red)' : text.startsWith('[DONE]') ? 'var(--green)' : 'var(--text)';
+            d.textContent = text; out.appendChild(d); out.scrollTop = out.scrollHeight;
+          }
+        }
+        if (btn) btn.disabled = false;
+      })
+      .catch(e => {
+        const d = document.createElement('div'); d.style.color = 'var(--red)'; d.textContent = `Error: ${e.message}`;
+        out.appendChild(d); if (btn) btn.disabled = false;
+      });
+  },
+
+  async loadServices() {
+    const conn = this.getConn();
+    if (!conn.vmName || !conn.user || !conn.pass) { alert('VM Name, user and password are required.'); return; }
+    const btn = document.getElementById('vmt-services-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+    const r = await fetch('/api/vm-tools/services', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(conn) }).then(r => r.json()).catch(() => []);
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ Refresh Services'; }
+    const el = document.getElementById('vmt-services-out');
+    if (!el) return;
+    const arr = Array.isArray(r) ? r : [];
+    if (!arr.length) { el.innerHTML = '<span style="color:var(--muted)">No services found or connection failed.</span>'; return; }
+    const stName  = s => ({ 1:'Stopped', 4:'Running' }[s] || String(s));
+    const stpName = s => ({ 1:'Boot', 2:'Automatic', 3:'Manual', 4:'Disabled' }[s] || String(s));
+    const stColor = n => ({ Stopped:'var(--muted)', Running:'var(--green)' }[n] || 'var(--yellow)');
+    const sn = n => (n || '').replace(/'/g, "\\'");
+    const thS = f => `<th style="padding:4px 8px;text-align:left;color:var(--muted);font-size:11px;border-bottom:1px solid var(--border)">${f}</th>`;
+    const rows = arr.map(s => {
+      const st = stName(s.Status); const stp = stpName(s.StartType);
+      return `<tr>
+        <td style="padding:3px 8px;font-size:12px;font-family:var(--mono)">${s.Name||''}</td>
+        <td style="padding:3px 8px;font-size:12px">${s.DisplayName||''}</td>
+        <td style="padding:3px 8px;font-size:12px;color:${stColor(st)}">${st}</td>
+        <td style="padding:3px 8px;font-size:12px">${stp}</td>
+        <td style="padding:3px 8px;white-space:nowrap">
+          <button class="hbtn" style="font-size:10px;padding:2px 8px" onclick="VMTools.setService('${sn(s.Name)}','Automatic')">Auto</button>
+          <button class="hbtn" style="font-size:10px;padding:2px 8px" onclick="VMTools.setService('${sn(s.Name)}','Manual')">Manual</button>
+          <button class="hbtn" style="font-size:10px;padding:2px 8px" onclick="VMTools.setService('${sn(s.Name)}','Disabled')">Disable</button>
+        </td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = `<div style="overflow:auto;max-height:380px"><table style="border-collapse:collapse;width:100%"><tr>${['Name','Display Name','Status','Startup','Actions'].map(thS).join('')}</tr>${rows}</table></div>`;
+  },
+
+  async setService(name, startType) {
+    const conn = this.getConn();
+    await fetch('/api/vm-tools/set-service', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...conn, serviceName: name, startType }) }).catch(() => {});
+    await this.loadServices();
+  },
+
+  async loadInstalled() {
+    const conn = this.getConn();
+    if (!conn.vmName || !conn.user || !conn.pass) { alert('VM Name, user and password are required.'); return; }
+    const btn = document.getElementById('vmt-installed-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+    const r = await fetch('/api/vm-tools/installed', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(conn) }).then(r => r.json()).catch(() => []);
+    if (btn) { btn.disabled = false; btn.textContent = '⟳ Refresh Apps'; }
+    const el = document.getElementById('vmt-installed-out');
+    if (!el) return;
+    const all = Array.isArray(r) ? r : [];
+    const filter = (document.getElementById('vmt-installed-filter')?.value || '').toLowerCase();
+    const arr = filter ? all.filter(a => (a.DisplayName||'').toLowerCase().includes(filter) || (a.Publisher||'').toLowerCase().includes(filter)) : all;
+    if (!arr.length && !all.length) { el.innerHTML = '<span style="color:var(--muted)">No installed apps found or connection failed.</span>'; return; }
+    const thA = f => `<th style="padding:4px 8px;text-align:left;color:var(--muted);font-size:11px;border-bottom:1px solid var(--border)">${f}</th>`;
+    const rows = arr.map(a => `<tr>
+      <td style="padding:3px 8px;font-size:12px">${a.DisplayName||''}</td>
+      <td style="padding:3px 8px;font-size:12px;color:var(--muted)">${a.DisplayVersion||''}</td>
+      <td style="padding:3px 8px;font-size:12px;color:var(--muted)">${a.Publisher||''}</td>
+    </tr>`).join('');
+    el.innerHTML = `<div style="color:var(--muted);font-size:11px;margin-bottom:6px">${arr.length} app${arr.length !== 1 ? 's' : ''}${filter ? ' (filtered)' : ''}</div><div style="overflow:auto;max-height:380px"><table style="border-collapse:collapse;width:100%"><tr>${['Application','Version','Publisher'].map(thA).join('')}</tr>${rows}</table></div>`;
+  },
+};
+
+// ── Ollama Library Search ──────────────────────────────────────────────────────
+const OllamaSearch = {
+  _t: null,
+  debounce(v) { clearTimeout(this._t); if (v.length > 1) this._t = setTimeout(() => this.run(), 600); },
+  async run() {
+    const q = document.getElementById('ollamaSearch')?.value?.trim();
+    const out = document.getElementById('ollamaSearchRes');
+    if (!out) return;
+    out.innerHTML = '<span style="color:var(--muted)">Searching…</span>';
+    const models = await fetch(`/api/ollama-models?q=${encodeURIComponent(q||'')}`)
+      .then(r => r.json()).catch(() => []);
+    if (!models.length) { out.innerHTML = '<span style="color:var(--muted)">No results.</span>'; return; }
+    out.innerHTML = '<div class="grid" style="margin-top:6px">' + models.slice(0,24).map(m => {
+      const tag = m.name || m.model || m;
+      const safe = String(tag).replace(/'/g,"\\'");
+      const sel = S.models.includes(tag);
+      return `<div class="opt ${sel?'sel':''}" onclick="toggleArr(S.models,'${safe}');document.getElementById('ollamaSearchRes').querySelectorAll('.opt').forEach(e=>e.classList.toggle('sel',S.models.includes(e.dataset.tag)));App.saveState();" data-tag="${safe}">
+        <div class="chk">${sel?'✓':''}</div>
+        <div><div class="opt-name" style="font-size:12px">${tag}</div>${m.description?`<div class="opt-sub">${m.description.substring(0,60)}</div>`:''}</div>
+      </div>`;
+    }).join('') + '</div>';
+  },
+};
+
+// ── Winget Search & Config ─────────────────────────────────────────────────────
+const WingetCfg = {
+  _t: null,
+  debounce(v) { clearTimeout(this._t); if (v.length > 1) this._t = setTimeout(() => this.search(), 600); },
+  setPass(id, val) { if (!S.wingetConfig) S.wingetConfig = {}; S.wingetConfig[id] = { ...(S.wingetConfig[id]||{}), pass: val }; App.saveState(); },
+  async refresh() { winget = await fetch('/api/winget').then(r=>r.json()).catch(()=>[]); App.showPanel('winget'); },
+  async search() {
+    const q = (document.getElementById('wingetSearchQ')?.value || '').trim();
+    const out = document.getElementById('wingetSearchRes');
+    if (!out || q.length < 2) return;
+    out.innerHTML = '<span style="color:var(--muted)">Searching winget…</span>';
+    const res = await fetch(`/api/winget/search?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[]);
+    if (!res.length) { out.innerHTML = '<span style="color:var(--muted)">No results found.</span>'; return; }
+    out.innerHTML = '<div style="display:flex;flex-direction:column;gap:4px;max-height:280px;overflow-y:auto;margin-top:4px">' +
+      res.map(p => {
+        const inList = winget.find(w => w.id === p.id);
+        const safeN = p.name.replace(/'/g,"\\'"); const safeId = p.id.replace(/'/g,"\\'");
+        return `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--sur2);border-radius:5px;font-size:13px">
+          <div style="flex:1;min-width:0">
+            <span style="font-weight:500">${p.name}</span>
+            <span style="color:var(--muted);font-size:11px;margin-left:8px;font-family:var(--mono)">${p.id}</span>
+            ${p.version?`<span style="color:var(--muted);font-size:11px;margin-left:4px">v${p.version}</span>`:''}
+          </div>
+          ${inList
+            ? `<button class="hbtn" style="font-size:11px;padding:2px 8px;color:var(--red)" onclick="WingetCfg.remove('${safeId}')">Remove</button>`
+            : `<button class="hbtn" style="font-size:11px;padding:2px 8px;color:var(--green)" onclick="WingetCfg.add('${safeN}','${safeId}',this)">+ Add</button>`
+          }
+        </div>`;
+      }).join('') + '</div>';
+  },
+  async add(name, id, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    const r = await fetch('/api/winget', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name,id}) }).then(r=>r.json()).catch(()=>({ok:false}));
+    if (r.ok) { winget = await fetch('/api/winget').then(r=>r.json()).catch(()=>winget); if (btn) { btn.textContent='✓ Added'; btn.style.color='var(--green)'; } }
+    else if (btn) { btn.disabled = false; btn.textContent='+ Add'; }
+  },
+  async remove(id) {
+    await fetch(`/api/winget/${encodeURIComponent(id)}`, { method:'DELETE' }).catch(()=>{});
+    winget = await fetch('/api/winget').then(r=>r.json()).catch(()=>winget);
+    App.showPanel('winget');
+  },
+};
+
+// ── Port Config Editor ─────────────────────────────────────────────────────────
+const PortCfg = {
+  openModal() {
+    const current = window._portServices || {};
+    document.getElementById('portCfgText').value = JSON.stringify(current, null, 2);
+    document.getElementById('portCfgModal').classList.add('open');
+  },
+  close() { document.getElementById('portCfgModal').classList.remove('open'); },
+  async save() {
+    const text = document.getElementById('portCfgText').value;
+    let parsed;
+    try { parsed = JSON.parse(text); } catch(e) { alert('Invalid JSON: ' + e.message); return; }
+    const r = await fetch('/api/port-services', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(parsed) }).then(r=>r.json()).catch(()=>({ok:false}));
+    if (r.ok) { window._portServices = parsed; this.close(); App.loadVMExposure(); }
+    else alert('Save failed.');
+  },
+  reset() {
+    window._portServices = {};
+    fetch('/api/port-services', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    this.close(); App.loadVMExposure();
   },
 };
 
@@ -496,6 +967,14 @@ const panels = {
       <p class="sub">Select models to pull during deployment via <code>ollama pull</code>.</p>
       ${notice}
       <div class="grid">${opts}</div>
+      <div style="margin-top:18px">
+        <div class="fhdr">Browse Ollama Library</div>
+        <div style="display:flex;gap:8px;max-width:420px;margin-bottom:8px">
+          <input type="text" id="ollamaSearch" placeholder="Search models on ollama.com…" oninput="OllamaSearch.debounce(this.value)">
+          <button class="btn btn-o" onclick="OllamaSearch.run()" style="white-space:nowrap">Search</button>
+        </div>
+        <div id="ollamaSearchRes" style="font-size:13px;color:var(--muted)"></div>
+      </div>
       <div style="margin-top:14px">
         <div class="fg">
           <label class="fl">Custom model tag (e.g. llava:latest)</label>
@@ -600,19 +1079,44 @@ const panels = {
   winget() {
     const opts = winget.map(p => {
       const sel = S.wingetPkgs.includes(p.id);
-      return `<div class="opt ${sel?'sel':''}" onclick="toggleArr(S.wingetPkgs,'${p.id}');App.showPanel('winget')">
+      const cfg = (S.wingetConfig || {})[p.id] || {};
+      const hasDb = !!p.dbConfig;
+      const safeId = p.id.replace(/'/g,"\\'");
+      let dbHtml = '';
+      if (hasDb && sel) {
+        dbHtml = `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px" onclick="event.stopPropagation()">
+          <div style="font-size:11px;color:var(--muted)">${p.dbConfig.userLabel}</div>
+          <input type="password" placeholder="Leave blank = default" value="${(cfg.pass||'').replace(/"/g,'&quot;')}"
+            style="font-size:11px;padding:4px 8px;background:var(--sur);border:1px solid var(--border);border-radius:4px;color:var(--text);width:100%"
+            oninput="WingetCfg.setPass('${safeId}',this.value)">
+        </div>`;
+      }
+      return `<div class="opt ${sel?'sel':''}" onclick="toggleArr(S.wingetPkgs,'${safeId}');App.showPanel('winget')">
         <div class="chk">${sel?'✓':''}</div>
-        <div><div class="opt-name">${p.name}</div><div class="opt-sub">${p.id}</div></div>
+        <div style="flex:1;min-width:0">
+          <div class="opt-name" style="${hasDb?'color:var(--elo-orange)':''}">${p.name}</div>
+          <div class="opt-sub">${p.id}</div>
+          ${dbHtml}
+        </div>
       </div>`;
     }).join('');
-    const next = 'tools';
     return `<div class="card">
       <h2>Winget Packages</h2>
-      <p class="sub">Installed directly on the guest via Windows Package Manager.</p>
+      <p class="sub">Installed directly on the guest via Windows Package Manager. Packages with an <span style="color:var(--elo-orange)">orange name</span> support password configuration.</p>
       <div class="grid">${opts}</div>
+      <div style="margin-top:18px">
+        <div class="fhdr">Search &amp; Add Package
+          <span class="flink" style="margin-left:auto" onclick="WingetCfg.refresh()">&#8635; Reload list</span>
+        </div>
+        <div style="display:flex;gap:8px;max-width:500px;margin-bottom:8px">
+          <input type="text" id="wingetSearchQ" placeholder="Search winget (e.g. postgresql)" oninput="WingetCfg.debounce(this.value)">
+          <button class="btn btn-o" onclick="WingetCfg.search()" style="white-space:nowrap">Search</button>
+        </div>
+        <div id="wingetSearchRes" style="font-size:13px"></div>
+      </div>
       <div class="brow">
         <button class="btn btn-o" onclick="App.showPanel('local')">← Back</button>
-        <button class="btn btn-p" onclick="App.showPanel('${next}')">Continue →</button>
+        <button class="btn btn-p" onclick="App.showPanel('tools')">Continue →</button>
       </div>
     </div>`;
   },
@@ -786,8 +1290,130 @@ const panels = {
     return `<div class="card" id="vmexp-card">
       <h2>VM Exposure Status</h2>
       <p class="sub">Shows which VM is currently exposed via host IP port forwarding. Run <strong>Full VM exposure</strong> in the terminal configurator to populate this panel.</p>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <label style="font-size:12px;color:var(--muted);white-space:nowrap">ELO Archive Name</label>
+        <input type="text" id="eloArchiveName" value="ix-Repository1" style="max-width:220px" oninput="App.loadVMExposure()">
+      </div>
       <div id="vmexp-body" style="color:var(--muted);font-size:13px">Loading&hellip;</div>
     </div>`;
+  },
+
+  // DB Admin
+  dbadmin() {
+    return `
+<div class="card">
+  <h2>Database Admin</h2>
+  <p class="sub">Connect directly to PostgreSQL or MySQL running on the exposed VM. Requires <code>npm install pg mysql2</code> in the installator directory.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:14px">
+    <div class="fg">
+      <label class="fl">Type</label>
+      <select id="db-type" style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;padding:7px 12px;width:100%;outline:none">
+        <option value="postgresql">PostgreSQL</option>
+        <option value="mysql">MySQL</option>
+        <option value="mssql">SQL Server (MSSQL)</option>
+      </select>
+    </div>
+    <div class="fg"><label class="fl">Host</label><input type="text" id="db-host" placeholder="172.16.50.148"></div>
+    <div class="fg"><label class="fl">Port</label><input type="text" id="db-port" value="5432"></div>
+    <div class="fg"><label class="fl">Database</label><input type="text" id="db-database" placeholder="postgres"></div>
+    <div class="fg"><label class="fl">User</label><input type="text" id="db-user" placeholder="postgres"></div>
+    <div class="fg"><label class="fl">Password</label><input type="password" id="db-pass"></div>
+  </div>
+  <div class="brow">
+    <button class="btn btn-p" id="db-connect-btn" onclick="DB.connect()">Test Connection</button>
+    <span id="db-connect-result" style="font-size:13px;margin-left:8px"></span>
+  </div>
+  <div id="db-tables-section" style="display:none;margin-top:18px">
+    <div style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end">
+      <div class="fg" style="margin-bottom:0">
+        <label class="fl">Database</label>
+        <select id="db-database-sel" style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;padding:7px 12px;min-width:160px;outline:none"></select>
+      </div>
+      <div class="fg" style="margin-bottom:0">
+        <label class="fl">Table</label>
+        <select id="db-table-sel" style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;padding:7px 12px;min-width:200px;outline:none"></select>
+      </div>
+    </div>
+    <div class="fg">
+      <label class="fl">SQL</label>
+      <textarea id="db-sql-editor" style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:12px;padding:10px 12px;width:100%;min-height:90px;resize:vertical;outline:none;line-height:1.6"></textarea>
+    </div>
+    <div class="brow">
+      <button class="btn btn-g" onclick="DB.runQuery()">&#9654; Execute</button>
+      <button class="btn btn-o" onclick="DB.exportDb()">&#8595; Export .sql</button>
+      <input type="text" id="db-search-input" placeholder="Search all tables&hellip;" style="flex:1;max-width:240px">
+      <button class="btn btn-o" onclick="DB.search()">&#128269; Search</button>
+    </div>
+    <div id="db-query-out" style="margin-top:12px"></div>
+  </div>
+</div>`;
+  },
+
+  // VM Tools
+  vmtools() {
+    const mkBtn = (id, label, sub) =>
+      `<div class="opt" style="cursor:default"><div style="flex:1"><div class="opt-name">${label}</div><div class="opt-sub">${sub}</div></div><button class="btn btn-o" id="vmt-btn-${id}" onclick="VMTools.install('${id}')" style="font-size:12px;padding:5px 12px;flex-shrink:0">Install</button></div>`;
+    return `
+<div class="card">
+  <h2>VM Software &amp; Services</h2>
+  <p class="sub">Install tools and manage services on the Hyper-V guest VM via PSSession (<code>Invoke-Command -VMName</code>). Hyper-V Guest Services must be enabled on the VM.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:14px">
+    <div class="fg"><label class="fl">VM Name</label><input type="text" id="vmt-vmname" placeholder="ELO25_sdd"></div>
+    <div class="fg"><label class="fl">User</label><input type="text" id="vmt-user" placeholder="Administrator"></div>
+    <div class="fg"><label class="fl">Password</label><input type="password" id="vmt-pass"></div>
+  </div>
+  <div class="brow">
+    <button class="btn btn-g" id="vmt-rdp-btn" onclick="VMTools.enableRdp()">&#128275; Enable Remote Desktop (RDP)</button>
+    <span id="vmt-rdp-result" style="font-size:13px;margin-left:8px"></span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>System &amp; Server Tools</h2>
+  <p class="sub">Installs via winget or Windows capabilities on the VM. Output streams in real time.</p>
+  <div class="grid" style="margin-bottom:12px">
+    ${mkBtn('ssh',     'OpenSSH Server',  'Windows optional feature')}
+    ${mkBtn('ftp',     'FTP (GlFTPD)',    'via winget')}
+    ${mkBtn('proftpd', 'WinSCP',          'via winget')}
+    ${mkBtn('xampp',   'XAMPP 8.2',       'Apache + PHP + MySQL')}
+    ${mkBtn('mysql',   'MySQL Server',    'Oracle, via winget')}
+    ${mkBtn('nodejs',  'Node.js LTS',     'via winget')}
+    ${mkBtn('git',     'Git',             'via winget')}
+    ${mkBtn('putty',   'PuTTY',           'SSH client, via winget')}
+    ${mkBtn('libreoffice','LibreOffice',  'via winget')}
+  </div>
+  <div id="vmt-install-out" style="display:none;background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;max-height:240px;overflow-y:auto;font-family:var(--mono);font-size:11px;line-height:1.5"></div>
+</div>
+
+<div class="card">
+  <h2>AI Developer Tools</h2>
+  <p class="sub">Installed via npm on the VM (Node.js must be installed first). Requires internet access on the VM.</p>
+  <div class="grid" style="margin-bottom:12px">
+    ${mkBtn('claude',   'Claude Code',  'Anthropic CLI — needs git + Node.js')}
+    ${mkBtn('opencode', 'OpenCode',     'AI coding tool — needs Node.js')}
+    ${mkBtn('codex',    'OpenAI Codex', 'OpenAI CLI — needs Node.js')}
+  </div>
+  <div id="vmt-install-out-ai" style="display:none;background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;max-height:240px;overflow-y:auto;font-family:var(--mono);font-size:11px;line-height:1.5"></div>
+</div>
+
+<div class="card">
+  <h2>Windows Services</h2>
+  <p class="sub">View and manage Windows service startup types on the VM.</p>
+  <div class="brow" style="margin-bottom:12px">
+    <button class="btn btn-o" id="vmt-services-btn" onclick="VMTools.loadServices()">&#8635; Load Services</button>
+  </div>
+  <div id="vmt-services-out" style="color:var(--muted);font-size:13px"></div>
+</div>
+
+<div class="card">
+  <h2>Installed Applications</h2>
+  <p class="sub">Lists installed software from the VM registry.</p>
+  <div class="brow" style="margin-bottom:12px">
+    <button class="btn btn-o" id="vmt-installed-btn" onclick="VMTools.loadInstalled()">&#8635; Load Apps</button>
+    <input type="text" id="vmt-installed-filter" placeholder="Filter by name&hellip;" style="max-width:220px" oninput="VMTools.loadInstalled()">
+  </div>
+  <div id="vmt-installed-out" style="color:var(--muted);font-size:13px"></div>
+</div>`;
   },
 
   // Help
@@ -1070,13 +1696,19 @@ const panels = {
   <h2>Accessing Exposed VM Services via Host IP</h2>
   <p class="sub">Once <em>Full VM exposure</em> is active, every VM port is reachable from any machine on the network using the <strong>host IP</strong>. Use the <strong>VM Exposure</strong> sidebar panel to see current connection links.</p>
 
-  <p style="font-size:13px;color:var(--muted);margin:10px 0 4px"><strong style="color:var(--fg)">Web services</strong></p>
+  <p style="font-size:13px;color:var(--muted);margin:10px 0 4px"><strong style="color:var(--fg)">ELO services (replace &lt;HOST-IP&gt; with e.g. 172.16.50.148)</strong></p>
   <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:12px">
-    <span style="color:var(--muted)"># From any machine on the network -- replace with your host IP</span><br>
-    http://&lt;HOST-IP&gt;:5000/&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--muted)"># ELO web service (port 5000)</span><br>
-    http://&lt;HOST-IP&gt;:9090/&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--muted)"># ELO admin panel (port 9090)</span><br>
-    http://&lt;HOST-IP&gt;:9200/&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--muted)"># Elasticsearch (port 9200)</span><br>
-    <span style="color:var(--muted)"># Any other port the VM is listening on works the same way</span>
+    <span style="color:var(--muted)"># ELO Web Client</span><br>
+    http://&lt;HOST-IP&gt;:9090/ix-Repository1/plugin/de.elo.ix.plugin.proxy/web/<br>
+    <span style="color:var(--muted)"># ELO Administration Console</span><br>
+    http://&lt;HOST-IP&gt;:9090/ix-Repository1/plugin/de.elo.ix.plugin.proxy/ac/<br>
+    <span style="color:var(--muted)"># ELO Auth2 Administrator</span><br>
+    http://&lt;HOST-IP&gt;:9090/ix-JuS/plugin/auth2/admin<br>
+    <span style="color:var(--muted)"># ELO Log Viewer</span><br>
+    http://&lt;HOST-IP&gt;:5000/<br>
+    <span style="color:var(--muted)"># Elasticsearch status</span><br>
+    http://&lt;HOST-IP&gt;:9200/<br>
+    <span style="color:var(--muted)"># PostgreSQL (port 5432) and other ports forward the same way</span>
   </div>
 
   <p style="font-size:13px;color:var(--muted);margin:10px 0 4px"><strong style="color:var(--fg)">RDP (Remote Desktop)</strong></p>
@@ -1743,9 +2375,19 @@ function psInstallLocal() {
 }
 
 function psWinget() {
-  const lines = S.wingetPkgs.map(id =>
-    `Write-Output "Installing ${id}..."; winget install --id "${id}" --source winget --exact --silent --accept-package-agreements --accept-source-agreements 2>&1; Write-Output "Done: ${id}";`
-  ).join('\n    ');
+  const lines = S.wingetPkgs.map(id => {
+    const cfg = (S.wingetConfig || {})[id];
+    let extra = '--silent';
+    if (cfg?.pass) {
+      if (id.startsWith('PostgreSQL.'))
+        extra = `--override "/S /v\\"/qn SUPERPASSWORD=${cfg.pass} SERVICE_PASSWORD=${cfg.pass}\\"" `;
+      else if (id.startsWith('Oracle.MySQL'))
+        extra = `--override "/install /quiet MYSQL_ROOT_PASSWORD=${cfg.pass}" `;
+      else if (id.startsWith('Microsoft.SQLServer.2022'))
+        extra = `--override "/Q /IACCEPTSQLSERVERLICENSETERMS /ACTION=Install /FEATURES=SQLEngine /SECURITYMODE=SQL /SAPWD=${cfg.pass} /TCPENABLED=1" `;
+    }
+    return `Write-Output "Installing ${id}..."; winget install --id "${id}" --source winget --exact ${extra} --accept-package-agreements --accept-source-agreements 2>&1; Write-Output "Done: ${id}";`;
+  }).join('\n    ');
   return psCred() + `
 Invoke-Command -VMName $VMName -Credential $cred -ScriptBlock {
     winget source update 2>&1
@@ -2159,6 +2801,7 @@ async function init() {
     fetch('/api/winget').then(r=>r.json()).then(d=>{ winget=toArr(d); }).catch(()=>{}),
     fetch('/api/models').then(r=>r.json()).then(d=>{ models=toArr(d); }).catch(()=>{}),
     fetch('/api/tools').then(r=>r.json()).then(d=>{ tools=toArr(d); }).catch(()=>{}),
+    fetch('/api/port-services').then(r=>r.json()).then(d=>{ if(d) window._portServices=d; }).catch(()=>{}),
     fetch('/api/state').then(r=>r.json()).then(st=>{
       if (st.VMName)       S.vmName       = st.VMName;
       if (st.Features?.length)    S.features    = st.Features;
@@ -2166,6 +2809,7 @@ async function init() {
       if (st.DownloadUrls?.length)S.downloadUrls= st.DownloadUrls;
       if (st.LocalFiles?.length)  S.localFiles  = st.LocalFiles;
       if (st.WingetPkgs?.length)  S.wingetPkgs  = st.WingetPkgs;
+      if (st.WingetConfig)        S.wingetConfig= st.WingetConfig;
       if (st.InstallMode)  S.installMode  = st.InstallMode;
       if (st.CopyMethod)   S.copyMethod   = st.CopyMethod;
       if (st.Completed?.length)   S.completed   = st.Completed;
