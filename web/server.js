@@ -9,7 +9,8 @@ const os   = require('os');
 
 const PORT        = 3000;
 const SCRIPT_DIR  = path.join(__dirname, '..');
-const STATE_FILE  = 'C:\\ollama-ssl\\deploy-state.json';
+const STATE_FILE    = 'C:\\ollama-ssl\\deploy-state.json';
+const EXPOSURE_FILE = 'C:\\ollama-ssl\\vm-exposure.json';
 
 function toWinPath(p) {
   const m = p.match(/^\/mnt\/([a-z])\/(.*)/i);
@@ -128,6 +129,27 @@ app.post('/api/state', (req, res) => {
 app.delete('/api/state', (req, res) => {
   try {
     if (fs.existsSync(STATE_FILE)) fs.unlinkSync(STATE_FILE);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/vm-exposure', (req, res) => {
+  try {
+    if (!fs.existsSync(EXPOSURE_FILE)) return res.json(null);
+    res.json(JSON.parse(fs.readFileSync(EXPOSURE_FILE, 'utf8')));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/vm-exposure', (req, res) => {
+  try {
+    fs.writeFileSync(EXPOSURE_FILE, JSON.stringify(req.body, null, 2), 'utf8');
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/vm-exposure', (req, res) => {
+  try {
+    if (fs.existsSync(EXPOSURE_FILE)) fs.unlinkSync(EXPOSURE_FILE);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

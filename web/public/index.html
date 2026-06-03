@@ -334,6 +334,7 @@ const NAV = [
   { id: 'tools',       label: 'Tools',          sec: null        },
   { id: 'installmode', label: 'Install Mode',   sec: null        },
   { id: 'execute',     label: 'Execute',        sec: 'Run'       },
+  { id: 'vmexposure',  label: 'VM Exposure',    sec: 'Status'    },
   { id: 'help',        label: 'Help',           sec: 'Help'      },
 ];
 
@@ -378,7 +379,8 @@ const App = {
     p.className = 'panel show';
     p.innerHTML = panels[id]?.() || '<div class="card"><h2>Coming soon</h2></div>';
     document.getElementById('main').appendChild(p);
-    if (id === 'execute') Exec.onPanelShow();
+    if (id === 'execute')    Exec.onPanelShow();
+    if (id === 'vmexposure') App.loadVMExposure();
   },
   async resetState() {
     if (!confirm('Reset all progress and selections?')) return;
@@ -392,6 +394,35 @@ const App = {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ VMName:S.vmName, Features:S.features, Models:S.models, DownloadUrls:S.downloadUrls, LocalFiles:S.localFiles, WingetPkgs:S.wingetPkgs, Tools:S.tools, InstallMode:S.installMode, Completed:S.completed, CopyMethod:S.copyMethod, CopiedFiles:S.copiedFiles }),
     });
+  },
+  async loadVMExposure() {
+    const el = document.getElementById('vmexp-body');
+    if (!el) return;
+    const d = await fetch('/api/vm-exposure').then(r => r.json()).catch(() => null);
+    if (!d) {
+      el.innerHTML = `<div class="alert al-info" style="margin-top:8px">No active VM exposure found. Run <em>Full VM exposure</em> from <code>hyperv-web-configurator.ps1</code> or <code>hyperv-configurator.ps1</code> to populate this panel.</div>`;
+      return;
+    }
+    const hostIp = d.hostIp || 'host-ip';
+    const vmIp   = d.vmIp   || 'vm-ip';
+    const webPorts = (d.ports || []).filter(p => p !== 3389);
+    const rdpRow = d.rdp ? `<tr><td style="padding:5px 10px 5px 0;color:var(--muted)">RDP</td><td style="padding:5px 0;font-family:var(--mono);font-size:12px"><a href="#" onclick="navigator.clipboard.writeText('${hostIp}');return false" title="Copy host IP" style="color:var(--accent)">${hostIp}:3389</a>&nbsp;<span style="color:var(--muted);font-size:11px">mstsc /v:${hostIp}:3389</span></td></tr>` : '';
+    const webRows = webPorts.slice(0, 12).map(p =>
+      `<tr><td style="padding:5px 10px 5px 0;color:var(--muted)">:${p}</td><td style="padding:5px 0;font-family:var(--mono);font-size:12px"><a href="http://${hostIp}:${p}/" target="_blank" style="color:var(--accent)">http://${hostIp}:${p}/</a>&nbsp;<span style="color:var(--muted);font-size:11px">via host IP</span></td></tr>`
+    ).join('');
+    const moreRow = webPorts.length > 12 ? `<tr><td colspan="2" style="color:var(--muted);font-size:11px;padding-top:4px">...and ${webPorts.length - 12} more port(s)</td></tr>` : '';
+    el.innerHTML = `
+      <table style="border-collapse:collapse;width:100%;margin-top:4px">
+        <tr><td style="padding:5px 10px 5px 0;color:var(--muted)">VM</td><td style="padding:5px 0;font-family:var(--mono);font-size:12px">${d.vmName}</td></tr>
+        <tr><td style="padding:5px 10px 5px 0;color:var(--muted)">VM IP</td><td style="padding:5px 0;font-family:var(--mono);font-size:12px">${vmIp}</td></tr>
+        <tr><td style="padding:5px 10px 5px 0;color:var(--muted)">Host IP</td><td style="padding:5px 0;font-family:var(--mono);font-size:12px;color:var(--green)">${hostIp}</td></tr>
+        ${rdpRow}
+        ${webRows}
+        ${moreRow}
+      </table>
+      <div style="margin-top:10px;font-size:11px;color:var(--muted)">Active since: ${d.timestamp || 'unknown'} &nbsp;
+        <button class="hbtn" style="font-size:11px" onclick="fetch('/api/vm-exposure',{method:'DELETE'}).then(()=>App.loadVMExposure())">Clear</button>
+      </div>`;
   },
 };
 
@@ -750,6 +781,15 @@ const panels = {
       <div class="exec-list">${rows}</div>
     </div>`;
   },
+  // VM Exposure Status
+  vmexposure() {
+    return `<div class="card" id="vmexp-card">
+      <h2>VM Exposure Status</h2>
+      <p class="sub">Shows which VM is currently exposed via host IP port forwarding. Run <strong>Full VM exposure</strong> in the terminal configurator to populate this panel.</p>
+      <div id="vmexp-body" style="color:var(--muted);font-size:13px">Loading&hellip;</div>
+    </div>`;
+  },
+
   // Help
   help() {
     return `
@@ -887,6 +927,192 @@ const panels = {
   </div>
   <div class="alert al-info" style="margin-top:8px">
     The file server closes automatically ~15 seconds after all copies complete. A temporary Windows Firewall rule (<code>HVWebCopy-&lt;port&gt;</code>) is opened for the duration and removed on cleanup.
+  </div>
+</div>
+
+<div class="card">
+  <h2>Expose VM Web Port to Host</h2>
+  <p class="sub">Three methods to make a port running inside the VM accessible from the host or the network. Select one in the configurator UI, or run the commands manually.</p>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:6px"><strong style="color:var(--fg)">Method 1 — VM Firewall rule</strong> (simplest, direct access via VM IP)</p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:10px">
+    <span style="color:var(--muted)"># Inside the VM — Administrator PowerShell</span><br>
+    New-NetFirewallRule -DisplayName "WebApp-5000" -Direction Inbound \<br>
+    &nbsp;&nbsp;-Protocol TCP -LocalPort 5000 -Action Allow -Profile Any
+  </div>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:6px">Then open: <code>http://&lt;VM-IP&gt;:5000/</code> from the host browser.</p>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:6px"><strong style="color:var(--fg)">Method 2 — SSH Tunnel</strong> (secure, requires OpenSSH on the VM)</p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:10px">
+    <span style="color:var(--muted)"># Inside the VM — start SSH service</span><br>
+    Set-Service sshd -StartupType Automatic; Start-Service sshd<br>
+    Set-NetFirewallRule -DisplayName "OpenSSH SSH Server (sshd)" -Profile Any<br>
+    <span style="color:var(--muted)"># On the HOST — create the tunnel</span><br>
+    ssh -L 5000:localhost:5000 Administrator@&lt;VM-IP&gt;
+  </div>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:6px">Then open: <code>http://localhost:5000/</code> while the SSH session is active.</p>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:6px"><strong style="color:var(--fg)">Method 3 — Port Proxy (netsh)</strong> (host-side redirect, no VM changes needed)</p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:10px">
+    <span style="color:var(--muted)"># On the HOST — Administrator PowerShell</span><br>
+    netsh interface portproxy add v4tov4 \<br>
+    &nbsp;&nbsp;listenaddress=127.0.0.1 listenport=5000 \<br>
+    &nbsp;&nbsp;connectaddress=&lt;VM-IP&gt; connectport=5000<br>
+    <span style="color:var(--muted)"># To remove:</span><br>
+    netsh interface portproxy delete v4tov4 listenaddress=127.0.0.1 listenport=5000
+  </div>
+  <div class="alert al-info">
+    The VM's IP can be found with: <code>Get-VMNetworkAdapter -VMName "YourVM" | Select-Object IPAddresses</code> (run on host).
+  </div>
+</div>
+
+<div class="card">
+  <h2>Enable RDP on VM</h2>
+  <p class="sub">Remote Desktop is disabled by default in new Windows VMs. Run these steps <strong>inside the VM</strong> or via <code>Invoke-Command</code> from the host.</p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:12px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:12px">
+    <span style="color:var(--muted)"># INSIDE the VM (or via Invoke-Command) — Administrator PowerShell</span><br>
+    <span style="color:var(--muted)"># 1. Enable RDP in registry</span><br>
+    Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" \<br>
+    &nbsp;&nbsp;fDenyTSConnections -Value 0 -Type DWord<br><br>
+    <span style="color:var(--muted)"># 2. Enable the built-in firewall rules</span><br>
+    Get-NetFirewallRule -DisplayGroup "Remote Desktop" | \<br>
+    &nbsp;&nbsp;Set-NetFirewallRule -Profile Any -Enabled True<br><br>
+    <span style="color:var(--muted)"># 3. Optional — disable NLA (allows login without Credential Security)</span><br>
+    Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" \<br>
+    &nbsp;&nbsp;UserAuthentication -Value 0 -Type DWord
+  </div>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:6px">Then add a portproxy rule on the host to forward port 3389 to the VM:</p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:10px">
+    <span style="color:var(--muted)"># HOST — forward RDP from host IP to VM</span><br>
+    netsh interface portproxy add v4tov4 \<br>
+    &nbsp;&nbsp;listenaddress=0.0.0.0 listenport=3389 \<br>
+    &nbsp;&nbsp;connectaddress=&lt;VM-IP&gt; connectport=3389<br>
+    New-NetFirewallRule -DisplayName "RDP-to-VM" -Direction Inbound \<br>
+    &nbsp;&nbsp;-Protocol TCP -LocalPort 3389 -Action Allow -Profile Any<br>
+    <span style="color:var(--muted)"># Connect from another machine:</span><br>
+    mstsc /v:&lt;HOST-IP&gt;:3389
+  </div>
+  <div class="alert al-warn">
+    Disabling NLA lowers security. Only use it if clients cannot authenticate via Credential Security Support Provider.
+  </div>
+</div>
+
+<div class="card">
+  <h2>Full VM Exposure via Host IP</h2>
+  <p class="sub">Expose <strong>all VM service ports</strong> through the host. External machines connect to the host IP and are forwarded transparently to the VM.</p>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Run on the <strong>HOST</strong> — Administrator PowerShell. Replace <code>&lt;VM-IP&gt;</code> with the VM's actual IP (e.g. <code>172.31.49.26</code>).</p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:12px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:12px">
+    <span style="color:var(--muted)"># Step 1 — enable RDP on the VM (inside VM)</span><br>
+    Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" fDenyTSConnections 0<br>
+    Get-NetFirewallRule -DisplayGroup "Remote Desktop" | Set-NetFirewallRule -Profile Any -Enabled True<br><br>
+    <span style="color:var(--muted)"># Step 2 — forward each port on the HOST (run for every service port)</span><br>
+    foreach ($port in @(3389, 5000, 5432, 9090, 9200, 9204, 9999)) {<br>
+    &nbsp;&nbsp;netsh interface portproxy add v4tov4 \<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;listenaddress=0.0.0.0 listenport=$port \<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;connectaddress=&lt;VM-IP&gt; connectport=$port<br>
+    &nbsp;&nbsp;New-NetFirewallRule -DisplayName "VMProxy-$port" -Direction Inbound \<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;-Protocol TCP -LocalPort $port -Action Allow -Profile Any<br>
+    }<br><br>
+    <span style="color:var(--muted)"># Verify all rules:</span><br>
+    netsh interface portproxy show v4tov4<br><br>
+    <span style="color:var(--muted)"># Remove all rules at once:</span><br>
+    netsh interface portproxy reset
+  </div>
+  <div class="alert al-info">
+    The <strong>Expose VM Web Port</strong> panel and <strong>hyperv-configurator.ps1</strong> automate this. Choose <em>"Full VM exposure via host"</em> from the feature menu to configure RDP, auto-detect all listening ports, and create all portproxy rules in one step.
+  </div>
+  <div class="alert al-warn">
+    <code>listenaddress=0.0.0.0</code> exposes the port on <em>all</em> host interfaces. Ensure your network environment is trusted before applying.
+  </div>
+</div>
+
+<div class="card">
+  <h2>Test Connectivity to VM Services</h2>
+  <p class="sub">Use the built-in probe server to verify that port forwarding works from the host and from external machines.</p>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:6px"><strong style="color:var(--fg)">Option A — Deploy probe/server.ps1 to VM and test</strong></p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:12px">
+    <span style="color:var(--muted)"># HOST — Administrator PowerShell</span><br>
+    $cred = Get-Credential<br>
+    $s = New-PSSession -VMName "ELO25_sdd" -Credential $cred<br>
+    <span style="color:var(--muted)"># Copy probe server to VM</span><br>
+    Copy-Item "probe\server.ps1" -Destination "C:\probe-server.ps1" -ToSession $s<br>
+    <span style="color:var(--muted)"># Start it in background on port 19876</span><br>
+    $job = Invoke-Command -Session $s -AsJob -ScriptBlock {<br>
+    &nbsp;&nbsp;powershell -File "C:\probe-server.ps1" -Port 19876 -MaxRequests 20<br>
+    }<br>
+    <span style="color:var(--muted)"># Add portproxy on host (external access)</span><br>
+    netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=19876 \<br>
+    &nbsp;&nbsp;connectaddress=&lt;VM-IP&gt; connectport=19876<br>
+    <span style="color:var(--muted)"># Test from host</span><br>
+    Invoke-WebRequest -Uri "http://&lt;VM-IP&gt;:19876/" -UseBasicParsing<br>
+    Invoke-WebRequest -Uri "http://localhost:19876/" -UseBasicParsing<br>
+    Invoke-WebRequest -Uri "http://&lt;HOST-IP&gt;:19876/" -UseBasicParsing
+  </div>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:6px"><strong style="color:var(--fg)">Option B — Quick inline probe (no file copy)</strong></p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--mono);font-size:12px;line-height:1.8">
+    <span style="color:var(--muted)"># Starts a 30-second probe server inline via PSSession, then tests all paths</span><br>
+    Invoke-Command -VMName "ELO25_sdd" -Credential $cred -AsJob -ScriptBlock {<br>
+    &nbsp;&nbsp;$l=[Net.HttpListener]::new(); $l.Prefixes.Add("http://+:19876/")<br>
+    &nbsp;&nbsp;New-NetFirewallRule -DisplayName "Probe-19876" -Direction Inbound \<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;-Protocol TCP -LocalPort 19876 -Action Allow -Profile Any -EA SilentlyContinue|Out-Null<br>
+    &nbsp;&nbsp;$l.Start(); $b=[Text.Encoding]::UTF8.GetBytes("PROBE_OK")<br>
+    &nbsp;&nbsp;$d=(Get-Date).AddSeconds(30)<br>
+    &nbsp;&nbsp;while((Get-Date)-lt $d){if($l.Pending()){$c=$l.GetContext()<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;$c.Response.ContentLength64=$b.Length<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;$c.Response.OutputStream.Write($b,0,$b.Length);$c.Response.Close()}}<br>
+    &nbsp;&nbsp;$l.Stop()<br>
+    } | Out-Null; Start-Sleep 2<br>
+    (Invoke-WebRequest http://&lt;VM-IP&gt;:19876/ -UseBasicParsing).Content
+  </div>
+  <div class="alert al-info" style="margin-top:12px">
+    The <strong>hyperv-web-configurator.ps1</strong> includes a <em>Test Connectivity</em> option in the VM port exposure step that runs this probe automatically and displays pass/fail for each access path.
+  </div>
+</div>
+
+<div class="card">
+  <h2>Accessing Exposed VM Services via Host IP</h2>
+  <p class="sub">Once <em>Full VM exposure</em> is active, every VM port is reachable from any machine on the network using the <strong>host IP</strong>. Use the <strong>VM Exposure</strong> sidebar panel to see current connection links.</p>
+
+  <p style="font-size:13px;color:var(--muted);margin:10px 0 4px"><strong style="color:var(--fg)">Web services</strong></p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:12px">
+    <span style="color:var(--muted)"># From any machine on the network -- replace with your host IP</span><br>
+    http://&lt;HOST-IP&gt;:5000/&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--muted)"># ELO web service (port 5000)</span><br>
+    http://&lt;HOST-IP&gt;:9090/&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--muted)"># ELO admin panel (port 9090)</span><br>
+    http://&lt;HOST-IP&gt;:9200/&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--muted)"># Elasticsearch (port 9200)</span><br>
+    <span style="color:var(--muted)"># Any other port the VM is listening on works the same way</span>
+  </div>
+
+  <p style="font-size:13px;color:var(--muted);margin:10px 0 4px"><strong style="color:var(--fg)">RDP (Remote Desktop)</strong></p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:12px">
+    <span style="color:var(--muted)"># Windows built-in Remote Desktop client</span><br>
+    mstsc /v:&lt;HOST-IP&gt;:3389<br>
+    <span style="color:var(--muted)"># Linux / macOS (FreeRDP)</span><br>
+    xfreerdp /v:&lt;HOST-IP&gt;:3389 /u:Administrator
+  </div>
+
+  <p style="font-size:13px;color:var(--muted);margin:10px 0 4px"><strong style="color:var(--fg)">How to activate (PowerShell, Administrator)</strong></p>
+  <div style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--mono);font-size:12px;line-height:1.8;margin-bottom:12px">
+    <span style="color:var(--muted)"># 1. Get the VM IP</span><br>
+    $vmIp = (Get-VM "ELO25_sdd" | Get-VMNetworkAdapter).IPAddresses[0]<br><br>
+    <span style="color:var(--muted)"># 2. Enable RDP inside the VM</span><br>
+    $cred = Get-Credential<br>
+    Invoke-Command -VMName "ELO25_sdd" -Credential $cred -ScriptBlock {<br>
+    &nbsp;&nbsp;Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" fDenyTSConnections -Value 0<br>
+    &nbsp;&nbsp;Get-NetFirewallRule -DisplayGroup "Remote Desktop" | Set-NetFirewallRule -Profile Any -Enabled True<br>
+    }<br><br>
+    <span style="color:var(--muted)"># 3. Forward ALL VM ports to host (auto-detect)</span><br>
+    $ports = Invoke-Command -VMName "ELO25_sdd" -Credential $cred -ScriptBlock {<br>
+    &nbsp;&nbsp;Get-NetTCPConnection -State Listen | Where-Object { $_.LocalAddress -ne "127.0.0.1" -and $_.LocalPort -lt 49000 } |<br>
+    &nbsp;&nbsp;Select-Object -ExpandProperty LocalPort | Sort-Object -Unique<br>
+    }<br>
+    foreach ($port in $ports) {<br>
+    &nbsp;&nbsp;netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=$port connectaddress=$vmIp connectport=$port<br>
+    &nbsp;&nbsp;New-NetFirewallRule -DisplayName "VMProxy-$port" -Direction Inbound -Protocol TCP -LocalPort $port -Action Allow -Profile Any<br>
+    }<br><br>
+    <span style="color:var(--muted)"># 4. Remove all rules when done</span><br>
+    netsh interface portproxy reset<br>
+    Get-NetFirewallRule | Where-Object { $_.DisplayName -like "VMProxy-*" } | Remove-NetFirewallRule
+  </div>
+
+  <div class="alert al-info" style="margin-top:12px">
+    The <strong>hyperv-web-configurator.ps1</strong> and <strong>hyperv-configurator.ps1</strong> scripts automate all of the above with the <em>Full VM exposure</em> option. After running it, open the <strong>VM Exposure</strong> sidebar panel in this web UI to see clickable connection links for every forwarded port.
   </div>
 </div>`;
   },

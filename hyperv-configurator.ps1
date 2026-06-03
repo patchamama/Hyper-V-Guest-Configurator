@@ -69,17 +69,29 @@ function Get-DeployState {
         if ($null -eq $s.WingetPkgs    -or $s.WingetPkgs   -isnot [array]) { $s | Add-Member -NotePropertyName WingetPkgs     -NotePropertyValue @()   -Force }
         if ($null -eq $s.DownloadUrls  -or $s.DownloadUrls -isnot [array]) { $s | Add-Member -NotePropertyName DownloadUrls   -NotePropertyValue @()   -Force }
         if ($null -eq $s.InstallMode)                                        { $s | Add-Member -NotePropertyName InstallMode    -NotePropertyValue ""    -Force }
+        if ($null -eq $s.ExposePort)                                         { $s | Add-Member -NotePropertyName ExposePort       -NotePropertyValue 0     -Force }
+        if ($null -eq $s.ExposeHostPort)                                     { $s | Add-Member -NotePropertyName ExposeHostPort  -NotePropertyValue 0     -Force }
+        if ($null -eq $s.ExposeMethod)                                       { $s | Add-Member -NotePropertyName ExposeMethod    -NotePropertyValue ""    -Force }
+        if ($null -eq $s.FullExposeRDP)                                      { $s | Add-Member -NotePropertyName FullExposeRDP   -NotePropertyValue $false -Force }
+        if ($null -eq $s.FullExposeNLA)                                      { $s | Add-Member -NotePropertyName FullExposeNLA   -NotePropertyValue $false -Force }
+        if ($null -eq $s.FullExposeExternal)                                 { $s | Add-Member -NotePropertyName FullExposeExternal -NotePropertyValue $true -Force }
         return $s
     }
     return [PSCustomObject]@{
-        VMName      = ""
-        Completed   = [string[]]@()
-        Models      = [string[]]@()
-        Features    = [string[]]@()
-        LocalFiles  = [string[]]@()
+        VMName        = ""
+        Completed     = [string[]]@()
+        Models        = [string[]]@()
+        Features      = [string[]]@()
+        LocalFiles    = [string[]]@()
         WingetPkgs    = [string[]]@()
         DownloadUrls  = [string[]]@()
         InstallMode   = ""
+        ExposePort       = 0
+        ExposeHostPort   = 0
+        ExposeMethod     = ""
+        FullExposeRDP    = $false
+        FullExposeNLA    = $false
+        FullExposeExternal = $true
     }
 }
 
@@ -249,6 +261,297 @@ function Get-HyperVHostIp([string]$VMNameParam) {
         }
         return $ip
     } catch { return $null }
+}
+
+function Get-VMIp([string]$VMNameParam) {
+    try {
+        return (Get-VMNetworkAdapter -VMName $VMNameParam).IPAddresses |
+               Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' -and $_ -notlike '169.254.*' } |
+               Select-Object -First 1
+    } catch { return $null }
+}
+
+function Get-HostExternalIp {
+    return (Get-NetIPAddress -AddressFamily IPv4 |
+        Where-Object {
+            $_.IPAddress -notlike '127.*'     -and
+            $_.IPAddress -notlike '169.254.*' -and
+            $_.IPAddress -notlike '172.31.*'        # Hyper-V Default Switch
+        } |
+        Sort-Object @{E={
+            $a = $_.InterfaceAlias
+            if     ($a -match 'WLAN|Wi-Fi|Wireless') { 1 }
+            elseif ($a -match 'Ethernet')             { 2 }
+            else                                      { 3 }
+        }} |
+        Select-Object -First 1).IPAddress
+}
+
+# ── VM web port exposure (3 methods) ─────────────────────────────────────────
+
+function Expose-VMWebService {
+    param(
+        [string]$VM,
+        [System.Management.Automation.PSCredential]$Credential,
+        [string]$VmIp,
+        [int]$VmPort,
+        [int]$HostPort,
+        [string]$Method   # "firewall" | "ssh" | "portproxy"
+    )
+
+    switch ($Method) {
+        "firewall" {
+            Write-Host "  Opening port $VmPort in VM firewall (Profile: Any)..." -NoNewline
+            Invoke-Command -VMName $VM -Credential $Credential -ScriptBlock {
+                $name = "VM-WebApp-$using:VmPort"
+                Remove-NetFirewallRule -DisplayName $name -ErrorAction SilentlyContinue
+                New-NetFirewallRule -DisplayName $name -Direction Inbound -Protocol TCP `
+                    -LocalPort $using:VmPort -Action Allow -Profile Any | Out-Null
+            }
+            Write-Host " done." -ForegroundColor Green
+            Write-Host "  Access URL : http://$VmIp`:$VmPort/" -ForegroundColor Cyan
+        }
+        "ssh" {
+            Write-Host "  Starting sshd in VM and ensuring firewall allows it on all profiles..." -NoNewline
+            Invoke-Command -VMName $VM -Credential $Credential -ScriptBlock {
+                Set-Service sshd -StartupType Automatic -ErrorAction SilentlyContinue
+                Start-Service sshd -ErrorAction SilentlyContinue
+                Set-NetFirewallRule -DisplayName "OpenSSH SSH Server (sshd)" -Profile Any -ErrorAction SilentlyContinue
+            }
+            Write-Host " done." -ForegroundColor Green
+            Write-Host ""
+            Write-Host "  Run this command on the HOST to create the tunnel:" -ForegroundColor Yellow
+            Write-Host "    ssh -L $HostPort`:localhost:$VmPort $($Credential.UserName)@$VmIp" -ForegroundColor Cyan
+            Write-Host "  Then browse : http://localhost:$HostPort/" -ForegroundColor Cyan
+            Write-Host "  (Keep the SSH session open while you browse)" -ForegroundColor DarkGray
+        }
+        "portproxy" {
+            Write-Host "  Adding netsh portproxy: localhost:$HostPort -> $VmIp`:$VmPort ..." -NoNewline
+            netsh interface portproxy delete v4tov4 listenaddress=127.0.0.1 listenport=$HostPort 2>&1 | Out-Null
+            netsh interface portproxy add v4tov4 `
+                listenaddress=127.0.0.1 listenport=$HostPort `
+                connectaddress=$VmIp connectport=$VmPort | Out-Null
+            Write-Host " done." -ForegroundColor Green
+            Write-Host "  Access URL : http://localhost:$HostPort/" -ForegroundColor Cyan
+            Write-Host "  To remove  : netsh interface portproxy delete v4tov4 listenaddress=127.0.0.1 listenport=$HostPort" -ForegroundColor DarkGray
+        }
+    }
+}
+
+# ── Full VM exposure via host (RDP + all ports) ───────────────────────────────
+
+function Enable-VMFullExposure {
+    param(
+        [string]$VM,
+        [System.Management.Automation.PSCredential]$Credential,
+        [string]$VmIp,
+        [bool]$EnableRDP    = $true,
+        [bool]$DisableNLA   = $false,
+        [string]$ListenAddr = "0.0.0.0"   # 0.0.0.0 = all interfaces (external); 127.0.0.1 = host-only
+    )
+
+    # --- Enable RDP in VM ---
+    if ($EnableRDP) {
+        Write-Host "  Enabling RDP in VM (port 3389)..." -NoNewline
+        $disNla = $DisableNLA
+        Invoke-Command -VMName $VM -Credential $Credential -ScriptBlock {
+            Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" `
+                fDenyTSConnections -Value 0 -Type DWord
+            Set-Service TermService -StartupType Automatic -ErrorAction SilentlyContinue
+            Start-Service TermService -ErrorAction SilentlyContinue
+            Get-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue |
+                Set-NetFirewallRule -Profile Any -Enabled True -ErrorAction SilentlyContinue
+            if (-not (Get-NetFirewallRule -DisplayName "Remote Desktop (TCP-In)" -ErrorAction SilentlyContinue)) {
+                New-NetFirewallRule -DisplayName "Remote Desktop (TCP-In)" -Direction Inbound `
+                    -Protocol TCP -LocalPort 3389 -Action Allow -Profile Any | Out-Null
+            }
+            if ($using:disNla) {
+                Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" `
+                    UserAuthentication -Value 0 -Type DWord
+            }
+        }
+        Write-Host " done." -ForegroundColor Green
+    }
+
+    # --- Scan all non-internal listening ports in VM ---
+    $excludedPorts = @(135, 139, 445, 2179, 5985, 47001)
+    Write-Host "  Scanning VM listening ports..." -NoNewline
+    $vmPorts = @(Invoke-Command -VMName $VM -Credential $Credential -ScriptBlock {
+        Get-NetTCPConnection -State Listen |
+            Where-Object {
+                $_.LocalAddress -ne '127.0.0.1' -and
+                $_.LocalPort -notin $using:excludedPorts -and
+                $_.LocalPort -lt 49000
+            } |
+            Select-Object -ExpandProperty LocalPort |
+            Sort-Object -Unique
+    })
+    if ($EnableRDP -and 3389 -notin $vmPorts) { $vmPorts = @(3389) + $vmPorts }
+    Write-Host " $($vmPorts.Count) port(s) found." -ForegroundColor Green
+
+    # --- Single VM firewall rule allowing all detected ports ---
+    Write-Host "  Opening all detected ports in VM firewall..." -NoNewline
+    Invoke-Command -VMName $VM -Credential $Credential -ScriptBlock {
+        Remove-NetFirewallRule -DisplayName "VM-FullExposure-Auto" -ErrorAction SilentlyContinue
+        New-NetFirewallRule -DisplayName "VM-FullExposure-Auto" -Direction Inbound -Protocol TCP `
+            -LocalPort $using:vmPorts -Action Allow -Profile Any | Out-Null
+    }
+    Write-Host " done." -ForegroundColor Green
+
+    # --- Host portproxy + firewall rule per port ---
+    $hostExtIp = Get-HostExternalIp
+    Write-Host "  Adding host portproxy and firewall rules ($ListenAddr -> $VmIp)..." -NoNewline
+    foreach ($port in $vmPorts) {
+        netsh interface portproxy delete v4tov4 listenaddress=$ListenAddr listenport=$port 2>&1 | Out-Null
+        netsh interface portproxy add v4tov4 `
+            listenaddress=$ListenAddr listenport=$port `
+            connectaddress=$VmIp connectport=$port | Out-Null
+        $rn = "VMProxy-$port"
+        Remove-NetFirewallRule -DisplayName $rn -ErrorAction SilentlyContinue
+        New-NetFirewallRule -DisplayName $rn -Direction Inbound -Protocol TCP `
+            -LocalPort $port -Action Allow -Profile Any | Out-Null
+    }
+    Write-Host " done." -ForegroundColor Green
+
+    # --- Summary ---
+    $displayIp = if ($ListenAddr -eq '0.0.0.0' -and $hostExtIp) { $hostExtIp } else { $ListenAddr }
+    Write-Host ""
+    Write-Host "  +--------------------------------------------------+" -ForegroundColor Green
+    Write-Host "  |  VM FULLY EXPOSED VIA HOST                       |" -ForegroundColor Green
+    Write-Host "  |--------------------------------------------------|" -ForegroundColor Green
+    if ($EnableRDP) {
+        Write-Host ("  |  RDP   : mstsc /v:{0,-31}|" -f "$displayIp`:3389") -ForegroundColor Green
+    }
+    $webPorts = @($vmPorts | Where-Object { $_ -ne 3389 })
+    foreach ($p in ($webPorts | Select-Object -First 7)) {
+        Write-Host ("  |  http  : http://{0,-33}|" -f "$displayIp`:$p/") -ForegroundColor Cyan
+    }
+    if ($webPorts.Count -gt 7) {
+        Write-Host ("  |  ... and {0,-40}|" -f "$($webPorts.Count - 7) more port(s) forwarded") -ForegroundColor DarkGray
+    }
+    Write-Host "  |--------------------------------------------------|" -ForegroundColor Green
+    Write-Host ("  |  VM IP       : {0,-33}|" -f $VmIp) -ForegroundColor DarkGray
+    if ($hostExtIp -and $ListenAddr -eq '0.0.0.0') {
+        Write-Host ("  |  Host ext IP : {0,-33}|" -f $hostExtIp) -ForegroundColor DarkGray
+    }
+    Write-Host "  |  Remove all  : netsh interface portproxy reset   |" -ForegroundColor DarkGray
+    Write-Host "  +--------------------------------------------------+" -ForegroundColor Green
+
+    # Persist exposure state for the web configurator UI
+    $expState = [PSCustomObject]@{
+        vmName    = $VM
+        vmIp      = $VmIp
+        hostIp    = if ($hostExtIp) { $hostExtIp } else { $displayIp }
+        rdp       = $EnableRDP
+        ports     = @($vmPorts)
+        timestamp = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+    } | ConvertTo-Json -Compress
+    try { $expState | Out-File "C:\ollama-ssl\vm-exposure.json" -Encoding utf8 } catch {}
+}
+
+# ── Connectivity probe test ───────────────────────────────────────────────────
+
+function Test-VMConnectivity {
+    param(
+        [string]$VM,
+        [System.Management.Automation.PSCredential]$Credential,
+        [string]$VmIp,
+        [int]$TestPort     = 19876,
+        [int[]]$ExtraPorts = @()
+    )
+
+    $probeJob  = $null
+    $fwAdded   = $false
+    $ppAdded   = $false
+    $hostExtIp = Get-HostExternalIp
+
+    try {
+        # Start inline probe server on VM via job
+        Write-Host "  Starting probe server in VM on port $TestPort (30s timeout)..." -NoNewline
+        $probeJob = Invoke-Command -VMName $VM -Credential $Credential -AsJob -ScriptBlock {
+            $port = $using:TestPort
+            New-NetFirewallRule -DisplayName "Probe-$port" -Direction Inbound -Protocol TCP `
+                -LocalPort $port -Action Allow -Profile Any -ErrorAction SilentlyContinue | Out-Null
+            $l = [Net.HttpListener]::new()
+            $l.Prefixes.Add("http://+:$port/")
+            $l.Start()
+            $bytes = [Text.Encoding]::UTF8.GetBytes("PROBE_OK:$($port):$($env:COMPUTERNAME)")
+            $deadline = (Get-Date).AddSeconds(60)
+            while ((Get-Date) -lt $deadline) {
+                if ($l.Pending()) {
+                    $ctx = $l.GetContext()
+                    $ctx.Response.ContentLength64 = $bytes.Length
+                    $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+                    $ctx.Response.Close()
+                }
+                Start-Sleep -Milliseconds 100
+            }
+            $l.Stop()
+            Remove-NetFirewallRule -DisplayName "Probe-$port" -ErrorAction SilentlyContinue
+        }
+        Start-Sleep -Seconds 2
+
+        # Add host portproxy for test port (external access)
+        netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=$TestPort 2>&1 | Out-Null
+        netsh interface portproxy add v4tov4 `
+            listenaddress=0.0.0.0 listenport=$TestPort `
+            connectaddress=$VmIp connectport=$TestPort | Out-Null
+        Remove-NetFirewallRule -DisplayName "ProbeHost-$TestPort" -ErrorAction SilentlyContinue
+        New-NetFirewallRule -DisplayName "ProbeHost-$TestPort" -Direction Inbound -Protocol TCP `
+            -LocalPort $TestPort -Action Allow -Profile Any | Out-Null
+        $ppAdded = $true
+        Write-Host " ready." -ForegroundColor Green
+
+        Write-Host ""
+        Write-Host "  Test results (probe on port $TestPort):" -ForegroundColor Cyan
+        Write-Host "  +--------------------------------------------------+" -ForegroundColor Cyan
+
+        $tests = [ordered]@{
+            "VM direct (VM IP)"   = "http://$VmIp`:$TestPort/"
+            "Host portproxy"      = "http://localhost:$TestPort/"
+        }
+        if ($hostExtIp -and $hostExtIp -ne $VmIp) {
+            $tests["External (host IP)"] = "http://$hostExtIp`:$TestPort/"
+        }
+        foreach ($label in $tests.Keys) {
+            $url = $tests[$label]
+            try {
+                $r = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5
+                $icon = if ($r.StatusCode -eq 200) { "[PASS]" } else { "[HTTP $($r.StatusCode)]" }
+                Write-Host ("  |  {0,-20}: {1,-27}|" -f $label, $icon) -ForegroundColor Green
+            } catch {
+                Write-Host ("  |  {0,-20}: {1,-27}|" -f $label, "[FAIL]") -ForegroundColor Red
+            }
+        }
+
+        # Also test any extra ports (existing services)
+        foreach ($p in $ExtraPorts) {
+            $url = "http://$VmIp`:$p/"
+            try {
+                $r = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3
+                Write-Host ("  |  Port %-6d via VM IP: HTTP %-16s|" -f $p, "$($r.StatusCode) OK") -ForegroundColor Cyan
+            } catch { }
+        }
+
+        Write-Host "  +--------------------------------------------------+" -ForegroundColor Cyan
+        Write-Host ""
+        if ($hostExtIp) {
+            Write-Host "  External (host IP): $hostExtIp" -ForegroundColor Gray
+        }
+
+    } finally {
+        if ($null -ne $probeJob) {
+            Stop-Job  $probeJob -ErrorAction SilentlyContinue
+            Remove-Job $probeJob -Force -ErrorAction SilentlyContinue
+        }
+        if ($ppAdded) {
+            netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=$TestPort 2>&1 | Out-Null
+            Remove-NetFirewallRule -DisplayName "ProbeHost-$TestPort" -ErrorAction SilentlyContinue
+        }
+        Invoke-Command -VMName $VM -Credential $Credential -ScriptBlock {
+            Remove-NetFirewallRule -DisplayName "Probe-$using:TestPort" -ErrorAction SilentlyContinue
+        } -ErrorAction SilentlyContinue
+    }
 }
 
 function Start-HostFileServer([string]$Root) {
@@ -803,11 +1106,18 @@ if ($state.Features.Count -eq 0) {
     Write-Host ""
 
     $featureOptions = @(
-        [PSCustomObject]@{ Label = "Full WSL2 + AI stack  (WSL + Docker + Ollama)";   Value = @("wsl-ai") }
-        [PSCustomObject]@{ Label = "Install software packages on the guest VM";        Value = @("software") }
-        [PSCustomObject]@{ Label = "Minimal WSL preparation only  (no WSL install)";  Value = @("wsl-prep") }
-        [PSCustomObject]@{ Label = "Minimal WSL prep + software install";              Value = @("wsl-prep", "software") }
-        [PSCustomObject]@{ Label = "Full WSL2 + AI stack + software packages";         Value = @("wsl-ai", "software") }
+        [PSCustomObject]@{ Label = "Full WSL2 + AI stack  (WSL + Docker + Ollama)";                    Value = @("wsl-ai") }
+        [PSCustomObject]@{ Label = "Install software packages on the guest VM";                         Value = @("software") }
+        [PSCustomObject]@{ Label = "Minimal WSL preparation only  (no WSL install)";                   Value = @("wsl-prep") }
+        [PSCustomObject]@{ Label = "Minimal WSL prep + software install";                               Value = @("wsl-prep", "software") }
+        [PSCustomObject]@{ Label = "Full WSL2 + AI stack + software packages";                          Value = @("wsl-ai", "software") }
+        [PSCustomObject]@{ Label = "Expose VM web port to host  (firewall / SSH / portproxy)";          Value = @("expose-port") }
+        [PSCustomObject]@{ Label = "Full WSL2 + AI stack + expose VM web port";                         Value = @("wsl-ai", "expose-port") }
+        [PSCustomObject]@{ Label = "Install software + expose VM web port";                              Value = @("software", "expose-port") }
+        [PSCustomObject]@{ Label = "Full WSL2 + AI stack + software + expose VM web port";               Value = @("wsl-ai", "software", "expose-port") }
+        [PSCustomObject]@{ Label = "Full VM exposure via host  (RDP + ALL services, external access)";   Value = @("full-expose") }
+        [PSCustomObject]@{ Label = "Full WSL2 + AI stack + full VM exposure via host";                   Value = @("wsl-ai", "full-expose") }
+        [PSCustomObject]@{ Label = "Full WSL2 + AI + software + full VM exposure via host";              Value = @("wsl-ai", "software", "full-expose") }
     )
 
     $chosen = Select-FromList -Items $featureOptions -DisplayItem { param($f) $f.Label } -SingleSelect
@@ -815,10 +1125,12 @@ if ($state.Features.Count -eq 0) {
     Save-State $state
 }
 
-$enableWSLFull  = $state.Features -contains "wsl-ai"
-$enableWSLPrep  = $state.Features -contains "wsl-prep"
-$enableWSL      = $enableWSLFull -or $enableWSLPrep
-$enableSoftware = $state.Features -contains "software"
+$enableWSLFull     = $state.Features -contains "wsl-ai"
+$enableWSLPrep     = $state.Features -contains "wsl-prep"
+$enableWSL         = $enableWSLFull -or $enableWSLPrep
+$enableSoftware    = $state.Features -contains "software"
+$enableExposePort  = $state.Features -contains "expose-port"
+$enableFullExpose  = $state.Features -contains "full-expose"
 $deferSoftwareSelection = $enableWSLPrep -and $enableSoftware
 
 # ── VM selection ──────────────────────────────────────────────────────────────
@@ -933,6 +1245,73 @@ if ($enableSoftware -and -not $deferSoftwareSelection) {
     }
 }
 
+# ── Expose VM web port -- configuration (before credentials prompt) ──────────
+
+if ($enableExposePort -and $state.ExposePort -eq 0) {
+    Clear-Host
+    Write-Banner "VM Web Port Exposure"
+    Write-Host "  Configure which port in the VM you want to access from the host." -ForegroundColor Cyan
+    Write-Host ""
+
+    Write-Host "  VM port to expose" -ForegroundColor Yellow -NoNewline
+    Write-Host " (default 5000): " -NoNewline
+    $portInput = (Read-Host).Trim()
+    $state.ExposePort = if ($portInput -match '^\d+$') { [int]$portInput } else { 5000 }
+
+    Write-Host "  Host port to listen on" -ForegroundColor Yellow -NoNewline
+    Write-Host " (default $($state.ExposePort)): " -NoNewline
+    $hostPortInput = (Read-Host).Trim()
+    $state.ExposeHostPort = if ($hostPortInput -match '^\d+$') { [int]$hostPortInput } else { $state.ExposePort }
+
+    Write-Host ""
+    Write-Host "  Access method:" -ForegroundColor Cyan
+    Write-Host ""
+    $methodOptions = @(
+        [PSCustomObject]@{ Label = "Firewall rule in VM   -- opens the port directly on the VM (simplest)";                         Mode = "firewall"   }
+        [PSCustomObject]@{ Label = "SSH tunnel            -- ssh -L forward, most secure (requires SSH)";                           Mode = "ssh"        }
+        [PSCustomObject]@{ Label = "Port proxy (netsh)    -- host localhost:port -> VM:port, no VM firewall needed";                 Mode = "portproxy"  }
+    )
+    $chosenMethod = Select-FromList -Items $methodOptions -DisplayItem { param($m) $m.Label } -SingleSelect
+    $state.ExposeMethod = $chosenMethod[0].Mode
+    Save-State $state
+} elseif ($enableExposePort) {
+    Write-Host "  Expose port from checkpoint: VM port $($state.ExposePort) -> host port $($state.ExposeHostPort) via $($state.ExposeMethod)" -ForegroundColor Gray
+}
+
+# ── Full VM exposure -- configuration (before credentials) ───────────────────
+
+if ($enableFullExpose -and -not (Is-Done $state "fullexpose-config")) {
+    Clear-Host
+    Write-Banner "Full VM Exposure via Host"
+    Write-Host "  Exposes ALL service ports to the network via the host IP." -ForegroundColor Cyan
+    Write-Host "  Service ports are auto-detected from the running VM." -ForegroundColor Gray
+    Write-Host ""
+
+    Write-Host "  Enable RDP on the VM?" -ForegroundColor Cyan
+    Write-Host ""
+    $state.FullExposeRDP = (Select-YesNo "Enable Remote Desktop (RDP, port 3389)?" $true)
+
+    if ($state.FullExposeRDP) {
+        Write-Host ""
+        $state.FullExposeNLA = -not (Select-YesNo "Require Network Level Authentication (NLA)? (No = easier login)" $true)
+    }
+
+    Write-Host ""
+    Write-Host "  Listen scope:" -ForegroundColor Cyan
+    Write-Host ""
+    $listenOpts = @(
+        [PSCustomObject]@{ Label = "External  -- 0.0.0.0  (all interfaces, accessible via host IP from other machines)"; External = $true  }
+        [PSCustomObject]@{ Label = "Host-only -- 127.0.0.1  (only accessible from this host machine)";                   External = $false }
+    )
+    $chosenListen = Select-FromList -Items $listenOpts -DisplayItem { param($o) $o.Label } -SingleSelect
+    $state.FullExposeExternal = $chosenListen[0].External
+    Save-State $state
+    Mark-Done $state "fullexpose-config"
+} elseif ($enableFullExpose) {
+    $listenStr = if ($state.FullExposeExternal) { "external (0.0.0.0)" } else { "host-only (127.0.0.1)" }
+    Write-Host "  Full expose from checkpoint: RDP=$($state.FullExposeRDP), scope=$listenStr" -ForegroundColor Gray
+}
+
 # ── Credentials (always prompted -- not stored in state file) ────────────────
 
 $cred = Get-Credential -Message "Credentials for VM '$VMName'"
@@ -953,6 +1332,13 @@ if ($postgresPassword) {
 if ($mssqlSaPassword) {
     Write-Host "  MSSQL user   : sa" -ForegroundColor Cyan
     Write-Host "  MSSQL password: $mssqlSaPassword" -ForegroundColor Cyan
+}
+if ($enableExposePort) {
+    Write-Host "  Expose port  : VM:$($state.ExposePort) -> host:$($state.ExposeHostPort) via $($state.ExposeMethod)" -ForegroundColor Cyan
+}
+if ($enableFullExpose) {
+    $scopeLabel = if ($state.FullExposeExternal) { "external (0.0.0.0)" } else { "host-only (127.0.0.1)" }
+    Write-Host "  Full expose  : RDP=$($state.FullExposeRDP)  scope=$scopeLabel" -ForegroundColor Cyan
 }
 Write-Host ""
 
@@ -1573,6 +1959,71 @@ if ($enableWSLPrep) {
 }
 
 # =============================================================================
+# EXPOSE VM WEB PORT
+# =============================================================================
+
+if ($enableExposePort -and -not (Is-Done $state "expose-port")) {
+    Write-Banner "Expose VM Web Port"
+
+    $vmIpDetected = Get-VMIp $VMName
+    if (-not $vmIpDetected) {
+        Write-Host "  [WARN] Could not detect VM IP address." -ForegroundColor Yellow
+        Write-Host "  Ensure the VM is running and the network adapter shows an IP (Get-VMNetworkAdapter)." -ForegroundColor Yellow
+    } else {
+        Write-Host "  VM IP detected: $vmIpDetected" -ForegroundColor Gray
+        Expose-VMWebService `
+            -VM       $VMName `
+            -Credential $cred `
+            -VmIp     $vmIpDetected `
+            -VmPort   $state.ExposePort `
+            -HostPort $state.ExposeHostPort `
+            -Method   $state.ExposeMethod
+    }
+    Mark-Done $state "expose-port"
+}
+
+# =============================================================================
+# FULL VM EXPOSURE
+# =============================================================================
+
+if ($enableFullExpose -and -not (Is-Done $state "full-expose")) {
+    Write-Banner "Full VM Exposure via Host"
+
+    $vmIpDetected = Get-VMIp $VMName
+    if (-not $vmIpDetected) {
+        Write-Host "  [WARN] Could not detect VM IP address. Skipping." -ForegroundColor Yellow
+    } else {
+        $listenAddr = if ($state.FullExposeExternal) { "0.0.0.0" } else { "127.0.0.1" }
+        Enable-VMFullExposure `
+            -VM          $VMName `
+            -Credential  $cred `
+            -VmIp        $vmIpDetected `
+            -EnableRDP   $state.FullExposeRDP `
+            -DisableNLA  $state.FullExposeNLA `
+            -ListenAddr  $listenAddr
+    }
+    Mark-Done $state "full-expose"
+}
+
+# =============================================================================
+# CONNECTIVITY TEST (optional, always offered after full-expose or expose-port)
+# =============================================================================
+
+if (($enableExposePort -or $enableFullExpose) -and -not (Is-Done $state "connectivity-test")) {
+    $vmIpDetected = Get-VMIp $VMName
+    if ($vmIpDetected) {
+        Write-Host ""
+        Write-Host "  Run connectivity test (probe server on port 19876)?" -ForegroundColor Cyan
+        Write-Host ""
+        if (Select-YesNo "Test connectivity to VM now?" $true) {
+            Write-Banner "Connectivity Test"
+            Test-VMConnectivity -VM $VMName -Credential $cred -VmIp $vmIpDetected -TestPort 19876
+        }
+    }
+    Mark-Done $state "connectivity-test"
+}
+
+# =============================================================================
 # COMPLETE
 # =============================================================================
 
@@ -1596,6 +2047,18 @@ if ($postgresPassword) {
 if ($mssqlSaPassword) {
     Write-Host ("  |  SQL user : {0,-30}|" -f "sa") -ForegroundColor Green
     Write-Host ("  |  SQL pwd  : {0,-30}|" -f $mssqlSaPassword) -ForegroundColor Green
+}
+if ($enableExposePort) {
+    $exposeLabel = "VM:$($state.ExposePort) -> host:$($state.ExposeHostPort) [$($state.ExposeMethod)]"
+    Write-Host ("  |  Exposed  : {0,-30}|" -f $exposeLabel) -ForegroundColor Green
+}
+if ($enableFullExpose) {
+    $scopeStr = if ($state.FullExposeExternal) { "external" } else { "host-only" }
+    Write-Host ("  |  Full exp : {0,-30}|" -f "RDP=$($state.FullExposeRDP) [$scopeStr]") -ForegroundColor Green
+    $hostExtIp = Get-HostExternalIp
+    if ($hostExtIp) {
+        Write-Host ("  |  Host IP  : {0,-30}|" -f $hostExtIp) -ForegroundColor Green
+    }
 }
 Write-Host "  +=========================================+" -ForegroundColor Green
 Write-Host ""
