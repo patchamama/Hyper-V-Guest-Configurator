@@ -198,6 +198,52 @@ tr:hover td{background:rgba(var(--accent-rgb),.06)}
 .notes-box.maximized textarea{flex:1;resize:none;min-height:0}
 .notes-box textarea{background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:12px;padding:10px 12px;resize:vertical;min-height:220px;outline:none;line-height:1.6;flex:1}
 .notes-box textarea:focus{border-color:var(--accent)}
+
+/* Community panel */
+.comm-status-badge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.comm-status-badge.enabled {background:rgba(63,185,80,.18);border:1px solid rgba(63,185,80,.35);color:var(--green)}
+.comm-status-badge.disabled{background:var(--sur2);border:1px solid var(--border);color:var(--muted)}
+.comm-status-badge.scraping{background:rgba(var(--accent-rgb),.18);border:1px solid rgba(var(--accent-rgb),.35);color:var(--accent)}
+.comm-dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.comm-search{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.comm-search input{flex:1;background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;padding:7px 12px;outline:none;transition:border-color .15s;font-family:var(--font)}
+.comm-search input:focus{border-color:var(--accent)}
+.comm-mode-row{display:flex;gap:12px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.comm-mode-radio{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
+.comm-mode-radio input{accent-color:var(--accent)}
+.comm-result-list{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.comm-result{background:var(--sur2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;cursor:pointer;transition:border-color .15s}
+.comm-result:hover{border-color:var(--accent)}
+.comm-result-title{font-size:13px;font-weight:600;color:var(--accent);margin-bottom:4px}
+.comm-result-meta{font-size:11px;color:var(--muted);margin-bottom:6px}
+.comm-result-excerpt{font-size:12px;color:var(--text);line-height:1.5;opacity:.85}
+.comm-section-list{display:flex;flex-direction:column;gap:6px}
+.comm-section-item{background:var(--sur2);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.comm-section-hdr{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;user-select:none;transition:background .12s}
+.comm-section-hdr:hover{background:rgba(var(--accent-rgb),.07)}
+.comm-section-hdr .arrow{font-size:10px;color:var(--muted);transition:transform .2s;flex-shrink:0}
+.comm-section-hdr.open .arrow{transform:rotate(90deg)}
+.comm-section-title{font-size:13px;font-weight:600;flex:1}
+.comm-section-count{font-size:11px;color:var(--muted);background:var(--sur);border:1px solid var(--border);border-radius:10px;padding:1px 8px}
+.comm-art-list{display:flex;flex-direction:column;gap:2px;padding:0 8px 8px}
+.comm-art-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:5px;cursor:pointer;transition:background .12s}
+.comm-art-row:hover{background:rgba(var(--accent-rgb),.08)}
+.comm-art-title{font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.comm-art-date{font-size:11px;color:var(--muted);white-space:nowrap}
+.comm-log{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-family:var(--mono);font-size:11px;line-height:1.7;max-height:200px;overflow-y:auto;margin-top:8px}
+.comm-log-line{white-space:pre-wrap;word-break:break-all}
+.comm-log-line.warn{color:var(--yellow)}
+.comm-log-line.error{color:var(--red)}
+.comm-log-line.ok{color:var(--green)}
+.comm-article-view{background:var(--sur2);border:1px solid var(--border);border-radius:8px;padding:18px 20px;margin-top:10px;font-size:13px;line-height:1.7;max-height:70vh;overflow-y:auto}
+.comm-article-view h1,.comm-article-view h2,.comm-article-view h3{margin:12px 0 6px;color:var(--text)}
+.comm-article-view h1{font-size:18px}.comm-article-view h2{font-size:15px}.comm-article-view h3{font-size:13px}
+.comm-article-view code{background:var(--sur);padding:2px 5px;border-radius:3px;font-family:var(--mono);font-size:11px}
+.comm-article-view pre{background:var(--sur);border:1px solid var(--border);border-radius:6px;padding:10px 12px;overflow-x:auto;margin:8px 0}
+.comm-article-view pre code{background:none;padding:0}
+.comm-article-view a{color:var(--accent)}
+.comm-article-view img{max-width:100%;border-radius:4px;margin:6px 0}
+.comm-article-view blockquote{border-left:3px solid var(--border);margin:8px 0;padding-left:12px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -370,8 +416,9 @@ const NAV = [
   { id: 'tools',       label: 'AddOns',         sec: null        },
   { id: 'installmode', label: 'Install Mode',   sec: null        },
   { id: 'execute',     label: 'Execute',        sec: 'Run'       },
-  { id: 'vmexposure',  label: 'Exposure',        sec: 'Status'    },
-  { id: 'dbadmin',     label: 'DB Admin',       sec: null        },
+  { id: 'vmexposure',  label: 'Exposure',        sec: 'Status / Tools' },
+  { id: 'community',   label: 'Community',       sec: null             },
+  { id: 'dbadmin',     label: 'DB Admin',        sec: null             },
   { id: 'help',        label: 'Help',           sec: 'Help'      },
 ];
 
@@ -411,7 +458,7 @@ function isDone(id) {
 
 // ── Panel system ──────────────────────────────────────────────────────────────
 // Panels whose DOM is kept alive across navigation (user-entered data, query results, execution state)
-const _keepAlive  = new Set(['execute', 'dbadmin', 'vmtools', 'vmexposure']);
+const _keepAlive  = new Set(['execute', 'dbadmin', 'vmtools', 'vmexposure', 'community']);
 const _panelCache = {};   // id → div element (only for _keepAlive panels)
 
 const App = {
@@ -442,6 +489,7 @@ const App = {
         if (id === 'vmtools')    VMTools.initPanel();
         if (id === 'execute')    Exec.onPanelShow();
         if (id === 'vmexposure') App.loadPortServices().then(() => App.loadVMExposure());
+        if (id === 'community')  Community.init();
       } else {
         // Revisit: just show the cached element
         _panelCache[id].style.display = '';
@@ -450,6 +498,7 @@ const App = {
         if (id === 'execute')    Exec.onPanelShow();
         if (id === 'vmtools')    VMTools.initPanel();
         if (id === 'vmexposure') App.loadPortServices().then(() => App.loadVMExposure());
+        if (id === 'community')  Community.refresh();
       }
     } else {
       // ── Transient panel (re-renders each time from S state) ─────────────────
@@ -2132,6 +2181,89 @@ const panels = {
     </div>`;
   },
 
+  // Community Knowledge Base
+  community() {
+    return `
+<div class="card" id="comm-header-card">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <h2 style="margin-bottom:0">&#127758; Community Knowledge Base</h2>
+    <span id="comm-status-badge" class="comm-status-badge disabled"><span class="comm-dot"></span>Disabled</span>
+    <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-o" id="comm-toggle-btn" onclick="Community.toggleEnabled()">Enable</button>
+      <button class="btn btn-o" onclick="Community.refresh()">&#8635; Refresh</button>
+    </div>
+  </div>
+  <p class="sub" style="margin-top:8px;margin-bottom:0">Download and search all articles from the ELO Community (Bereiche). Disabled by default — enable to start using.</p>
+</div>
+
+<div id="comm-login-card" class="card" style="display:none">
+  <h2>Login &amp; Download</h2>
+  <p class="sub">Enter your ELO Community credentials. A Playwright browser will open to log in and begin downloading articles by section.</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;max-width:480px">
+    <div class="fg" style="margin-bottom:0"><label class="fl">Username / E-Mail</label>
+      <input type="text" id="comm-user" placeholder="user@example.com" autocomplete="username"></div>
+    <div class="fg" style="margin-bottom:0"><label class="fl">Password</label>
+      <input type="password" id="comm-pass" placeholder="••••••••" autocomplete="current-password"></div>
+  </div>
+  <div class="brow" style="margin-top:10px;flex-wrap:wrap">
+    <button class="btn btn-g" id="comm-dl-btn" onclick="Community.startScrape(false)">&#9654; Login &amp; Download All</button>
+    <button class="btn btn-o" id="comm-upd-btn" onclick="Community.startScrape(true)" style="display:none">&#8635; Update (new articles only)</button>
+    <button class="btn btn-r" id="comm-stop-btn" onclick="Community.stopScrape()" style="display:none">&#9632; Stop</button>
+    <span id="comm-scrape-stat" style="font-size:12px;color:var(--muted)"></span>
+  </div>
+  <div id="comm-progress-wrap" style="display:none;margin-top:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <span id="comm-prog-label" style="font-size:12px;color:var(--muted)">Starting…</span>
+      <span id="comm-prog-count" style="font-size:11px;color:var(--muted)"></span>
+    </div>
+    <div class="pbar-wrap"><div class="pbar" id="comm-pbar" style="width:0%"></div></div>
+  </div>
+  <div id="comm-log" class="comm-log" style="display:none"></div>
+</div>
+
+<div id="comm-es-card" class="card" style="display:none">
+  <h2>Elasticsearch Index</h2>
+  <p class="sub">Index all downloaded articles for semantic search (mE5-small model). Requires Elasticsearch on <code id="comm-es-host">localhost:9200</code>. Status: <span id="comm-es-status" style="color:var(--muted)">—</span></p>
+  <div class="brow">
+    <button class="btn btn-o" id="comm-index-btn" onclick="Community.startIndex()">&#9656; (Re)Index in Elasticsearch</button>
+    <span id="comm-index-stat" style="font-size:12px;color:var(--muted)"></span>
+  </div>
+  <div id="comm-index-log" class="comm-log" style="display:none"></div>
+</div>
+
+<div id="comm-search-card" class="card" style="display:none">
+  <h2>Search Articles</h2>
+  <div class="comm-search">
+    <input type="text" id="comm-q" placeholder="Search articles… (case-insensitive)" onkeydown="if(event.key==='Enter')Community.search()">
+    <button class="btn btn-p" onclick="Community.search()">&#128269; Search</button>
+  </div>
+  <div class="comm-mode-row">
+    <span style="font-size:12px;color:var(--muted)">Mode:</span>
+    <label class="comm-mode-radio"><input type="radio" name="comm-mode" value="text" checked> Text (case-insensitive)</label>
+    <label class="comm-mode-radio"><input type="radio" name="comm-mode" value="semantic"> Semantic (mE5)</label>
+    <label class="comm-mode-radio"><input type="radio" name="comm-mode" value="hybrid"> Hybrid</label>
+    <select id="comm-section-filter" style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:4px 8px;outline:none" onchange="Community.search()">
+      <option value="">All sections</option>
+    </select>
+  </div>
+  <div id="comm-results" class="comm-result-list"></div>
+</div>
+
+<div id="comm-sections-card" class="card" style="display:none">
+  <h2>Sections (Bereiche)</h2>
+  <p class="sub" id="comm-sections-sub">Loading…</p>
+  <div id="comm-section-list" class="comm-section-list"></div>
+</div>
+
+<div id="comm-article-card" class="card" style="display:none">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+    <button class="btn btn-o" style="padding:5px 12px;font-size:12px" onclick="Community.closeArticle()">&#8592; Back</button>
+    <h2 id="comm-article-title" style="margin-bottom:0;flex:1;font-size:15px"></h2>
+  </div>
+  <div id="comm-article-body" class="comm-article-view"></div>
+</div>`;
+  },
+
   // DB Admin
   dbadmin() {
     const vmOpts = vms.map(v => `<option value="${v.Name}">${v.Name} — ${v.State}</option>`).join('');
@@ -2205,9 +2337,9 @@ const panels = {
       <strong>Format:</strong> <code>type&nbsp;&nbsp;database&nbsp;&nbsp;user&nbsp;&nbsp;address&nbsp;&nbsp;auth-method</code><br>
       Common auth methods: <code>scram-sha-256</code>, <code>md5</code>, <code>trust</code><br><br>
       <strong>File location (typical):</strong><br>
-      <code>C:\Program Files\PostgreSQL\&lt;version&gt;\data\pg_hba.conf</code><br><br>
+      <code>C:\\Program Files\\PostgreSQL\\&lt;version&gt;\\data\\pg_hba.conf</code><br><br>
       <strong>After editing, reload PostgreSQL:</strong><br>
-      <code>pg_ctl reload -D "C:\Program Files\PostgreSQL\16\data"</code><br>
+      <code>pg_ctl reload -D "C:\\Program Files\\PostgreSQL\\16\\data"</code><br>
       Or run as superuser in psql: <code>SELECT pg_reload_conf();</code>
     </div>
     <!-- Status + action buttons -->
@@ -2765,6 +2897,439 @@ const panels = {
 </div>`;
   },
 
+};
+
+// ── Community Knowledge Base ──────────────────────────────────────────────────
+const Community = {
+  _cfg: null,
+  _status: null,
+  _sections: [],
+  _scrapeEvt: null,
+  _indexEvt: null,
+
+  async init() {
+    await this.refresh();
+  },
+
+  async refresh() {
+    try {
+      const [cfg, status] = await Promise.all([
+        fetch('/api/community/config').then(r => r.json()).catch(() => null),
+        fetch('/api/community/status').then(r => r.json()).catch(() => null),
+      ]);
+      this._cfg    = cfg;
+      this._status = status;
+      this._render(cfg, status);
+    } catch (e) {
+      console.warn('[community] refresh error', e);
+    }
+  },
+
+  _render(cfg, status) {
+    if (!cfg || !status) return;
+
+    // Status badge
+    const badge = document.getElementById('comm-status-badge');
+    const toggleBtn = document.getElementById('comm-toggle-btn');
+    if (badge && toggleBtn) {
+      if (status.scraping) {
+        badge.className = 'comm-status-badge scraping';
+        badge.innerHTML = '<span class="comm-dot"></span>Scraping…';
+        toggleBtn.textContent = 'Disable';
+      } else if (cfg.enabled) {
+        badge.className = 'comm-status-badge enabled';
+        badge.innerHTML = '<span class="comm-dot"></span>Enabled';
+        toggleBtn.textContent = 'Disable';
+      } else {
+        badge.className = 'comm-status-badge disabled';
+        badge.innerHTML = '<span class="comm-dot"></span>Disabled';
+        toggleBtn.textContent = 'Enable';
+      }
+    }
+
+    // Show/hide cards based on enabled state
+    const show = id => { const el = document.getElementById(id); if (el) el.style.display = ''; };
+    const hide = id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; };
+
+    if (cfg.enabled) {
+      show('comm-login-card');
+      if (cfg.elasticsearch?.enabled) show('comm-es-card');
+      else hide('comm-es-card');
+
+      // ES host display
+      const esHostEl = document.getElementById('comm-es-host');
+      if (esHostEl) esHostEl.textContent = cfg.elasticsearch?.host || 'localhost:9200';
+
+      // ES status
+      const esStatEl = document.getElementById('comm-es-status');
+      if (esStatEl) {
+        const colors = { ok: 'var(--green)', unreachable: 'var(--red)', disabled: 'var(--muted)' };
+        esStatEl.style.color = colors[status.elasticsearch] || 'var(--muted)';
+        esStatEl.textContent = status.elasticsearch === 'ok' ? '● Connected' :
+          status.elasticsearch === 'unreachable' ? '● Unreachable' : '○ Disabled';
+      }
+
+      // Update btn visibility
+      const updBtn = document.getElementById('comm-upd-btn');
+      if (updBtn) updBtn.style.display = status.articleCount > 0 ? '' : 'none';
+
+      if (status.articleCount > 0) {
+        show('comm-search-card');
+        show('comm-sections-card');
+        const sub = document.getElementById('comm-sections-sub');
+        if (sub) sub.textContent = `${status.articleCount} articles in ${status.sectionCount} section(s). Last update: ${status.lastUpdate ? new Date(status.lastUpdate).toLocaleString() : 'Never'}`;
+        this.loadSections();
+      } else {
+        hide('comm-search-card');
+        hide('comm-sections-card');
+      }
+    } else {
+      hide('comm-login-card');
+      hide('comm-es-card');
+      hide('comm-search-card');
+      hide('comm-sections-card');
+    }
+    hide('comm-article-card');
+  },
+
+  async toggleEnabled() {
+    const current = this._cfg?.enabled ?? false;
+    try {
+      await fetch('/api/community/config', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !current }),
+      });
+      await this.refresh();
+    } catch (e) { alert('Failed to update config: ' + e.message); }
+  },
+
+  async startScrape(updateOnly) {
+    const user = document.getElementById('comm-user')?.value?.trim();
+    const pass = document.getElementById('comm-pass')?.value;
+    if (!user || !pass) { alert('Enter username and password first.'); return; }
+
+    if (this._scrapeEvt) { this._scrapeEvt.close(); this._scrapeEvt = null; }
+
+    const dlBtn   = document.getElementById('comm-dl-btn');
+    const updBtn  = document.getElementById('comm-upd-btn');
+    const stopBtn = document.getElementById('comm-stop-btn');
+    const stat    = document.getElementById('comm-scrape-stat');
+    const logEl   = document.getElementById('comm-log');
+    const progWrap= document.getElementById('comm-progress-wrap');
+    const pbar    = document.getElementById('comm-pbar');
+    const progLbl = document.getElementById('comm-prog-label');
+    const progCnt = document.getElementById('comm-prog-count');
+
+    if (dlBtn)   dlBtn.disabled   = true;
+    if (updBtn)  updBtn.style.display = 'none';
+    if (stopBtn) stopBtn.style.display = '';
+    if (stat)    stat.textContent = 'Starting…';
+    if (logEl)   { logEl.style.display = ''; logEl.innerHTML = ''; }
+    if (progWrap) progWrap.style.display = '';
+    if (pbar)    pbar.style.width = '0%';
+
+    // POST credentials (SSE via fetch + ReadableStream)
+    try {
+      const resp = await fetch('/api/community/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user, password: pass }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: resp.statusText }));
+        if (logEl) this._appendLog(logEl, 'Error: ' + (err.error || 'Request failed'), 'error');
+        this._scrapeFinished(dlBtn, updBtn, stopBtn, stat, 'Error');
+        return;
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let articles = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const msg = JSON.parse(line.slice(6));
+            this._handleScrapeMsg(msg, logEl, pbar, progLbl, progCnt, stat, articles);
+            if (msg.stats?.articles !== undefined) articles = msg.stats.articles;
+            if (msg.type === 'done') {
+              this._scrapeFinished(dlBtn, updBtn, stopBtn, stat, `Done — ${msg.stats?.articles || 0} articles`);
+              await this.refresh();
+              return;
+            }
+          } catch { /* ignore parse errors */ }
+        }
+      }
+    } catch (e) {
+      if (logEl) this._appendLog(logEl, 'Stream error: ' + e.message, 'error');
+    }
+    this._scrapeFinished(dlBtn, updBtn, stopBtn, stat, 'Finished');
+    await this.refresh();
+  },
+
+  _handleScrapeMsg(msg, logEl, pbar, progLbl, progCnt, stat, articles) {
+    if (!msg) return;
+    if (msg.type === 'log' && logEl) {
+      this._appendLog(logEl, msg.msg, msg.level);
+      if (stat) stat.textContent = msg.msg.slice(0, 60);
+    }
+    if (msg.type === 'phase' && progLbl)    progLbl.textContent = msg.msg;
+    if (msg.type === 'sections-found' && progLbl) progLbl.textContent = `Found ${msg.count} section(s)`;
+    if (msg.type === 'section-start' && progLbl)  progLbl.textContent = `Section: ${msg.section}`;
+    if (msg.type === 'article-done') {
+      if (progLbl) progLbl.textContent = `✓ ${msg.title}`;
+      if (progCnt) progCnt.textContent = `${msg.stats?.articles || 0} articles`;
+      if (pbar && msg.stats?.articles) {
+        const pct = Math.min(99, Math.round((msg.stats.articles / Math.max(msg.stats.articles + 5, 1)) * 100));
+        pbar.style.width = pct + '%';
+      }
+    }
+    if (msg.type === 'done' && pbar) pbar.style.width = '100%';
+    if (msg.type === 'error' && logEl) this._appendLog(logEl, 'ERROR: ' + msg.msg, 'error');
+  },
+
+  _appendLog(logEl, text, level = 'info') {
+    const line = document.createElement('div');
+    line.className = 'comm-log-line' + (level === 'warn' ? ' warn' : level === 'error' ? ' error' : level === 'ok' ? ' ok' : '');
+    line.textContent = text;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  },
+
+  _scrapeFinished(dlBtn, updBtn, stopBtn, stat, msg) {
+    if (dlBtn)   dlBtn.disabled = false;
+    if (updBtn)  updBtn.style.display = '';
+    if (stopBtn) stopBtn.style.display = 'none';
+    if (stat)    stat.textContent = msg;
+  },
+
+  async stopScrape() {
+    await fetch('/api/community/scrape/stop', { method: 'POST' }).catch(() => {});
+    const stopBtn = document.getElementById('comm-stop-btn');
+    const dlBtn   = document.getElementById('comm-dl-btn');
+    if (stopBtn) stopBtn.style.display = 'none';
+    if (dlBtn)   dlBtn.disabled = false;
+    await this.refresh();
+  },
+
+  async startIndex() {
+    const indexBtn  = document.getElementById('comm-index-btn');
+    const indexStat = document.getElementById('comm-index-stat');
+    const indexLog  = document.getElementById('comm-index-log');
+
+    if (indexBtn)  indexBtn.disabled = true;
+    if (indexStat) indexStat.textContent = 'Starting (may take a few minutes for first model download)…';
+    if (indexLog)  { indexLog.style.display = ''; indexLog.innerHTML = ''; }
+
+    try {
+      const resp = await fetch('/api/community/index', { method: 'POST' });
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const msg = JSON.parse(line.slice(6));
+            if (msg.type === 'log' && indexLog)      this._appendLog(indexLog, msg.msg);
+            if (msg.type === 'error' && indexLog)    this._appendLog(indexLog, 'ERROR: ' + msg.msg, 'error');
+            if (msg.type === 'progress' && indexStat) indexStat.textContent = `${msg.phase}: ${msg.done}/${msg.total}`;
+            if (msg.type === 'done') {
+              if (indexStat) indexStat.textContent = `Done — ${msg.count} articles indexed`;
+              if (indexLog)  this._appendLog(indexLog, `✓ Indexed ${msg.count} articles`, 'ok');
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    } catch (e) {
+      if (indexLog) this._appendLog(indexLog, 'Error: ' + e.message, 'error');
+    }
+    if (indexBtn) indexBtn.disabled = false;
+    await this.refresh();
+  },
+
+  async loadSections() {
+    const listEl = document.getElementById('comm-section-list');
+    const filterEl = document.getElementById('comm-section-filter');
+    if (!listEl) return;
+
+    const data = await fetch('/api/community/sections').then(r => r.json()).catch(() => ({ sections: [] }));
+    this._sections = data.sections || [];
+
+    // Populate section filter dropdown
+    if (filterEl) {
+      const current = filterEl.value;
+      filterEl.innerHTML = '<option value="">All sections</option>' +
+        this._sections.map(s => `<option value="${s.slug}">${s.slug.replace(/-/g,' ')} (${s.count})</option>`).join('');
+      filterEl.value = current;
+    }
+
+    listEl.innerHTML = this._sections.map((s, i) => `
+      <div class="comm-section-item">
+        <div class="comm-section-hdr" id="comm-shdr-${i}" onclick="Community.toggleSection(${i})">
+          <span class="arrow">&#9658;</span>
+          <span class="comm-section-title">&#128193; ${s.slug.replace(/-/g,' ')}</span>
+          <span class="comm-section-count">${s.count}</span>
+        </div>
+        <div id="comm-sart-${i}" style="display:none">
+          <div class="comm-art-list">
+            ${(s.articles || []).map(a => `
+              <div class="comm-art-row" onclick="Community.openArticle('${s.slug}','${a.dir || ''}','${(a.title||'').replace(/'/g,"\\'")}')">
+                <span style="font-size:13px">&#128196;</span>
+                <span class="comm-art-title" title="${(a.title||'').replace(/"/g,'&quot;')}">${a.title || '(untitled)'}</span>
+                <span class="comm-art-date">${a.date || ''}</span>
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>`).join('');
+  },
+
+  toggleSection(i) {
+    const hdr  = document.getElementById(`comm-shdr-${i}`);
+    const arts = document.getElementById(`comm-sart-${i}`);
+    if (!hdr || !arts) return;
+    const open = arts.style.display !== 'none';
+    arts.style.display = open ? 'none' : '';
+    hdr.classList.toggle('open', !open);
+  },
+
+  async search() {
+    const q     = document.getElementById('comm-q')?.value?.trim() || '';
+    const mode  = document.querySelector('input[name="comm-mode"]:checked')?.value || 'text';
+    const section = document.getElementById('comm-section-filter')?.value || '';
+    const resEl = document.getElementById('comm-results');
+    if (!resEl) return;
+    if (!q) { resEl.innerHTML = ''; return; }
+
+    resEl.innerHTML = '<div style="color:var(--muted);font-size:12px">Searching…</div>';
+    const params = new URLSearchParams({ q, mode });
+    if (section) params.set('section', section);
+
+    try {
+      const data = await fetch(`/api/community/search?${params}`).then(r => r.json());
+      const results = data.results || [];
+      if (!results.length) { resEl.innerHTML = '<div style="color:var(--muted);font-size:12px">No results found.</div>'; return; }
+
+      resEl.innerHTML = results.map(r => `
+        <div class="comm-result" onclick="Community.openArticle('${this._sectionFromPath(r.filePath, r.section)}','${r.dir || ''}','${(r.title||'').replace(/'/g,"\\'")}')">
+          <div class="comm-result-title">${r.title || '(untitled)'}</div>
+          <div class="comm-result-meta">
+            &#128193; ${r.section || '—'} &nbsp;·&nbsp; ${r.date || ''} ${r.author ? '&nbsp;·&nbsp; ' + r.author : ''}
+            ${(r.tags||[]).map(t=>`<span style="margin-left:4px;font-size:10px;background:rgba(var(--accent-rgb),.1);padding:1px 5px;border-radius:3px">${t}</span>`).join('')}
+          </div>
+          ${r.excerpt ? `<div class="comm-result-excerpt">${this._escHtml(r.excerpt)}</div>` : ''}
+        </div>`).join('');
+    } catch (e) {
+      resEl.innerHTML = `<div style="color:var(--red);font-size:12px">Search error: ${e.message}</div>`;
+    }
+  },
+
+  _sectionFromPath(filePath, section) {
+    if (section) return section;
+    if (!filePath) return '';
+    const parts = filePath.replace(/\\/g, '/').split('/');
+    const ci = parts.findIndex(p => p === 'community');
+    return ci !== -1 ? (parts[ci + 1] || '') : '';
+  },
+
+  _escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  },
+
+  async openArticle(section, dir, title) {
+    if (!section || !dir) return;
+    const card    = document.getElementById('comm-article-card');
+    const titleEl = document.getElementById('comm-article-title');
+    const bodyEl  = document.getElementById('comm-article-body');
+    if (!card || !bodyEl) return;
+
+    if (titleEl) titleEl.textContent = title || '…';
+    bodyEl.innerHTML = '<div style="color:var(--muted)">Loading…</div>';
+
+    // Show article card, hide search/sections
+    card.style.display = '';
+    ['comm-search-card','comm-sections-card'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.style.display = 'none';
+    });
+
+    try {
+      const data = await fetch(`/api/community/article?section=${encodeURIComponent(section)}&dir=${encodeURIComponent(dir)}`).then(r => r.json());
+      if (data.error) { bodyEl.innerHTML = `<div style="color:var(--red)">${data.error}</div>`; return; }
+      bodyEl.innerHTML = this._markdownToHtml(data.content || '', section, dir);
+    } catch (e) {
+      bodyEl.innerHTML = `<div style="color:var(--red)">Load error: ${e.message}</div>`;
+    }
+  },
+
+  closeArticle() {
+    const card = document.getElementById('comm-article-card');
+    if (card) card.style.display = 'none';
+    const status = this._status;
+    if (status?.articleCount > 0) {
+      ['comm-search-card','comm-sections-card'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.style.display = '';
+      });
+    }
+  },
+
+  // Minimal Markdown→HTML renderer for article preview
+  _markdownToHtml(md, section, artDir) {
+    // Strip YAML frontmatter
+    md = md.replace(/^---[\s\S]*?---\n?/, '');
+    const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    let html = esc(md);
+    // Headers
+    html = html.replace(/^#{6}\s+(.*)$/gm, (_,t)=>`<h6>${t}</h6>`)
+               .replace(/^#{5}\s+(.*)$/gm, (_,t)=>`<h5>${t}</h5>`)
+               .replace(/^#{4}\s+(.*)$/gm, (_,t)=>`<h4>${t}</h4>`)
+               .replace(/^#{3}\s+(.*)$/gm, (_,t)=>`<h3>${t}</h3>`)
+               .replace(/^#{2}\s+(.*)$/gm, (_,t)=>`<h2>${t}</h2>`)
+               .replace(/^#{1}\s+(.*)$/gm, (_,t)=>`<h1>${t}</h1>`);
+    // Code blocks
+    html = html.replace(/```[\s\S]*?```/g, m => {
+      const code = m.slice(3, m.length - 3).replace(/^[^\n]*\n/, '');
+      return `<pre><code>${code}</code></pre>`;
+    });
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, (_,c)=>`<code>${c}</code>`);
+    // Bold/italic
+    html = html.replace(/\*\*([^*]+)\*\*/g, (_,c)=>`<strong>${c}</strong>`)
+               .replace(/__([^_]+)__/g, (_,c)=>`<strong>${c}</strong>`)
+               .replace(/\*([^*]+)\*/g, (_,c)=>`<em>${c}</em>`)
+               .replace(/_([^_]+)_/g, (_,c)=>`<em>${c}</em>`);
+    // Images — rewrite local paths to /api/community/image
+    html = html.replace(/!\[([^\]]*)\]\(images\/([^)]+)\)/g, (_,alt,file) =>
+      `<img src="/api/community/image?section=${encodeURIComponent(section)}&dir=${encodeURIComponent(artDir)}&file=${encodeURIComponent(file)}" alt="${alt}">`);
+    // External images
+    html = html.replace(/!\[([^\]]*)\]\((https?:[^)]+)\)/g, (_,alt,src)=>`<img src="${src}" alt="${alt}">`);
+    // Links
+    html = html.replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, (_,t,href)=>`<a href="${href}" target="_blank">${t}</a>`);
+    // Lists
+    html = html.replace(/^- (.+)$/gm, (_,c)=>`<li>${c}</li>`);
+    html = html.replace(/(<li>[\s\S]*?<\/li>(\n|$))+/g, m => `<ul>${m}</ul>`);
+    // Paragraphs
+    html = html.replace(/\n{2,}/g, '</p><p>');
+    html = `<p>${html}</p>`;
+    html = html.replace(/<p>(<h[1-6]>)/g, '$1').replace(/(<\/h[1-6]>)<\/p>/g, '$1');
+    html = html.replace(/<p>(<ul>)/g, '$1').replace(/(<\/ul>)<\/p>/g, '$1');
+    html = html.replace(/<p>(<pre>)/g, '$1').replace(/(<\/pre>)<\/p>/g, '$1');
+    html = html.replace(/<p>\s*<\/p>/g, '');
+    return html;
+  },
 };
 
 // ── Execution engine ──────────────────────────────────────────────────────────
