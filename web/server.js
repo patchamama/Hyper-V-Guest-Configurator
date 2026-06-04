@@ -776,6 +776,80 @@ app.post('/api/vm/expose', (req, res) => {
   ps.on('error', e => { send({ type: 'error', error: e.message }); res.end(); });
 });
 
+// ── pg_hba.conf management ────────────────────────────────────────────────────
+
+const PGHBA_BACKUP_DIR = path.join(SCRIPT_DIR, 'pghba-backups');
+
+function pgHbaBackupPath(vmName) {
+  const safe = vmName.replace(/[^a-zA-Z0-9_-]/g, '_');
+  return path.join(PGHBA_BACKUP_DIR, `${safe}_pg_hba.conf`);
+}
+
+// Check if a local backup exists for a VM
+app.get('/api/db/pghba-backup-status', (req, res) => {
+  const vmName = req.query.vmName || '';
+  if (!vmName) return res.json({ exists: false });
+  const p = pgHbaBackupPath(vmName);
+  if (!fs.existsSync(p)) return res.json({ exists: false });
+  try {
+    const stat = fs.statSync(p);
+    res.json({ exists: true, size: stat.size, modified: stat.mtime.toISOString(), path: p });
+  } catch { res.json({ exists: false }); }
+});
+
+// Return local backup content as text
+app.get('/api/db/pghba-backup-content', (req, res) => {
+  const vmName = req.query.vmName || '';
+  if (!vmName) return res.status(400).json({ error: 'vmName required' });
+  const p = pgHbaBackupPath(vmName);
+  if (!fs.existsSync(p)) return res.json({ ok: false, error: 'No backup found' });
+  try {
+    const content = fs.readFileSync(p, 'utf8');
+    res.json({ ok: true, content });
+  } catch (e) { res.json({ ok: false, error: dbErrMsg(e) }); }
+});
+
+// Restore backup file to VM — overwrites current pg_hba.conf and reloads
+app.post('/api/db/pghba-restore', async (req, res) => {
+  const { vmName, vmUser, vmPass, pgDataDir } = req.body;
+  if (!vmName || !vmUser || !vmPass) return res.json({ ok: false, error: 'vmName, vmUser, vmPass required' });
+  const backupPath = pgHbaBackupPath(vmName);
+  if (!fs.existsSync(backupPath)) return res.json({ ok: false, error: 'No local backup found for this VM' });
+  const content = fs.readFileSync(backupPath, 'utf8');
+  const escapedContent = JSON.stringify(content);
+  const esc = s => String(s).replace(/'/g, "''");
+  const tmpScript = path.join(os.tmpdir(), `pghba_restore_${Date.now()}.ps1`);
+  const psLines = [
+    `$ErrorActionPreference = 'Stop'`,
+    `$dataDir = '${(pgDataDir || '').replace(/'/g, "''")}'`,
+    `if (-not $dataDir) {`,
+    `    $f = Get-ChildItem 'C:\\Program Files\\PostgreSQL' -Recurse -Filter 'pg_hba.conf' -EA SilentlyContinue | Select-Object -First 1`,
+    `    $dataDir = if ($f) { $f.DirectoryName } else { $null }`,
+    `}`,
+    `if (-not $dataDir) { throw 'pg_hba.conf not found' }`,
+    `$hbaPath = Join-Path $dataDir 'pg_hba.conf'`,
+    `$pgCtl   = Join-Path (Split-Path $dataDir -Parent) 'bin\\pg_ctl.exe'`,
+    `$content = ${escapedContent}`,
+    `$enc = New-Object System.Text.UTF8Encoding($false)`,
+    `[System.IO.File]::WriteAllText($hbaPath, $content, $enc)`,
+    `if (Test-Path $pgCtl) { & $pgCtl reload -D $dataDir | Out-Null }`,
+    `Write-Output 'RESTORED'`,
+  ].join('\r\n');
+  fs.writeFileSync(tmpScript, psLines, 'utf8');
+  try {
+    const result = await new Promise((resolve, reject) => {
+      const cmd = `$cred = New-Object PSCredential('${esc(vmUser)}', (ConvertTo-SecureString '${esc(vmPass)}' -AsPlainText -Force)); Invoke-Command -VMName '${esc(vmName)}' -Credential $cred -FilePath '${tmpScript}'`;
+      const proc = spawn('powershell', ['-NonInteractive', '-Command', cmd], { timeout: 35000 });
+      let out = '', err = '';
+      proc.stdout.on('data', d => out += d);
+      proc.stderr.on('data', d => err += d);
+      proc.on('close', code => code === 0 ? resolve(out.trim()) : reject(new Error(err.trim() || `exit ${code}`)));
+    });
+    res.json({ ok: result.includes('RESTORED'), message: 'pg_hba.conf restored and reloaded.' });
+  } catch (e) { res.json({ ok: false, error: dbErrMsg(e) }); }
+  finally { try { fs.unlinkSync(tmpScript); } catch {} }
+});
+
 // ── Fix pg_hba.conf via PSSession ─────────────────────────────────────────────
 // Adds host entries for the connecting host IPs so external connections are allowed.
 app.post('/api/db/fix-pghba', async (req, res) => {
@@ -812,6 +886,9 @@ app.post('/api/db/fix-pghba', async (req, res) => {
     `if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $bytes = $bytes[3..($bytes.Length-1)] }`,
     `$text    = [System.Text.Encoding]::UTF8.GetString($bytes)`,
     `$marker  = '# Added by ollama-ssl-installator'`,
+    // Always output original content as base64 so Node.js can save a backup
+    `$originalB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($text))`,
+    `Write-Output "ORIGINAL_B64:$originalB64"`,
     `if ($text -notmatch [regex]::Escape($marker)) {`,
     `    $enc = New-Object System.Text.UTF8Encoding($false)`,
     `    [System.IO.File]::WriteAllText($hbaPath, $text + ${JSON.stringify(newLines)}, $enc)`,
@@ -833,7 +910,19 @@ app.post('/api/db/fix-pghba', async (req, res) => {
       proc.stderr.on('data', d => err += d);
       proc.on('close', code => code === 0 ? resolve(out.trim()) : reject(new Error(err.trim() || `exit ${code}`)));
     });
-    res.json({ ok: true, message: result.includes('UPDATED') ? 'pg_hba.conf updated and reloaded.' : 'Already configured.', cidrs: allCidrs });
+    // Save original content as local backup (always, so user can restore even if already configured)
+    const b64Match = result.match(/ORIGINAL_B64:([A-Za-z0-9+/=]+)/);
+    let backupSaved = false;
+    if (b64Match) {
+      try {
+        if (!fs.existsSync(PGHBA_BACKUP_DIR)) fs.mkdirSync(PGHBA_BACKUP_DIR, { recursive: true });
+        const original = Buffer.from(b64Match[1], 'base64').toString('utf8');
+        fs.writeFileSync(pgHbaBackupPath(vmName), original, 'utf8');
+        backupSaved = true;
+      } catch (_) {}
+    }
+    const msg = result.includes('UPDATED') ? 'pg_hba.conf updated and reloaded.' : 'Already configured.';
+    res.json({ ok: true, message: msg, cidrs: allCidrs, backupSaved });
   } catch (e) {
     res.json({ ok: false, error: dbErrMsg(e) });
   } finally {

@@ -717,9 +717,11 @@ const DB = {
     // Step 3: resolve host IP for the selected target
     const finalTarget = vmEl?.value || '';
     if (finalTarget) await this.onVMSelect(finalTarget);
+    this._updatePgHbaVisibility();
     typeEl.onchange = () => {
       const portEl = document.getElementById('db-port');
       if (portEl) portEl.value = { postgresql:'5432', mysql:'3306', mssql:'1433' }[typeEl.value] || '5432';
+      this._updatePgHbaVisibility();
       // Restore saved params for this target+type combination
       try {
         const key = this._getStorageKey();
@@ -801,9 +803,11 @@ const DB = {
       if (hostEl) hostEl.value = '127.0.0.1';
       if (note) note.textContent = '→ 127.0.0.1';
       this._restoreSavedForTarget(vmName);
+      this._updatePgHbaVisibility();
       return;
     }
     this._restoreSavedForTarget(vmName);
+    this._updatePgHbaVisibility();
     if (note) note.textContent = 'resolving…';
     const r = await fetch(`/api/vm-ip?vmName=${encodeURIComponent(vmName)}`).then(r => r.json()).catch(() => ({ ok: false, error: 'fetch failed' }));
     if (r.ok && r.ip) {
@@ -887,6 +891,74 @@ const DB = {
     }
   },
 
+  // Show/hide pg_hba section based on DB type + VM selection
+  _updatePgHbaVisibility() {
+    const sect = document.getElementById('db-pghba-section');
+    if (!sect) return;
+    const type   = document.getElementById('db-type')?.value || '';
+    const vmName = document.getElementById('db-vm')?.value || '';
+    const show   = type === 'postgresql' && vmName && vmName !== '';
+    sect.style.display = show ? '' : 'none';
+    if (show) this.loadPgHbaStatus();
+  },
+
+  async loadPgHbaStatus() {
+    const statusEl  = document.getElementById('db-pghba-status');
+    const actionsEl = document.getElementById('db-pghba-actions');
+    const viewerEl  = document.getElementById('db-pghba-viewer');
+    const btn       = document.getElementById('db-pghba-refresh-btn');
+    const vmName    = document.getElementById('db-vm')?.value || S.vmName || '';
+    if (!statusEl || !vmName) return;
+    if (btn) btn.innerHTML = '<span class="spin">↻</span>';
+    const r = await fetch(`/api/db/pghba-backup-status?vmName=${encodeURIComponent(vmName)}`).then(r=>r.json()).catch(()=>({exists:false}));
+    if (btn) btn.textContent = '↻ Refresh';
+    if (r.exists) {
+      const d = new Date(r.modified).toLocaleString();
+      statusEl.innerHTML = `<span style="color:var(--green)">&#10003; Local backup available</span> <span style="color:var(--muted);font-size:11px">— saved ${d} &nbsp;·&nbsp; ${Math.round(r.size/1024*10)/10} KB</span>`;
+      if (actionsEl) actionsEl.style.display = 'flex';
+      if (viewerEl)  viewerEl.style.display  = '';
+    } else {
+      statusEl.innerHTML = '<span style="color:var(--muted)">No local backup yet. Use <em>Fix pg_hba.conf</em> to create one automatically, or connect to the VM and fix it manually.</span>';
+      if (actionsEl) actionsEl.style.display = 'none';
+      if (viewerEl)  viewerEl.style.display  = 'none';
+    }
+  },
+
+  togglePgHbaHelp() {
+    const el = document.getElementById('db-pghba-help');
+    if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+  },
+
+  async viewPgHbaBackup() {
+    const vmName = document.getElementById('db-vm')?.value || S.vmName || '';
+    const pre    = document.getElementById('db-pghba-content');
+    const viewer = document.getElementById('db-pghba-viewer');
+    if (!pre || !vmName) return;
+    pre.textContent = 'Loading…';
+    if (viewer) viewer.open = true;
+    const r = await fetch(`/api/db/pghba-backup-content?vmName=${encodeURIComponent(vmName)}`).then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
+    pre.textContent = r.ok ? r.content : `Error: ${r.error}`;
+  },
+
+  async restorePgHba() {
+    const vmName = document.getElementById('db-vm')?.value || S.vmName || '';
+    if (!vmName || vmName === '__local__') { alert('Select a VM first.'); return; }
+    const vmUser = S.vmUser || prompt('VM Username:', 'Administrator');
+    if (!vmUser) return;
+    const vmPass = S.vmPass || prompt('VM Password:', '');
+    if (!vmPass) return;
+    if (!confirm(`Restore the backup pg_hba.conf to VM "${vmName}" and reload PostgreSQL?`)) return;
+    const statusEl = document.getElementById('db-pghba-status');
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--muted)">Restoring…</span>';
+    const r = await fetch('/api/db/pghba-restore', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ vmName, vmUser, vmPass }),
+    }).then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
+    if (statusEl) statusEl.innerHTML = r.ok
+      ? `<span style="color:var(--green)">&#10003; ${r.message}</span>`
+      : `<span style="color:var(--red)">&#10007; ${r.error}</span>`;
+  },
+
   async fixPgHba() {
     const res = document.getElementById('db-connect-result');
     // Get VM credentials from VM Tools panel (or prompt)
@@ -908,7 +980,9 @@ const DB = {
       body: JSON.stringify({ vmName: S.vmName, vmUser: S.vmUser, vmPass: S.vmPass }),
     }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }));
     if (r.ok) {
-      res.innerHTML = `<span style="color:var(--green)">✓ ${r.message} <button class="btn btn-p" style="font-size:11px;padding:3px 8px;margin-left:6px" onclick="DB.connect()">Retry Connection</button></span>`;
+      const backupNote = r.backupSaved ? ' <span style="color:var(--muted);font-size:11px">(backup saved)</span>' : '';
+      res.innerHTML = `<span style="color:var(--green)">✓ ${r.message}${backupNote} <button class="btn btn-p" style="font-size:11px;padding:3px 8px;margin-left:6px" onclick="DB.connect()">Retry Connection</button></span>`;
+      this.loadPgHbaStatus(); // refresh backup status display
     } else {
       res.innerHTML = `<span style="color:var(--red)">✗ Fix failed: ${r.error}</span>`;
     }
@@ -2112,6 +2186,43 @@ const panels = {
     <button class="btn btn-p" id="db-connect-btn" onclick="DB.connect()">Test Connection</button>
     <span id="db-connect-result" style="font-size:13px;margin-left:8px"></span>
   </div>
+
+  <!-- pg_hba.conf management — shown only for PostgreSQL + VM target -->
+  <div id="db-pghba-section" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+      <strong style="font-size:13px">&#9881; pg_hba.conf</strong>
+      <button class="hbtn" style="font-size:10px;padding:2px 8px" onclick="DB.loadPgHbaStatus()" id="db-pghba-refresh-btn">&#8635; Refresh</button>
+      <!-- Help button -->
+      <button class="hbtn" style="font-size:11px;padding:2px 8px;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center"
+        title="pg_hba.conf help" onclick="DB.togglePgHbaHelp()">?</button>
+    </div>
+    <!-- Help text (collapsed by default) -->
+    <div id="db-pghba-help" style="display:none;background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:10px;font-size:12px;line-height:1.7">
+      <strong>What is pg_hba.conf?</strong><br>
+      PostgreSQL's Host-Based Authentication file controls which hosts can connect to which databases as which users.<br><br>
+      <strong>To allow a host manually, add a line at the end of the file:</strong><br>
+      <code style="background:var(--sur);padding:2px 6px;border-radius:3px;font-size:11px">host&nbsp;&nbsp;&nbsp;all&nbsp;&nbsp;&nbsp;all&nbsp;&nbsp;&nbsp;192.168.0.0/24&nbsp;&nbsp;&nbsp;scram-sha-256</code><br><br>
+      <strong>Format:</strong> <code>type&nbsp;&nbsp;database&nbsp;&nbsp;user&nbsp;&nbsp;address&nbsp;&nbsp;auth-method</code><br>
+      Common auth methods: <code>scram-sha-256</code>, <code>md5</code>, <code>trust</code><br><br>
+      <strong>File location (typical):</strong><br>
+      <code>C:\Program Files\PostgreSQL\&lt;version&gt;\data\pg_hba.conf</code><br><br>
+      <strong>After editing, reload PostgreSQL:</strong><br>
+      <code>pg_ctl reload -D "C:\Program Files\PostgreSQL\16\data"</code><br>
+      Or run as superuser in psql: <code>SELECT pg_reload_conf();</code>
+    </div>
+    <!-- Status + action buttons -->
+    <div id="db-pghba-status" style="font-size:12px;color:var(--muted)">Checking…</div>
+    <div id="db-pghba-actions" style="display:none;margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-o" style="font-size:11px;padding:4px 12px" onclick="DB.viewPgHbaBackup()">&#128065; View Backup</button>
+      <button class="btn btn-o" style="font-size:11px;padding:4px 12px;color:var(--yellow)" onclick="DB.restorePgHba()">&#8629; Restore Backup to VM</button>
+    </div>
+    <!-- Backup content viewer -->
+    <details id="db-pghba-viewer" style="display:none;margin-top:10px">
+      <summary style="font-size:11px;color:var(--muted);cursor:pointer;user-select:none">&#9658; pg_hba.conf (backup content)</summary>
+      <pre id="db-pghba-content" style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-size:11px;font-family:var(--mono);line-height:1.6;overflow:auto;max-height:300px;margin-top:6px;white-space:pre-wrap;word-break:break-all"></pre>
+    </details>
+  </div>
+
   <div id="db-tables-section" style="display:none;margin-top:18px">
     <div style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end">
       <div class="fg" style="margin-bottom:0">
