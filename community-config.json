@@ -13,7 +13,7 @@
     }
   },
   "board": {
-    "url": "https://community.elo.com/community/plugin/de.elo.ix.plugin.proxy/wf/apps/app/sol.knowledge.apps.KnowledgeBoard/#/?board=COMMUNITY&page=1",
+    "url": "https://community.elo.com/community/plugin/de.elo.ix.plugin.proxy/wf/apps/app/sol.knowledge.apps.KnowledgeBoard/#/?board=COMMUNITY",
     "waitForSelector": "sol-board, sol-knowledge-board, .board-wrapper, [class*='board-content'], [class*='section']",
     "waitTimeout": 20000,
     "selectors": {
@@ -28,7 +28,35 @@
       "articleAuthor": "[class*='by'], [class*='author'], [class*='user'], sol-user-display",
       "articleTags": "[class*='label'], [class*='tag'], .tag-item",
       "paginationNext": "button[aria-label='Next'], a[aria-label*='next'], .pagination-next, button.next-page"
-    }
+    },
+    "sections": [
+      {"name": "Additional Clients", "space": "CLIENTS"},
+      {"name": "AI & Machine Learning", "space": "KBS601"},
+      {"name": "Analytics", "space": "ANALYTICS"},
+      {"name": "Beta Test", "space": "BETA"},
+      {"name": "Business Solutions", "space": "BS"},
+      {"name": "Community Server", "space": "COM"},
+      {"name": "Contelo", "space": "KBS116"},
+      {"name": "Default", "space": null},
+      {"name": "DocXtractor", "space": "BM"},
+      {"name": "DocXtractor as a Service", "space": "KBS221"},
+      {"name": "ELO Academy", "space": "ELO Academy"},
+      {"name": "ELO Automation Services", "space": "ASE"},
+      {"name": "ELO Cloud", "space": "KBS215"},
+      {"name": "ELO for DATEV", "space": "ELO for DATEV"},
+      {"name": "ELOxc", "space": "KBS148"},
+      {"name": "Flows", "space": "KBS035"},
+      {"name": "Gen. 2", "space": "KBS370"},
+      {"name": "Important announcements", "space": "KBS001"},
+      {"name": "Installation & Updates", "space": "INST"},
+      {"name": "Integrationen", "space": "KBS016"},
+      {"name": "Java Client", "space": "JC"},
+      {"name": "Known Issues", "space": "KBS002"},
+      {"name": "Marketplace", "space": "KBS608"},
+      {"name": "Other topics", "space": "ADDITIONAL"},
+      {"name": "Server", "space": "SERVER"},
+      {"name": "Web Client & Web-Apps", "space": "WeC"}
+    ]
   },
   "output": {
     "dir": "community",
