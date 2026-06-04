@@ -6,10 +6,10 @@
   "auth": {
     "loginUrl": "https://community.elo.com/",
     "selectors": {
-      "usernameField": "input[type='email'], input[type='text'][autocomplete='username'], input[type='text'][aria-label*='User'], input[type='text'][aria-label*='Email'], input[placeholder*='Email'], input[placeholder*='User']",
-      "passwordField": "input[type='password'], input[aria-label*='Password'], input[aria-label*='Passwort'], input[placeholder*='Password'], input[placeholder*='Passwort']",
-      "submitButton": "button[type='submit'], button[aria-label*='Log'], button[aria-label*='Sign'], button.mat-raised-button, button[class*='submit']",
-      "loggedInIndicator": ".user-nav, .user-avatar, .logout, .logout-btn, nav .username, [data-user-id], .profile-link, sol-user-menu, .user-profile, [aria-label*='Profile'], [aria-label*='Logout']"
+      "usernameField": "input[name='username']",
+      "passwordField": "input[name='password']",
+      "submitButton": "button[type='submit'][data-test-id='button-sign_in'], button[type='submit']",
+      "loggedInIndicator": ".navbar-item.has-dropdown .navbar-link, [data-test='user-menu'], .user-menu, a[href*='/profile']"
     }
   },
   "board": {
