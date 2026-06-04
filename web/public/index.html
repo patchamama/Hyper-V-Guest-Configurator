@@ -2209,6 +2209,7 @@ const panels = {
     <button class="btn btn-g" id="comm-dl-btn" onclick="Community.startScrape(false)">&#9654; Login &amp; Download All</button>
     <button class="btn btn-o" id="comm-upd-btn" onclick="Community.startScrape(true)" style="display:none">&#8635; Update (new articles only)</button>
     <button class="btn btn-r" id="comm-stop-btn" onclick="Community.stopScrape()" style="display:none">&#9632; Stop</button>
+    <button class="btn btn-g" id="comm-manual-login-continue-btn" onclick="Community.continueScrapeAfterLogin()" style="display:none">▶ Continue After Login</button>
     <span id="comm-scrape-stat" style="font-size:12px;color:var(--muted)"></span>
   </div>
   <div id="comm-progress-wrap" style="display:none;margin-top:10px">
@@ -3092,6 +3093,11 @@ const Community = {
         pbar.style.width = pct + '%';
       }
     }
+    if (msg.type === 'needs-manual-login' && logEl) {
+      this._appendLog(logEl, 'ℹ️ Auto-login failed. Please log in manually in the browser window. Click "Continue" when done.', 'warn');
+      const continueBtn = document.getElementById('comm-manual-login-continue-btn');
+      if (continueBtn) continueBtn.style.display = '';
+    }
     if (msg.type === 'done' && pbar) pbar.style.width = '100%';
     if (msg.type === 'error' && logEl) this._appendLog(logEl, 'ERROR: ' + msg.msg, 'error');
   },
@@ -3102,6 +3108,13 @@ const Community = {
     line.textContent = text;
     logEl.appendChild(line);
     logEl.scrollTop = logEl.scrollHeight;
+  },
+
+  continueScrapeAfterLogin() {
+    const btn = document.getElementById('comm-manual-login-continue-btn');
+    if (btn) btn.disabled = true;
+    const logEl = document.getElementById('comm-log');
+    if (logEl) this._appendLog(logEl, 'ℹ️ Server is checking for login verification… (up to 5 minutes)', 'info');
   },
 
   _scrapeFinished(dlBtn, updBtn, stopBtn, stat, msg) {

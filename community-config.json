@@ -1,0 +1,54 @@
+{
+  "_info": "Community scraper configuration. Adapt selectors to the target site DOM. This file is generic — copy and modify for other community sites.",
+  "enabled": true,
+  "name": "ELO Community",
+  "icon": "🏢",
+  "auth": {
+    "loginUrl": "https://community.elo.com/",
+    "selectors": {
+      "usernameField": "input[type='email'], input[type='text'][autocomplete='username'], input[type='text'][aria-label*='User'], input[type='text'][aria-label*='Email'], input[placeholder*='Email'], input[placeholder*='User']",
+      "passwordField": "input[type='password'], input[aria-label*='Password'], input[aria-label*='Passwort'], input[placeholder*='Password'], input[placeholder*='Passwort']",
+      "submitButton": "button[type='submit'], button[aria-label*='Log'], button[aria-label*='Sign'], button.mat-raised-button, button[class*='submit']",
+      "loggedInIndicator": ".user-nav, .user-avatar, .logout, .logout-btn, nav .username, [data-user-id], .profile-link, sol-user-menu, .user-profile, [aria-label*='Profile'], [aria-label*='Logout']"
+    }
+  },
+  "board": {
+    "url": "https://community.elo.com/community/plugin/de.elo.ix.plugin.proxy/wf/apps/app/sol.knowledge.apps.KnowledgeBoard/#/?board=COMMUNITY&page=1",
+    "waitForSelector": "sol-board, sol-knowledge-board, .board-wrapper, .knowledge-board, [class*='board-content']",
+    "waitTimeout": 20000,
+    "selectors": {
+      "sectionItems": "sol-board-entry, .board-entry, sol-kb-entry, .kb-entry, [class*='board-entry'], [class*='board-section'], [data-section]",
+      "sectionTitle": "h2, h3, .entry-title, .section-title, .board-title, [class*='entry-name'], [class*='section-name']",
+      "sectionLink": "a[href]",
+      "articleItems": "sol-article-item, sol-kb-article-item, .article-item, .kb-article-item, [class*='article-item'], [data-article-id]",
+      "articleLink": "a[href]",
+      "articleTitle": "h1, .article-title, .post-title, sol-article-title, [class*='article-title']",
+      "articleBody": ".ql-editor, .article-body, .post-content, sol-article-content, sol-kb-article-content, [class*='article-content'], [class*='article-body']",
+      "articleDate": "time[datetime], .article-date, .created-date, .post-date, [class*='article-date'], [class*='created-at']",
+      "articleAuthor": ".author-name, .user-name, .post-author, [class*='author-name'], sol-user-display",
+      "articleTags": ".tag-item, .article-tag, .label, sol-tag, [class*='tag-item']",
+      "paginationNext": "button[aria-label='Next page'], button.mat-paginator-navigation-next, a.next-page, .pagination-next, [aria-label='Next'], button.btn-next"
+    }
+  },
+  "output": {
+    "dir": "community",
+    "format": "markdown",
+    "downloadImages": true,
+    "delayBetweenArticles": 1500,
+    "delayBetweenPages": 2000,
+    "delayBetweenSections": 3000,
+    "overwriteExisting": false,
+    "maxArticlesPerSection": 0
+  },
+  "elasticsearch": {
+    "enabled": false,
+    "host": "http://localhost:9200",
+    "index": "community-articles",
+    "username": "",
+    "password": "",
+    "model": "mE5-small",
+    "modelHfId": "Xenova/multilingual-e5-small",
+    "dimensions": 384,
+    "batchSize": 16
+  }
+}
