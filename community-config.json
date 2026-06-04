@@ -14,20 +14,20 @@
   },
   "board": {
     "url": "https://community.elo.com/community/plugin/de.elo.ix.plugin.proxy/wf/apps/app/sol.knowledge.apps.KnowledgeBoard/#/?board=COMMUNITY&page=1",
-    "waitForSelector": "sol-board, sol-knowledge-board, .board-wrapper, .knowledge-board, [class*='board-content']",
+    "waitForSelector": "sol-board, sol-knowledge-board, .board-wrapper, [class*='board-content'], [class*='section']",
     "waitTimeout": 20000,
     "selectors": {
-      "sectionItems": "sol-board-entry, .board-entry, sol-kb-entry, .kb-entry, [class*='board-entry'], [class*='board-section'], [data-section]",
-      "sectionTitle": "h2, h3, .entry-title, .section-title, .board-title, [class*='entry-name'], [class*='section-name']",
-      "sectionLink": "a[href]",
-      "articleItems": "sol-article-item, sol-kb-article-item, .article-item, .kb-article-item, [class*='article-item'], [data-article-id]",
+      "sectionItems": "sol-board-entry, [class*='section-entry'], .board-entry, [data-section]",
+      "sectionTitle": "h2, h3, [class*='title'], [class*='name'], [class*='entry-name']",
+      "sectionLink": "a[href]:not([href*='logout']):not([href*='profile'])",
+      "articleItems": "[class*='article-item'], sol-article-item, [data-article-id]",
       "articleLink": "a[href]",
-      "articleTitle": "h1, .article-title, .post-title, sol-article-title, [class*='article-title']",
-      "articleBody": ".ql-editor, .article-body, .post-content, sol-article-content, sol-kb-article-content, [class*='article-content'], [class*='article-body']",
-      "articleDate": "time[datetime], .article-date, .created-date, .post-date, [class*='article-date'], [class*='created-at']",
-      "articleAuthor": ".author-name, .user-name, .post-author, [class*='author-name'], sol-user-display",
-      "articleTags": ".tag-item, .article-tag, .label, sol-tag, [class*='tag-item']",
-      "paginationNext": "button[aria-label='Next page'], button.mat-paginator-navigation-next, a.next-page, .pagination-next, [aria-label='Next'], button.btn-next"
+      "articleTitle": "h1, [class*='article-title']",
+      "articleBody": "[class*='content'], .ql-editor, [class*='article-content'], [class*='article-body']",
+      "articleDate": "time, [datetime], [class*='date'], [class*='created']",
+      "articleAuthor": "[class*='by'], [class*='author'], [class*='user'], sol-user-display",
+      "articleTags": "[class*='label'], [class*='tag'], .tag-item",
+      "paginationNext": "button[aria-label='Next'], a[aria-label*='next'], .pagination-next, button.next-page"
     }
   },
   "output": {

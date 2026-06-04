@@ -1,0 +1,73 @@
+{
+  "summary": "Complete analysis of ELO Community structure - Login, Sections, and Articles",
+  "findings": {
+    "login": {
+      "form_id": "eloLoginForm",
+      "username_selector": "input[name='username']",
+      "username_type": "text",
+      "password_selector": "input[name='password']",
+      "password_type": "password",
+      "submit_selector": "button[type='submit'][data-test-id='button-sign_in']",
+      "submit_class": "button mt-5 is-dark is-fullwidth"
+    },
+    "logged_in_indicators": {
+      "navbar_dropdowns": ".navbar-item.has-dropdown",
+      "user_menu": ".navbar-item .navbar-link",
+      "profile_links": "a[href*='/profile']"
+    },
+    "sections_page": {
+      "board_url": "https://community.elo.com/community/plugin/de.elo.ix.plugin.proxy/wf/apps/app/sol.knowledge.apps.KnowledgeBoard/#/?board=COMMUNITY&page=1",
+      "section_containers": "sol-board-entry, [class*='section'], [class*='entry']",
+      "section_count": 3,
+      "section_titles": "h1, h2, h3, [class*='title'], [class*='name']",
+      "section_links": "a[href]",
+      "links_found": 5
+    },
+    "article_structure": {
+      "article_title": {
+        "selector": "h1",
+        "count": 1,
+        "note": "Main article heading"
+      },
+      "article_body": {
+        "selector": "[class*='content']",
+        "count": 4,
+        "note": "Use most specific one - likely .ql-editor or [class*='article-content']"
+      },
+      "article_author": {
+        "selector": "[class*='by']",
+        "count": 1,
+        "note": "Author or 'by' attribution"
+      },
+      "article_tags": {
+        "selector": "[class*='label']",
+        "count": 1,
+        "note": "Tags or labels"
+      },
+      "article_date": {
+        "selector": "time, [class*='date'], [datetime]",
+        "note": "Not found in initial scan - may need to inspect further"
+      }
+    }
+  },
+  "recommended_selectors": {
+    "board": {
+      "sectionItems": "sol-board-entry, .board-entry, [class*='section-entry'], [data-section]",
+      "sectionTitle": "h2, h3, [class*='title'], [class*='name']",
+      "sectionLink": "a[href]",
+      "articleItems": "sol-article-item, .article-item, [class*='article-item'], [data-article-id]",
+      "articleLink": "a[href]",
+      "articleTitle": "h1, [class*='article-title']",
+      "articleBody": "[class*='content'], .ql-editor, [class*='article-content'], [class*='article-body']",
+      "articleDate": "time, [datetime], [class*='date']",
+      "articleAuthor": "[class*='by'], [class*='author'], [class*='user']",
+      "articleTags": "[class*='label'], [class*='tag'], [class*='category']"
+    }
+  },
+  "next_steps": [
+    "1. Update community-config.json with recommended selectors above",
+    "2. Test login with: node inspect-elo-login.js",
+    "3. Verify logged-in state with: node inspect-elo-logged-in.js",
+    "4. Run full scrape test to confirm all selectors work"
+  ]
+}
