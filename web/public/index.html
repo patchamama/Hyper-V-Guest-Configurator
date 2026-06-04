@@ -183,10 +183,19 @@ input:focus{border-color:var(--accent)}
 /* Log resize handle */
 .log-resize{height:5px;cursor:ns-resize;background:var(--border);flex-shrink:0;user-select:none;transition:background .15s}
 .log-resize:hover,.log-resize.dragging{background:var(--accent)}
+/* Table row hover highlight */
+tr:hover td{background:rgba(var(--accent-rgb),.06)}
+/* Port process name color */
+.port-proc{color:var(--elo-orange);font-weight:500}
+/* Spinner */
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{display:inline-block;animation:spin .7s linear infinite}
 /* Notes modal */
 .notes-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;align-items:center;justify-content:center}
 .notes-modal.open{display:flex}
-.notes-box{background:var(--sur);border:1px solid var(--border);border-radius:10px;padding:22px;width:640px;max-width:92vw;display:flex;flex-direction:column;gap:12px;max-height:80vh}
+.notes-box{background:var(--sur);border:1px solid var(--border);border-radius:10px;padding:22px;width:640px;max-width:92vw;display:flex;flex-direction:column;gap:12px;max-height:80vh;transition:width .2s,height .2s,max-height .2s,border-radius .2s}
+.notes-box.maximized{width:97vw!important;max-width:97vw!important;height:96vh;max-height:96vh;border-radius:6px}
+.notes-box.maximized textarea{flex:1;resize:none;min-height:0}
 .notes-box textarea{background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:12px;padding:10px 12px;resize:vertical;min-height:220px;outline:none;line-height:1.6;flex:1}
 .notes-box textarea:focus{border-color:var(--accent)}
 </style>
@@ -196,6 +205,7 @@ input:focus{border-color:var(--accent)}
 <header>
   <div class="dot" id="wsDot"></div>
   <h1>⚙ Hyper-V Guest Configurator</h1>
+  <span id="header-target" style="font-size:11px;background:var(--sur2);border:1px solid var(--border);border-radius:4px;padding:3px 10px;color:var(--muted);display:none"></span>
   <span id="vmUrlBadge" style="display:none;font-size:11px;color:var(--muted);margin-left:8px">
     VM: <a id="vmUrlLink" href="#" style="color:var(--accent);text-decoration:none" target="_blank"></a>
     &nbsp;·&nbsp;
@@ -244,13 +254,18 @@ input:focus{border-color:var(--accent)}
 
 <!-- Notes modal -->
 <div class="notes-modal" id="notesModal">
-  <div class="notes-box">
+  <div class="notes-box" id="notes-box">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <strong style="font-size:15px">📝 Notes</strong>
-      <button class="hbtn" onclick="Notes.close()">✕</button>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="hbtn" id="notes-maximize-btn" onclick="Notes.toggleMaximize()" title="Maximize / Restore" style="font-size:14px;padding:3px 8px">⤢</button>
+        <button class="hbtn" onclick="Notes.close()">✕</button>
+      </div>
     </div>
     <textarea id="notesText" placeholder="Write notes here — saved to notes.txt on the server (git-ignored)"></textarea>
-    <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-o" onclick="Notes.addTask()" title="Append a new task checkbox line">☑ Add Task</button>
+      <div style="flex:1"></div>
       <span id="notesSaved" style="font-size:11px;color:var(--green);display:none">✓ Saved</span>
       <button class="btn btn-p" onclick="Notes.save()">Save</button>
     </div>
@@ -312,12 +327,14 @@ const WS = {
 
 // ── App state ────────────────────────────────────────────────────────────────
 const S = {
-  vmName: '', features: [], models: [], downloadUrls: [],
+  vmName: '',        // '__local__' = This Machine, '' = none, else = Hyper-V VM name
+  vmUser: '', vmPass: '',
+  exposeMode: 'full', exposePorts: '',   // port-exposure settings
+  features: [], models: [], downloadUrls: [],
   localFiles: [], wingetPkgs: [], wingetConfig: {}, tools: [], installMode: 'copy-only',
-  vmUser: '', vmPass: '', completed: [],
-  copyMethod: 'http',
-  copiedFiles: [],
+  completed: [], copyMethod: 'http', copiedFiles: [],
 };
+const isLocalMachine = () => S.vmName === '__local__';
 
 let vms = [], downloads = [], softwares = [], winget = [], models = [], tools = [];
 let scriptDir = 'C:\\ollama-ssl\\installator';
@@ -344,9 +361,8 @@ const hasWSLPrep  = () => S.features.includes('wsl-prep');
 
 // ── Sidebar navigation ────────────────────────────────────────────────────────
 const NAV = [
-  { id: 'features',    label: 'Features',       sec: 'Configure' },
-  { id: 'vm',          label: 'VM',             sec: null        },
-  { id: 'credentials', label: 'Credentials',    sec: null        },
+  { id: 'vm',          label: 'Target Machine', sec: 'Configure' },
+  { id: 'features',    label: 'Features',       sec: null        },
   { id: 'models',      label: 'Ollama Models',  sec: null        },
   { id: 'downloads',   label: 'Downloads',      sec: null        },
   { id: 'local',       label: 'Local Files',    sec: null        },
@@ -354,21 +370,26 @@ const NAV = [
   { id: 'tools',       label: 'AddOns',         sec: null        },
   { id: 'installmode', label: 'Install Mode',   sec: null        },
   { id: 'execute',     label: 'Execute',        sec: 'Run'       },
-  { id: 'vmexposure',  label: 'VM Exposure',    sec: 'Status'    },
+  { id: 'vmexposure',  label: 'Exposure',        sec: 'Status'    },
   { id: 'dbadmin',     label: 'DB Admin',       sec: null        },
   { id: 'help',        label: 'Help',           sec: 'Help'      },
 ];
 
-let currentPanel = 'features';
+let currentPanel = 'vm';
+
+// Items hidden when "This Machine" is the target (no features/local-files/install-mode needed)
+const _localHide = new Set(['features', 'local', 'installmode']);
 
 function renderSidebar() {
-  let lastSec = '', html = '';
-  NAV.forEach((n, i) => {
+  let lastSec = '', html = '', num = 0;
+  NAV.forEach(n => {
+    if (isLocalMachine() && _localHide.has(n.id)) return; // hidden for This Machine
+    num++;
     if (n.sec && n.sec !== lastSec) { html += `<div class="sec-label">${n.sec}</div>`; lastSec = n.sec; }
     const done = isDone(n.id);
     const active = n.id === currentPanel;
     html += `<div class="nav-item ${active?'active':''} ${done&&!active?'ok':''}" onclick="App.showPanel('${n.id}')">
-      <div class="num">${done ? '✓' : i+1}</div>
+      <div class="num">${done ? '✓' : num}</div>
       <div class="nav-label">${n.label}</div>
     </div>`;
   });
@@ -378,13 +399,12 @@ function renderSidebar() {
 function isDone(id) {
   return {
     features:    S.features.length > 0,
-    vm:          !!S.vmName,
+    vm:          !!S.vmName && (isLocalMachine() || !!S.vmUser),
     models:      S.models.length > 0 || (S.features.length > 0 && !hasWSL()),
     downloads:   S.downloadUrls.length > 0,
-    local:       S.localFiles.length > 0,
+    local:       isLocalMachine() || S.localFiles.length > 0,
     tools:       S.tools.length > 0 || tools.length === 0,
-    installmode: S.localFiles.length > 0,
-    credentials: !!S.vmUser,
+    installmode: isLocalMachine() || S.localFiles.length > 0,
     execute:     false,
   }[id] ?? false;
 }
@@ -448,7 +468,7 @@ const App = {
   async resetState() {
     if (!confirm('Reset all progress and selections?')) return;
     await fetch('/api/state', { method: 'DELETE' });
-    Object.assign(S, { vmName:'', features:[], models:[], downloadUrls:[], localFiles:[], wingetPkgs:[], wingetConfig:{}, tools:[], installMode:'copy-only', vmUser:'', vmPass:'', completed:[], copyMethod:'http', copiedFiles:[] });
+    Object.assign(S, { vmName:'', vmUser:'', vmPass:'', exposeMode:'full', exposePorts:'', features:[], models:[], downloadUrls:[], localFiles:[], wingetPkgs:[], wingetConfig:{}, tools:[], installMode:'copy-only', completed:[], copyMethod:'http', copiedFiles:[] });
     // Destroy cached panels so they re-initialize with fresh state
     const main = document.getElementById('main');
     Object.entries(_panelCache).forEach(([, el]) => { try { main.removeChild(el); } catch {} });
@@ -459,15 +479,28 @@ const App = {
   async saveState() {
     await fetch('/api/state', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ VMName:S.vmName, Features:S.features, Models:S.models, DownloadUrls:S.downloadUrls, LocalFiles:S.localFiles, WingetPkgs:S.wingetPkgs, WingetConfig:S.wingetConfig, Tools:S.tools, InstallMode:S.installMode, Completed:S.completed, CopyMethod:S.copyMethod, CopiedFiles:S.copiedFiles }),
+      body: JSON.stringify({ VMName:S.vmName, VMUser:S.vmUser, ExposeMode:S.exposeMode, ExposePorts:S.exposePorts, Features:S.features, Models:S.models, DownloadUrls:S.downloadUrls, LocalFiles:S.localFiles, WingetPkgs:S.wingetPkgs, WingetConfig:S.wingetConfig, Tools:S.tools, InstallMode:S.installMode, Completed:S.completed, CopyMethod:S.copyMethod, CopiedFiles:S.copiedFiles }),
     });
   },
   async loadVMExposure() {
     const el = document.getElementById('vmexp-body');
     if (!el) return;
+    // When "This Machine" is selected, show local listening ports instead of VM exposure
+    if (isLocalMachine()) {
+      el.innerHTML = '<span style="color:var(--muted)">Loading local ports…</span>';
+      const ports = await fetch('/api/host/ports').then(r => r.json()).catch(() => []);
+      const hostIp = await fetch('/api/vm/exposure-status').then(r=>r.json()).then(d=>d.hostIp).catch(()=>null);
+      const h = hostIp || 'localhost';
+      if (!ports.length) { el.innerHTML = '<span style="color:var(--muted)">No listening ports found on this machine.</span>'; return; }
+      const td0 = `style="padding:5px 10px 5px 0;color:var(--muted);white-space:nowrap;vertical-align:top"`;
+      const td1 = `style="padding:5px 0;font-family:var(--mono);font-size:12px"`;
+      const rows = ports.map(p => `<tr><td ${td0}>:${p}</td><td ${td1}><a href="http://${h}:${p}/" target="_blank" style="color:var(--accent)">http://${h}:${p}/</a></td></tr>`).join('');
+      el.innerHTML = `<table style="border-collapse:collapse;width:100%;margin-top:4px"><tr><td ${td0}>Machine</td><td ${td1} style="color:var(--green)">This Machine</td></tr><tr><td ${td0}>Host IP</td><td ${td1}>${h}</td></tr><tr><td colspan="2" style="border-top:1px solid var(--border);padding-top:8px"></td></tr>${rows}</table>`;
+      return;
+    }
     const d = await fetch('/api/vm-exposure').then(r => r.json()).catch(() => null);
     if (!d) {
-      el.innerHTML = `<div class="alert al-info" style="margin-top:8px">No active VM exposure found. Run <em>Full VM exposure</em> from <code>hyperv-web-configurator.ps1</code> or <code>hyperv-configurator.ps1</code> to populate this panel.</div>`;
+      el.innerHTML = `<div class="alert al-info" style="margin-top:8px">No active VM exposure found. Use the <em>Port Exposure</em> section in the <strong>VM / Target</strong> step, or run <code>hyperv-web-configurator.ps1</code>.</div>`;
       return;
     }
     const h = d.hostIp || 'host-ip';
@@ -525,38 +558,67 @@ const App = {
       }
     }
 
-    const td0 = `style="padding:5px 10px 5px 0;color:var(--muted);white-space:nowrap;vertical-align:top"`;
+    // Fetch rich port data to enrich with process names
+    const richPortData = await fetch('/api/host/ports-rich').then(r=>r.json()).catch(()=>[]);
+    const richMap = {}; richPortData.forEach(r => { richMap[r.port] = r; });
+
+    const WELL_KNOWN = {21:'FTP',22:'SSH',80:'HTTP',443:'HTTPS',1433:'SQL Server',
+      3306:'MySQL',3389:'RDP',5432:'PostgreSQL',5900:'VNC',6379:'Redis',
+      8080:'HTTP Alt',9090:'ELO Web',9000:'ELO IX',11434:'Ollama',27017:'MongoDB'};
+
+    const td0 = `style="padding:5px 8px 5px 0;color:var(--muted);white-space:nowrap;vertical-align:top;font-size:12px"`;
     const td1 = `style="padding:5px 0;font-family:var(--mono);font-size:12px"`;
+    const td2 = `style="padding:5px 0 5px 10px;font-size:11px;color:var(--muted)"`;
+    const td3 = `style="padding:5px 0 5px 6px;font-size:11px"`;
 
     function renderPort(p) {
+      const rich = richMap[p] || {};
       const entries = SERVICE_MAP[p];
+      const isForward = rich.isPortProxy;
+      const vmFwd = isForward
+        ? `<span style="color:var(--accent);font-size:10px">&#8594; ${d.vmName||'VM'}:${rich.proxyPort||p}</span>`
+        : '';
+      const defName = WELL_KNOWN[p] || '';
+      const procCell = rich.process
+        ? `<span id="exp-proc-${p}">${rich.process}${rich.description ? ` <span style="color:var(--muted);font-size:10px">${rich.description.substring(0,35)}</span>` : ''}</span>`
+        : `<span id="exp-proc-${p}" style="color:var(--muted)">—</span>`;
+      const reqBtn = `<button class="hbtn" style="font-size:10px;padding:1px 6px" onclick="App.resolveExposurePort(${p})">Req</button>`;
+
       if (!entries) {
         return `<tr>
-          <td ${td0}>:${p}</td>
-          <td ${td1}><a href="http://${h}:${p}/" target="_blank" style="color:var(--accent)">http://${h}:${p}/</a></td>
+          <td ${td0}><strong>:${p}</strong></td>
+          <td ${td1}><a href="http://${h}:${p}/" target="_blank" style="color:var(--accent)">http://${h}:${p}/</a> ${vmFwd}</td>
+          <td ${td2}>${defName}</td><td ${td2}>${procCell}</td><td ${td3}>${reqBtn}</td>
         </tr>`;
       }
       return entries.map((e, i) => `<tr>
-        <td ${td0}>${i === 0 ? ':' + p : ''}</td>
+        <td ${td0}>${i===0?`<strong>:${p}</strong>`:''}</td>
         <td ${td1}>
           ${e.url ? `<a href="${e.url}" target="_blank" style="color:var(--accent)">${e.url}</a>` : ''}
-          <span style="color:var(--muted);margin-left:4px">${e.note ? e.note : ''} &nbsp; ${e.label}</span>
+          ${e.note ? `<span style="color:var(--muted);font-size:11px;margin-left:4px">${e.note}</span>` : ''}
+          ${i===0 ? vmFwd : ''}
         </td>
+        <td ${td2}>${i===0?e.label:''}</td>
+        <td ${td2}>${i===0?`<span class="port-proc">${procCell}</span>`:''}</td>
+        <td ${td3}>${i===0?reqBtn:''}</td>
       </tr>`).join('');
     }
 
     const rdpRow = d.rdp
-      ? `<tr><td ${td0}>:3389</td><td ${td1}><a href="#" onclick="downloadRdp('${h}',3389,'Administrator');return false;" style="color:var(--accent)">⬇ Open RDP</a> <span style="color:var(--muted);font-size:11px;margin-left:6px">Administrator @ ${h}:3389</span></td></tr>`
+      ? (() => { const rich=richMap[3389]||{}; const vm=rich.isPortProxy?`<span style="color:var(--accent);font-size:10px">&#8594; ${d.vmName||'VM'}:3389</span>`:'';
+        return `<tr><td ${td0}><strong>:3389</strong></td><td ${td1}><a href="#" onclick="downloadRdp('${h}',3389,'Administrator');return false;" style="color:var(--accent)">&#11015; Open RDP</a> <span style="color:var(--muted);font-size:11px">@ ${h}:3389</span> ${vm}</td><td ${td2}>RDP</td><td ${td2}><span id="exp-proc-3389">${rich.process||'—'}</span></td><td ${td3}><button class="hbtn" style="font-size:10px;padding:1px 6px" onclick="App.resolveExposurePort(3389)">Req</button></td></tr>`; })()
       : '';
     const ports  = (d.ports || []).filter(p => p !== 3389);
     const portRows = ports.map(renderPort).join('');
 
     el.innerHTML = `
       <table style="border-collapse:collapse;width:100%;margin-top:4px">
-        <tr><td ${td0}>VM</td><td ${td1} style="color:var(--green)">${d.vmName || ''}</td></tr>
-        <tr><td ${td0}>VM IP</td><td ${td1}>${v}</td></tr>
-        <tr><td ${td0}>Host IP</td><td ${td1} style="color:var(--green)">${h}</td></tr>
-        <tr><td colspan="2" style="border-top:1px solid var(--border);padding-top:8px"></td></tr>
+        <tr><td ${td0}>VM</td><td ${td1} style="color:var(--green)">${d.vmName||''}</td><td colspan="3"></td></tr>
+        <tr><td ${td0}>VM IP</td><td ${td1}>${v}</td><td colspan="3"></td></tr>
+        <tr><td ${td0}>Host IP</td><td ${td1} style="color:var(--green)">${h}</td><td colspan="3"></td></tr>
+        <tr><td colspan="5" style="border-top:1px solid var(--border);padding-top:6px">
+          <span style="color:var(--muted);font-size:10px">Port &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; URL / Info &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Service &nbsp;&nbsp;&nbsp; Process &nbsp;&nbsp; </span>
+        </td></tr>
         ${rdpRow}
         ${portRows}
       </table>
@@ -566,6 +628,16 @@ const App = {
         <button class="hbtn" style="font-size:11px" onclick="App.loadVMExposure()">&#8635; Refresh</button>
         <button class="hbtn" style="font-size:11px;margin-left:auto" onclick="PortCfg.openModal()">&#9998; Edit Port Config</button>
       </div>`;
+  },
+
+  async resolveExposurePort(port) {
+    const el = document.getElementById(`exp-proc-${port}`);
+    if (!el) return;
+    el.textContent = '…';
+    const r = await fetch(`/api/host/resolve-port-process?port=${port}`).then(r=>r.json()).catch(()=>({}));
+    el.innerHTML = r.process
+      ? `<strong>${r.process}</strong>${r.description ? ` <span style="font-size:10px;color:var(--muted)">${r.description.substring(0,40)}</span>` : ''}`
+      : '<span style="color:var(--muted)">(not found)</span>';
   },
 
   async loadPortServices() {
@@ -599,38 +671,139 @@ const DB = {
   conn: null,
   tables: [],
 
-  _lsKey: 'db_conn_params',
+  _restoreSavedForTarget(vmName) {
+    try {
+      const type = document.getElementById('db-type')?.value || 'postgresql';
+      const key  = `db_conn_${vmName}_${type}`;
+      const saved = JSON.parse(localStorage.getItem(key) || 'null');
+      if (!saved) return;
+      if (saved.port) { const el = document.getElementById('db-port'); if (el) el.value = saved.port; }
+      if (saved.user) { const el = document.getElementById('db-user'); if (el) el.value = saved.user; }
+      if (saved.password) { const el = document.getElementById('db-pass'); if (el) el.value = saved.password; }
+      if (saved.sslMode) { const el = document.getElementById('db-ssl'); if (el) el.value = saved.sslMode; }
+    } catch {}
+  },
+
+  // Dynamic storage key: one slot per target (VM name or __local__) per DB type
+  _getStorageKey() {
+    const target = document.getElementById('db-vm')?.value || S.vmName || '';
+    const type   = document.getElementById('db-type')?.value || 'postgresql';
+    return `db_conn_${target}_${type}`;
+  },
 
   async init() {
     const typeEl = document.getElementById('db-type');
     if (!typeEl) return;
-    // Restore saved params
+    const vmEl = document.getElementById('db-vm');
+
+    // Step 1: default the VM dropdown to the currently selected target
+    if (vmEl && S.vmName && !vmEl.value) vmEl.value = S.vmName;
+
+    // Step 2: try to restore saved params for this target
     try {
-      const saved = JSON.parse(localStorage.getItem(this._lsKey) || 'null');
+      const saved = JSON.parse(localStorage.getItem(this._getStorageKey()) || 'null');
       if (saved) {
         if (saved.type) { typeEl.value = saved.type; }
         if (saved.port) document.getElementById('db-port').value = saved.port;
         if (saved.user) document.getElementById('db-user').value = saved.user;
         if (saved.password) document.getElementById('db-pass').value = saved.password;
         if (saved.sslMode) { const s = document.getElementById('db-ssl'); if (s) s.value = saved.sslMode; }
-        if (saved.vmName) {
-          const vmEl = document.getElementById('db-vm');
-          if (vmEl) { vmEl.value = saved.vmName; await this.onVMSelect(saved.vmName); }
-        } else if (saved.host) {
-          document.getElementById('db-host').value = saved.host;
-        }
+        // If saved data has an explicit vmName that differs from S.vmName, honour it
+        if (saved.vmName && vmEl) { vmEl.value = saved.vmName; }
+        else if (!saved.vmName && saved.host) { document.getElementById('db-host').value = saved.host; }
       }
     } catch {}
+
+    // Step 3: resolve host IP for the selected target
+    const finalTarget = vmEl?.value || '';
+    if (finalTarget) await this.onVMSelect(finalTarget);
     typeEl.onchange = () => {
       const portEl = document.getElementById('db-port');
       if (portEl) portEl.value = { postgresql:'5432', mysql:'3306', mssql:'1433' }[typeEl.value] || '5432';
+      // Restore saved params for this target+type combination
+      try {
+        const key = this._getStorageKey();
+        const saved = JSON.parse(localStorage.getItem(key) || 'null');
+        if (saved) {
+          if (saved.port) portEl.value = saved.port;
+          if (saved.user) document.getElementById('db-user').value = saved.user;
+          if (saved.password) document.getElementById('db-pass').value = saved.password;
+          if (saved.host) document.getElementById('db-host').value = saved.host;
+        }
+      } catch {}
     };
+    // Auto-detect databases on the selected target
+    this.detectDatabases();
+  },
+
+  async detectDatabases() {
+    const el = document.getElementById('db-autodetect-results');
+    if (!el) return;
+    el.innerHTML = '<span style="color:var(--muted)">Detecting…</span>';
+    const DB_PORTS = [
+      { port: 5432,  type: 'postgresql', name: 'PostgreSQL', user: 'postgres' },
+      { port: 3306,  type: 'mysql',      name: 'MySQL',      user: 'root'     },
+      { port: 1433,  type: 'mssql',      name: 'SQL Server', user: 'sa'       },
+      { port: 27017, type: 'mongodb',    name: 'MongoDB',    user: ''         },
+    ];
+    // Determine host to probe
+    let host = '127.0.0.1';
+    if (!isLocalMachine() && S.vmName) {
+      const r = await fetch(`/api/vm-ip?vmName=${encodeURIComponent(S.vmName)}`).then(r=>r.json()).catch(()=>({ok:false}));
+      if (r.ok && r.ip) host = r.ip;
+    }
+    const probeResult = await fetch('/api/probe-ports', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ host, ports: DB_PORTS.map(d=>d.port) }),
+    }).then(r=>r.json()).catch(()=>({}));
+
+    const found = DB_PORTS.filter(d => probeResult[d.port] === true);
+    if (!found.length) { el.innerHTML = '<span style="color:var(--muted)">No database ports detected.</span>'; return; }
+
+    el.innerHTML = found.map(d => `
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--sur2);border-radius:6px;border:1px solid var(--green);margin-bottom:6px">
+        <div style="flex:1">
+          <span style="color:var(--green)">&#9679;</span>
+          <strong style="margin-left:6px">${d.name}</strong>
+          <span style="color:var(--muted);font-size:11px;margin-left:8px">${host}:${d.port}</span>
+        </div>
+        <button class="btn btn-o" style="font-size:11px;padding:3px 10px" onclick="DB.fillFromDetected('${d.type}','${host}','${d.port}','${d.user}')">
+          &#8594; Use
+        </button>
+      </div>`).join('');
+  },
+
+  fillFromDetected(type, host, port, user) {
+    const typeEl = document.getElementById('db-type');
+    const hostEl = document.getElementById('db-host');
+    const portEl = document.getElementById('db-port');
+    const userEl = document.getElementById('db-user');
+    const vmEl   = document.getElementById('db-vm');
+    if (typeEl) typeEl.value = type;
+    if (hostEl) hostEl.value = host;
+    if (portEl) portEl.value = port;
+    if (userEl && !userEl.value) userEl.value = user;
+    // Update VM selector note
+    if (vmEl && !vmEl.value) {
+      const note = document.getElementById('db-vm-ip-note');
+      if (note) note.textContent = `→ ${host}`;
+    }
+    // Scroll to connection form
+    const connectSection = document.getElementById('db-connect-btn');
+    if (connectSection) connectSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   },
 
   async onVMSelect(vmName) {
     const note   = document.getElementById('db-vm-ip-note');
     const hostEl = document.getElementById('db-host');
     if (!vmName) { if (note) note.textContent = ''; return; }
+    if (vmName === '__local__') {
+      if (hostEl) hostEl.value = '127.0.0.1';
+      if (note) note.textContent = '→ 127.0.0.1';
+      this._restoreSavedForTarget(vmName);
+      return;
+    }
+    this._restoreSavedForTarget(vmName);
     if (note) note.textContent = 'resolving…';
     const r = await fetch(`/api/vm-ip?vmName=${encodeURIComponent(vmName)}`).then(r => r.json()).catch(() => ({ ok: false, error: 'fetch failed' }));
     if (r.ok && r.ip) {
@@ -670,7 +843,7 @@ const DB = {
       if (note) note.textContent = `→ ${r.ip}`;
     }
     if (!conn.host || !conn.user) { res.innerHTML = '<span style="color:var(--red)">Host and user are required.</span>'; return; }
-    try { localStorage.setItem(this._lsKey, JSON.stringify({ type: conn.type, host: conn.host, port: conn.port, user: conn.user, password: conn.password, sslMode: conn.sslMode, vmName })); } catch {}
+    try { localStorage.setItem(this._getStorageKey(), JSON.stringify({ type: conn.type, host: conn.host, port: conn.port, user: conn.user, password: conn.password, sslMode: conn.sslMode, vmName })); } catch {}
     btn.disabled = true; btn.textContent = 'Connecting…';
     const r = await fetch('/api/db/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(conn) }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }));
     btn.disabled = false; btn.textContent = 'Test Connection';
@@ -691,10 +864,26 @@ const DB = {
     res.innerHTML = `<span style="color:var(--green)">✓ Connected — ${(r.databases || []).length} database(s)${sslNote}</span>`;
     const dbSel = document.getElementById('db-database-sel');
     if (dbSel) {
-      dbSel.innerHTML = (r.databases || []).map(d => `<option value="${d}" ${d === actualDb ? 'selected' : ''}>${d}</option>`).join('');
+      const databases = r.databases || [];
+      // Show databases immediately with placeholder counts, then fetch real counts in background
+      const renderOpts = (counts = {}) => {
+        dbSel.innerHTML = databases.map(d => {
+          const cnt = counts[d];
+          const label = cnt == null ? `${d} (…)` : `${d} (${cnt} tables)`;
+          return `<option value="${d}" ${d === actualDb ? 'selected' : ''}>${label}</option>`;
+        }).join('');
+      };
+      renderOpts(); // render immediately without counts
       document.getElementById('db-tables-section').style.display = '';
       dbSel.onchange = () => { document.getElementById('db-database').value = dbSel.value; this.conn.database = dbSel.value; this.loadTables(dbSel.value); };
-      this.loadTables(actualDb || r.databases?.[0] || conn.database);
+      this.loadTables(actualDb || databases[0] || conn.database);
+      // Fetch table counts for all databases in background and update dropdown
+      fetch('/api/db/db-table-counts', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ type: conn.type, host: conn.host, port: conn.port, user: conn.user, password: conn.password, sslMode: conn.sslMode, databases }),
+      }).then(r => r.json()).then(data => {
+        if (data.ok) renderOpts(data.counts);
+      }).catch(() => {});
     }
   },
 
@@ -728,17 +917,26 @@ const DB = {
   async loadTables(database) {
     if (!this.conn) return;
     this.conn = { ...this.conn, database };
+    // Show spinner on table selector while loading
+    const tsel = document.getElementById('db-table-sel');
+    if (tsel) { tsel.innerHTML = '<option>Loading…</option>'; tsel.disabled = true; }
     const r = await fetch('/api/db/tables', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.conn) }).then(r => r.json()).catch(() => ({ ok: false, tables: [] }));
     const tableData = r.tables || [];
     this.tables = tableData.map(t => t.table_name);
-    const tsel = document.getElementById('db-table-sel');
     if (tsel) {
-      const fmtRows = n => { const v = Number(n); return isNaN(v) ? '?' : v.toLocaleString(); };
+      tsel.disabled = false;
+      const fmtRows = n => n == null ? '?' : Number(n).toLocaleString();
       tsel.innerHTML = tableData.map(t =>
         `<option value="${t.table_name}">${t.table_name} (${fmtRows(t.row_count)})</option>`
       ).join('');
       tsel.onchange = () => this.selectTable(tsel.value);
       if (this.tables.length) this.selectTable(this.tables[0]);
+    }
+    // Update the database selector option to show table count
+    const dbSel = document.getElementById('db-database-sel');
+    if (dbSel) {
+      const opt = Array.from(dbSel.options).find(o => o.value === database);
+      if (opt && !opt.textContent.includes('(')) opt.textContent = `${database} (${tableData.length} tables)`;
     }
   },
 
@@ -845,6 +1043,19 @@ const DB = {
     if (this._searchAbort) { this._searchAbort.abort(); this._searchAbort = null; }
   },
 
+  jumpToTable(table) {
+    const tsel = document.getElementById('db-table-sel');
+    if (!tsel) return;
+    // Select the option whose value matches
+    const opt = Array.from(tsel.options).find(o => o.value === table);
+    if (opt) {
+      tsel.value = table;
+      this.selectTable(table);
+      // Scroll the SQL editor into view so the user can see the updated query
+      document.getElementById('db-sql-editor')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  },
+
   _appendSearchResult(out, msg, query) {
     const { table, columns, rows, metaCols = [], metaTable = false } = msg;
     const lq = query.toLowerCase();
@@ -857,7 +1068,8 @@ const DB = {
     const rws = rows.map(row => `<tr>${columns.map(c => `<td ${td}>${row[c] ?? ''}</td>`).join('')}</tr>`).join('');
     const div = document.createElement('div');
     div.style.marginBottom = '12px';
-    div.innerHTML = `<div style="font-weight:600;color:var(--accent);font-size:12px;margin-bottom:4px">▸ ${table}${badges} <span style="font-weight:400;color:var(--muted)">${rows.length ? rows.length + ' row' + (rows.length !== 1 ? 's' : '') : 'no data rows'}</span></div>`
+    const safeTable = table.replace(/'/g, "\\'");
+    div.innerHTML = `<div style="font-weight:600;color:var(--accent);font-size:12px;margin-bottom:4px">▸ <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Select this table" onclick="DB.jumpToTable('${safeTable}')">${table}</span>${badges} <span style="font-weight:400;color:var(--muted)">${rows.length ? rows.length + ' row' + (rows.length !== 1 ? 's' : '') : 'no data rows'}</span></div>`
       + (rows.length ? `<div style="overflow:auto;max-height:200px"><table style="border-collapse:collapse">${hdr}${rws}</table></div>` : '');
     out.appendChild(div);
   },
@@ -898,9 +1110,24 @@ const VMTools = {
   },
 
   initPanel() {
-    const el = document.getElementById('vmt-vmname'); if (el && !el.value && S.vmName) el.value = S.vmName;
-    const uel = document.getElementById('vmt-user');  if (uel && !uel.value && S.vmUser) uel.value = S.vmUser;
-    const pel = document.getElementById('vmt-pass');  if (pel && !pel.value && S.vmPass) pel.value = S.vmPass;
+    const el  = document.getElementById('vmt-vmname');
+    const uel = document.getElementById('vmt-user');
+    const pel = document.getElementById('vmt-pass');
+    // Pre-fill from S — skip vmName if __local__ (Tools requires a real VM via PSSession)
+    if (el  && !el.value  && S.vmName && !isLocalMachine()) el.value  = S.vmName;
+    if (uel && !uel.value && S.vmUser) uel.value = S.vmUser;
+    if (pel && !pel.value && S.vmPass) pel.value = S.vmPass;
+    // Show a note when "This Machine" is the selected target
+    const noteId = 'vmt-local-note';
+    if (!document.getElementById(noteId)) {
+      const note = document.createElement('div');
+      note.id = noteId;
+      note.className = 'alert al-warn';
+      note.style.cssText = 'margin-bottom:14px;font-size:12px';
+      note.innerHTML = '&#9888; <em>This Machine</em> is the current target. Tools below use PSSession and require a Hyper-V VM name — enter the VM name manually if needed.';
+      const card = document.querySelector('#main .card');
+      if (card && isLocalMachine()) card.insertBefore(note, card.firstChild);
+    }
   },
 
   async enableRdp() {
@@ -1019,6 +1246,227 @@ const VMTools = {
   },
 };
 
+// ── VM Panel — selection, credentials, port exposure ─────────────────────────
+const VMPanel = {
+  selectVM(name) {
+    const prev = S.vmName;
+    S.vmName = name;
+    App.saveState();
+    renderSidebar();
+    // Update header badge
+    const badge = document.getElementById('header-target');
+    if (badge) {
+      if (name) {
+        badge.textContent = name === '__local__' ? '🏠 This Machine' : '🖥 ' + name;
+        badge.style.display = '';
+        badge.style.color = name === '__local__' ? 'var(--accent)' : 'var(--green)';
+      } else { badge.style.display = 'none'; }
+    }
+    // If switching from one VM to a different target, clear portproxy rules automatically
+    if (prev && prev !== '__local__' && name !== prev) {
+      fetch('/api/vm/clear-exposure', { method: 'POST' }).catch(() => {});
+    }
+    // Update radio visuals in-place (vm panel is transient but may still be visible)
+    document.querySelectorAll('#vm-opts-grid .opt.radio').forEach(el => {
+      const n = el.getAttribute('onclick')?.match(/selectVM\('([^']+)'\)/)?.[1];
+      const sel = n === name;
+      el.classList.toggle('sel', sel);
+      const chk = el.querySelector('.chk'); if (chk) chk.textContent = sel ? '●' : '';
+    });
+    const credSect = document.getElementById('vm-cred-section');
+    if (credSect) credSect.style.display = name === '__local__' ? 'none' : '';
+    const modeSection = document.getElementById('vm-expose-mode-section');
+    if (modeSection) modeSection.style.display = name === '__local__' ? 'none' : '';
+    const desc = document.getElementById('vm-expose-desc');
+    if (desc) desc.textContent = name === '__local__'
+      ? 'Ports currently listening on this machine.'
+      : 'Forward VM ports through the host so they are accessible from the network.';
+    const expBtn = document.getElementById('vm-expose-btn');
+    if (expBtn) expBtn.disabled = !name || name === '__local__';
+    this.loadStatus();
+  },
+
+  setExposeMode(mode) {
+    S.exposeMode = mode;
+    App.saveState();
+    document.querySelectorAll('#vm-expose-mode-section .opt.radio').forEach(el => {
+      const m = el.getAttribute('onclick')?.match(/setExposeMode\('([^']+)'\)/)?.[1];
+      const sel = m === mode;
+      el.classList.toggle('sel', sel);
+      const chk = el.querySelector('.chk'); if (chk) chk.textContent = sel ? '●' : '';
+    });
+    const ps = document.getElementById('vm-expose-ports-section');
+    if (ps) ps.style.display = mode === 'ports' ? '' : 'none';
+  },
+
+  togglePresetPort(port) {
+    const parts = (S.exposePorts||'').split(';').map(s=>s.trim()).filter(Boolean);
+    const idx = parts.indexOf(String(port));
+    if (idx >= 0) parts.splice(idx, 1); else parts.push(String(port));
+    S.exposePorts = parts.join(';');
+    App.saveState();
+    const inp = document.getElementById('vm-expose-ports-input');
+    if (inp) inp.value = S.exposePorts;
+    const btn = document.getElementById(`pp-${port}`);
+    if (btn) btn.className = `btn ${parts.includes(String(port)) ? 'btn-p' : 'btn-o'}`;
+  },
+
+  onPortsInput(val) {
+    S.exposePorts = val;
+    App.saveState();
+    const parts = val.split(';').map(s=>s.trim()).filter(Boolean);
+    [5432,3389,1433,3306,21,22,80,443,8080,9090,9000,11434,5000].forEach(p => {
+      const btn = document.getElementById(`pp-${p}`);
+      if (btn) btn.className = `btn ${parts.includes(String(p)) ? 'btn-p' : 'btn-o'}`;
+    });
+  },
+
+  async loadStatus() {
+    const res = document.getElementById('vm-expose-result');
+    const btn = document.getElementById('vm-expose-refresh-btn');
+    if (!res) return;
+    if (btn) btn.innerHTML = '<span class="spin">↻</span>';
+    if (isLocalMachine()) {
+      try {
+        const rows = await fetch('/api/host/ports-rich').then(r=>r.json()).catch(()=>[]);
+        if (!rows.length) { res.innerHTML = '<span style="color:var(--muted)">No listening ports found</span>'; if (btn) btn.textContent='↻'; return; }
+        const WELL_KNOWN = {21:'FTP',22:'SSH',25:'SMTP',80:'HTTP',110:'POP3',143:'IMAP',443:'HTTPS',
+          1433:'SQL Server',3306:'MySQL',3389:'RDP',5432:'PostgreSQL',5900:'VNC',
+          6379:'Redis',8080:'HTTP Alt',8101:'ELO Svc',9000:'ELO IX',9090:'ELO Web',
+          9200:'Elasticsearch',11434:'Ollama',11443:'Ollama SSL',27017:'MongoDB'};
+        const th = `style="padding:4px 8px;text-align:left;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border)"`;
+        const td = `style="padding:4px 8px;font-size:11px;font-family:var(--mono)"`;
+        const tdl = `style="padding:4px 8px;font-size:11px"`;
+        const localPorts = rows.filter(r => !r.isPortProxy).map(r => r.port);
+        let html = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:11px;color:var(--muted)">${rows.length} port(s) — ${rows.filter(r=>r.isPortProxy).length} VM forward(s)</span>
+          ${localPorts.length ? `<button class="hbtn" style="font-size:10px;padding:2px 8px" onclick="VMPanel.resolveAllPortProcesses([${localPorts.join(',')}])">Request All</button>` : ''}
+        </div>
+        <div style="overflow:auto;max-height:320px"><table style="border-collapse:collapse;width:100%">
+          <tr><th ${th}>Port</th><th ${th}>Service (default)</th><th ${th}>Process / Forward</th><th ${th}>Action</th></tr>`;
+        for (const row of rows) {
+          const defApp  = WELL_KNOWN[row.port] || '';
+          const procInfo = row.isPortProxy
+            ? `<span style="color:var(--accent)">&#8594; VM forward</span>${row.vmName ? ` <span class="port-proc">${row.vmName}</span>` : ''} <span style="color:var(--muted);font-size:10px">${row.proxyIp}:${row.proxyPort}</span>`
+            : `<span id="proc-${row.port}" class="port-proc">${row.process||'—'}</span>${row.description ? ` <span style="color:var(--muted);font-size:10px">${row.description.substring(0,40)}</span>` : ''}`;
+          html += `<tr>
+            <td ${td}><strong>${row.port}</strong></td>
+            <td ${tdl}>${defApp}</td>
+            <td ${tdl}>${procInfo}</td>
+            <td ${tdl}>${!row.isPortProxy ? `<button class="hbtn" style="font-size:10px;padding:2px 7px" onclick="VMPanel.resolvePortProcess(${row.port})">Request</button>` : ''}</td>
+          </tr>`;
+        }
+        html += '</table></div>';
+        res.innerHTML = html;
+      } catch { res.textContent = 'Error loading port info'; }
+      if (btn) btn.textContent = '↻'; return;
+    } else {
+      try {
+        const [exp, status] = await Promise.all([
+          fetch('/api/vm-exposure').then(r=>r.json()).catch(()=>null),
+          fetch('/api/vm/exposure-status').then(r=>r.json()).catch(()=>({ports:[],hostIp:null})),
+        ]);
+        const activePorts = status.ports || [];
+        const savedPorts  = exp?.ports || [];
+        const hostIp      = status.hostIp || exp?.hostIp || '?';
+        if (!activePorts.length && !savedPorts.length) {
+          res.innerHTML = '<span style="color:var(--muted)">No active exposure. Click <strong>Expose Now</strong> to set up.</span>'; return;
+        }
+        const allMatch = savedPorts.every(p => activePorts.includes(p));
+        const color = allMatch ? 'var(--green)' : 'var(--yellow)';
+        const wrongVM = exp?.vmName && exp.vmName !== S.vmName;
+        res.innerHTML = `<div style="margin-bottom:5px"><span style="color:${color}">&#9679; ${allMatch ? 'Active' : 'Partial'}</span>
+          &nbsp;·&nbsp; Host: <strong>${hostIp}</strong>${exp?.timestamp ? ' &nbsp;·&nbsp; ' + exp.timestamp : ''}
+          ${wrongVM ? `<span style="color:var(--yellow);font-size:11px"> (set for ${exp.vmName})</span>` : ''}</div>
+          <div>Forwarded: ${activePorts.length ? activePorts.map(p=>`<span class="tag">${p}</span>`).join('') : '<span style="color:var(--muted)">none</span>'}</div>
+          ${!allMatch && savedPorts.length ? `<div style="color:var(--yellow);font-size:11px;margin-top:3px">⚠ Re-expose to restore all saved ports</div>` : ''}`;
+      } catch { res.textContent = 'Error checking status'; }
+    }
+    if (btn) btn.textContent = '↻';
+  },
+
+  async resolvePortProcess(port) {
+    const el = document.getElementById(`proc-${port}`);
+    if (!el) return;
+    el.textContent = '…';
+    const r = await fetch(`/api/host/resolve-port-process?port=${port}`).then(r=>r.json()).catch(()=>({}));
+    el.className = 'port-proc';
+    el.innerHTML = r.process
+      ? `${r.process}${r.description ? ` <span style="color:var(--muted);font-size:10px;font-weight:400">${r.description.substring(0,50)}</span>` : ''}`
+      : '<span style="color:var(--muted);font-weight:400">(not found)</span>';
+  },
+
+  async resolveAllPortProcesses(ports) {
+    await Promise.all(ports.map(p => this.resolvePortProcess(p)));
+  },
+
+  async testCredentials() {
+    const vmName = S.vmName;
+    if (!vmName || isLocalMachine()) return;
+    const vmUser = document.getElementById('vm-cred-user')?.value?.trim() || S.vmUser;
+    const vmPass = document.getElementById('vm-cred-pass')?.value || S.vmPass;
+    if (!vmUser || !vmPass) { alert('Enter credentials first.'); return; }
+    const btn = document.getElementById('vm-cred-test-btn');
+    const res = document.getElementById('vm-cred-test-result');
+    btn.disabled = true; btn.textContent = 'Testing…';
+    const r = await fetch('/api/vm/test-credentials', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vmName, vmUser, vmPass }),
+    }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }));
+    btn.disabled = false; btn.textContent = '✓ Test Connection';
+    res.innerHTML = r.ok
+      ? `<span style="color:var(--green)">&#10003; Connected — <strong>${r.computerName}</strong></span>`
+      : `<span style="color:var(--red)">&#10007; ${r.error?.substring(0,120)}</span>`;
+  },
+
+  expose() {
+    const vmName = S.vmName;
+    if (!vmName || vmName === '__local__') return;
+    const vmUser = document.getElementById('vm-cred-user')?.value?.trim() || S.vmUser;
+    const vmPass = document.getElementById('vm-cred-pass')?.value || S.vmPass;
+    if (!vmUser || !vmPass) { alert('Enter VM credentials first.'); return; }
+    S.vmUser = vmUser; S.vmPass = vmPass; App.saveState();
+
+    const log    = document.getElementById('vm-expose-log');
+    const status = document.getElementById('vm-expose-status');
+    const btn    = document.getElementById('vm-expose-btn');
+    log.style.display = ''; log.innerHTML = '';
+    if (status) status.textContent = 'Working…';
+    if (btn)  { btn.disabled = true; btn.textContent = '⟳ Working…'; }
+
+    const mode  = S.exposeMode || 'full';
+    const ports = mode === 'ports'
+      ? (S.exposePorts||'').split(';').map(s=>+s.trim()).filter(p=>p>0&&p<65536) : [];
+
+    const addLog = text => { const d=document.createElement('div'); d.textContent=text; log.appendChild(d); log.scrollTop=log.scrollHeight; };
+
+    fetch('/api/vm/expose', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ vmName, vmUser, vmPass, mode, ports }),
+    }).then(async resp => {
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read(); if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n'); buf = lines.pop() || '';
+        for (const rawLine of lines) {
+          const line = rawLine.trim(); if (!line.startsWith('data: ')) continue;
+          let msg; try { msg = JSON.parse(line.slice(6)); } catch { continue; }
+          if      (msg.type==='step')  addLog('▶ ' + msg.text);
+          else if (msg.type==='vmip')  addLog('VM IP: ' + msg.ip);
+          else if (msg.type==='ports') addLog('Ports: ' + msg.ports.join(', '));
+          else if (msg.type==='log')   addLog(msg.text);
+          else if (msg.type==='done')  { addLog('✓ Done — host: ' + msg.hostIp); if (status) status.textContent='✓ '+msg.hostIp; this.loadStatus(); }
+          else if (msg.type==='error') { addLog('✗ ' + msg.error); if (status) status.innerHTML=`<span style="color:var(--red)">✗ ${msg.error}</span>`; }
+        }
+      }
+    }).catch(e => addLog('✗ ' + e.message))
+      .finally(() => { if (btn) { btn.disabled=false; btn.textContent='⚡ Expose Now'; } });
+  },
+};
+
 // ── Ollama Library Search ──────────────────────────────────────────────────────
 const OllamaSearch = {
   _t: null,
@@ -1134,16 +1582,30 @@ const panels = {
       <h2>Feature Selection</h2>
       <p class="sub">What do you want to configure on the guest VM?</p>
       <div class="grid">${opts}</div>
-      <div class="brow"><button class="btn btn-p" onclick="App.showPanel('vm')">Continue →</button></div>
+      <div class="brow">
+        <button class="btn btn-o" onclick="App.showPanel('vm')">&#8592; Back</button>
+        <button class="btn btn-p" onclick="App.showPanel('models')">Continue &#8594;</button>
+      </div>
     </div>`;
   },
 
-  // VM selection
+  // VM / Target selection (credentials + port exposure integrated)
   vm() {
-    const rows = vms.map(v => {
+    const localSel = isLocalMachine();
+    const PORT_PRESETS = [
+      [5432,'PostgreSQL'],[3389,'RDP'],[1433,'MSSQL'],[3306,'MySQL'],
+      [21,'FTP'],[22,'SSH'],[80,'HTTP'],[443,'HTTPS'],[8080,'HTTP Alt'],
+      [9090,'ELO WebClient'],[9000,'ELO IndexServer'],[11434,'Ollama'],[5000,'ELO Log'],
+    ];
+    const activePorts = (S.exposePorts||'').split(';').map(s=>s.trim()).filter(Boolean);
+    const presetBtns = PORT_PRESETS.map(([p,l]) => {
+      const on = activePorts.includes(String(p));
+      return `<button id="pp-${p}" class="btn ${on?'btn-p':'btn-o'}" style="padding:3px 9px;font-size:11px" onclick="VMPanel.togglePresetPort(${p})">${l}&nbsp;:${p}</button>`;
+    }).join('');
+    const vmRows = vms.map(v => {
       const sel = S.vmName === v.Name;
       const run = v.State === 'Running';
-      return `<div class="opt radio ${sel?'sel':''}" onclick="S.vmName='${v.Name}';App.showPanel('vm')">
+      return `<div class="opt radio ${sel?'sel':''}" onclick="VMPanel.selectVM('${v.Name}')">
         <div class="chk">${sel?'●':''}</div>
         <div>
           <div class="opt-name">${v.Name}</div>
@@ -1151,23 +1613,88 @@ const panels = {
         </div>
       </div>`;
     }).join('');
-    const noVms = !rows
-      ? `<div class="alert al-warn">
-          No Hyper-V VMs found. Make sure the server runs as <strong>Administrator</strong> and Hyper-V is installed.<br>
-          <a href="/api/vms/debug" target="_blank" style="color:var(--accent);font-size:12px">View raw debug output →</a>
-         </div>`
-      : '';
-    return `<div class="card">
-      <h2>VM Selection</h2>
-      <p class="sub">Select the Hyper-V guest VM to configure. Running VMs appear first.</p>
-      ${noVms}
-      <div class="grid">${rows}</div>
-      <div class="brow">
-        <button class="btn btn-o" onclick="App.showPanel('features')">← Back</button>
-        <button class="btn btn-p" onclick="goFromVM()">Continue →</button>
-        <button class="hbtn" onclick="reloadVMs()" style="margin-left:4px">↺ Refresh</button>
+    const noVms = !vms.length ? `<div class="alert al-warn">No Hyper-V VMs found. Server must run as <strong>Administrator</strong> with Hyper-V installed. <a href="/api/vms/debug" target="_blank" style="color:var(--accent);font-size:12px">Debug →</a></div>` : '';
+    return `
+<div class="card">
+  <h2>Target Machine</h2>
+  <p class="sub">Choose a Hyper-V guest VM or <em>This Machine</em> (the host running this server).</p>
+  ${noVms}
+  <div id="vm-opts-grid" class="grid">
+    <div class="opt radio ${localSel?'sel':''}" onclick="VMPanel.selectVM('__local__')">
+      <div class="chk">${localSel?'●':''}</div>
+      <div><div class="opt-name">&#127968; This Machine</div><div class="opt-sub">Host running this server — no PSSession needed</div></div>
+    </div>
+    ${vmRows}
+  </div>
+  <div class="brow" style="margin-top:8px">
+    <button class="hbtn" onclick="reloadVMs()" style="font-size:12px">&#8635; Refresh VMs</button>
+  </div>
+</div>
+
+<div id="vm-cred-section" style="${localSel?'display:none':''}">
+  <div class="card">
+    <h2>VM Credentials</h2>
+    <p class="sub">PSSession credentials for the selected VM. Used for all remote operations.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;max-width:480px">
+      <div class="fg"><label class="fl">Username</label>
+        <input type="text" id="vm-cred-user" value="${S.vmUser}" placeholder="Administrator"></div>
+      <div class="fg"><label class="fl">Password</label>
+        <input type="password" id="vm-cred-pass" value="${S.vmPass}" placeholder="••••••••"></div>
+    </div>
+    <div class="brow" style="margin-top:10px">
+      <button class="btn btn-o" id="vm-cred-test-btn" onclick="VMPanel.testCredentials()">&#10003; Test Connection</button>
+      <span id="vm-cred-test-result" style="font-size:12px;margin-left:10px"></span>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>&#128268; ${localSel ? 'Local Port Status' : 'Port Exposure'}</h2>
+  <p class="sub" id="vm-expose-desc">${localSel
+    ? 'Ports currently listening on this machine.'
+    : 'Forward VM ports through the host so they are accessible from the network.'}</p>
+
+  <div id="vm-expose-mode-section" style="${localSel?'display:none':''}">
+    <div class="grid" style="margin-bottom:12px">
+      <div class="opt radio ${S.exposeMode==='full'?'sel':''}" onclick="VMPanel.setExposeMode('full')">
+        <div class="chk">${S.exposeMode==='full'?'●':''}</div>
+        <div><div class="opt-name">Full VM Exposure</div><div class="opt-sub">Scan all VM listening ports, open firewall + portproxy for each</div></div>
       </div>
-    </div>`;
+      <div class="opt radio ${S.exposeMode==='ports'?'sel':''}" onclick="VMPanel.setExposeMode('ports')">
+        <div class="chk">${S.exposeMode==='ports'?'●':''}</div>
+        <div><div class="opt-name">Specific Ports</div><div class="opt-sub">Choose exactly which ports to forward</div></div>
+      </div>
+    </div>
+    <div id="vm-expose-ports-section" style="${S.exposeMode==='ports'?'':'display:none'}">
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">${presetBtns}</div>
+      <div class="fg">
+        <label class="fl">Manual ports — semicolon-separated (e.g. <code>5432;3389;9090</code>)</label>
+        <input type="text" id="vm-expose-ports-input" value="${S.exposePorts||''}" placeholder="5432;3389;9090"
+               oninput="VMPanel.onPortsInput(this.value)" style="max-width:360px">
+      </div>
+    </div>
+    <div class="brow" style="margin-top:10px">
+      <button class="btn btn-g" id="vm-expose-btn" onclick="VMPanel.expose()" ${S.vmName&&!localSel?'':'disabled'}>
+        &#9889; Expose Now
+      </button>
+      <span id="vm-expose-status" style="font-size:12px;margin-left:10px;color:var(--muted)"></span>
+    </div>
+  </div>
+
+  <div style="margin-top:${localSel?'4':'12'}px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <strong style="font-size:13px">Current Status</strong>
+      <button class="hbtn" id="vm-expose-refresh-btn" onclick="VMPanel.loadStatus()" style="font-size:11px;padding:2px 8px">&#8635;</button>
+    </div>
+    <div id="vm-expose-result" style="font-size:12px;color:var(--muted)">Click ↻ to check</div>
+  </div>
+  <div id="vm-expose-log" style="display:none;background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;max-height:160px;overflow-y:auto;font-family:var(--mono);font-size:11px;line-height:1.5;margin-top:10px"></div>
+</div>
+
+<div class="brow">
+  <button class="btn btn-o" onclick="App.showPanel('features')">&#8592; Back</button>
+  <button class="btn btn-p" onclick="goFromVM()">Continue &#8594;</button>
+</div>`;
   },
 
   // Ollama models
@@ -1207,8 +1734,8 @@ const panels = {
         ${tags ? `<div style="margin-top:8px">${tags}</div>` : ''}
       </div>
       <div class="brow">
-        <button class="btn btn-o" onclick="App.showPanel('credentials')">← Back</button>
-        <button class="btn btn-p" onclick="App.showPanel('downloads')">Continue →</button>
+        <button class="btn btn-o" onclick="App.showPanel(isLocalMachine()?'vm':'features')">&#8592; Back</button>
+        <button class="btn btn-p" onclick="App.showPanel('downloads')">Continue &#8594;</button>
       </div>
     </div>`;
   },
@@ -1248,6 +1775,10 @@ const panels = {
 
   // Local installers
   local() {
+    if (isLocalMachine()) return `<div class="card"><h2>Local Files</h2>
+      <p class="sub"><em>This Machine</em> is selected — local file copying to a VM is not applicable.</p>
+      <div class="brow"><button class="btn btn-o" onclick="App.showPanel('vmtools')">&#8592; Back</button>
+      <button class="btn btn-p" onclick="App.showPanel('tools')">Continue &#8594;</button></div></div>`;
     if (!softwares.length) return `<div class="card"><h2>Local Installers</h2>
       <p class="sub">No folders found in softwares\\.</p>
       <div class="brow"><button class="btn btn-o" onclick="App.showPanel('downloads')">← Back</button>
@@ -1386,6 +1917,10 @@ const panels = {
 
   // Install mode
   installmode() {
+    if (isLocalMachine()) return `<div class="card"><h2>Installation Mode</h2>
+      <p class="sub"><em>This Machine</em> is selected — installation mode is not applicable.</p>
+      <div class="brow"><button class="btn btn-o" onclick="App.showPanel('tools')">&#8592; Back</button>
+      <button class="btn btn-p" onclick="App.showPanel('execute')">Continue &#8594;</button></div></div>`;
     if (!S.localFiles.length) return `<div class="card"><h2>Installation Mode</h2>
       <p class="sub">No local files selected — not applicable.</p>
       <div class="brow"><button class="btn btn-o" onclick="App.showPanel('tools')">← Back</button>
@@ -1506,14 +2041,18 @@ const panels = {
       <div class="exec-list">${rows}</div>
     </div>`;
   },
-  // VM Exposure Status
+  // Exposure Status (VM or Local)
   vmexposure() {
+    const isLocal = isLocalMachine();
     return `<div class="card" id="vmexp-card">
-      <h2>VM Exposure Status</h2>
-      <p class="sub">Shows which VM is currently exposed via host IP port forwarding. Run <strong>Full VM exposure</strong> in the terminal configurator to populate this panel.</p>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-        <label style="font-size:12px;color:var(--muted);white-space:nowrap">ELO Archive Name</label>
-        <input type="text" id="eloArchiveName" value="ix-Repository1" style="max-width:220px" oninput="App.loadVMExposure()">
+      <h2>${isLocal ? '&#127968; Local Exposure' : '&#128268; VM Exposure Status'}</h2>
+      <p class="sub">${isLocal
+        ? 'Ports currently listening on this machine.'
+        : 'Shows which VM is currently exposed via host IP port forwarding. Use the <strong>VM / Target</strong> step to update exposure.'}</p>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+        ${isLocal ? '' : `<label style="font-size:12px;color:var(--muted);white-space:nowrap">ELO Archive Name</label>
+        <input type="text" id="eloArchiveName" value="ix-Repository1" style="max-width:220px" oninput="App.loadVMExposure()">`}
+        <button class="hbtn" onclick="App.loadVMExposure()" style="font-size:11px;padding:3px 10px">&#8635; Refresh</button>
       </div>
       <div id="vmexp-body" style="color:var(--muted);font-size:13px">Loading&hellip;</div>
     </div>`;
@@ -1522,15 +2061,24 @@ const panels = {
   // DB Admin
   dbadmin() {
     const vmOpts = vms.map(v => `<option value="${v.Name}">${v.Name} — ${v.State}</option>`).join('');
+    const target = isLocalMachine() ? 'This Machine' : (S.vmName || 'selected VM');
     return `
 <div class="card">
+  <h2>&#128451; Detected Databases — ${target}</h2>
+  <p class="sub">Databases found listening on <strong>${target}</strong>. Click <em>Use</em> to fill the connection form automatically.
+    <button class="hbtn" style="font-size:11px;padding:2px 8px;margin-left:8px" onclick="DB.detectDatabases()">&#8635; Rescan</button></p>
+  <div id="db-autodetect-results" style="margin-top:8px"><span style="color:var(--muted)">Detecting…</span></div>
+</div>
+
+<div class="card">
   <h2>Database Admin</h2>
-  <p class="sub">Connect directly to PostgreSQL, MySQL, or SQL Server running on the exposed VM. SSL is negotiated automatically when required.</p>
+  <p class="sub">Connect directly to PostgreSQL, MySQL, or SQL Server. SSL is negotiated automatically when required.</p>
   <div class="fg" style="margin-bottom:12px">
     <label class="fl">VM (Hyper-V) — IP resolved automatically on each connection</label>
     <div style="display:flex;gap:8px;align-items:center">
       <select id="db-vm" style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;padding:7px 12px;flex:1;outline:none" onchange="DB.onVMSelect(this.value)">
         <option value="">(enter host manually)</option>
+        <option value="__local__">&#127968; This Machine (127.0.0.1)</option>
         ${vmOpts}
       </select>
       <button class="btn btn-o" style="padding:6px 10px;white-space:nowrap" title="Refresh IP now" onclick="DB.onVMSelect(document.getElementById('db-vm').value)">&#8635;</button>
@@ -2932,8 +3480,17 @@ function selectFeature(i) {
 }
 
 function goFromVM() {
-  if (!S.vmName) { alert('Select a VM.'); return; }
-  App.showPanel('credentials');
+  if (!S.vmName) { alert('Select a target (VM or This Machine).'); return; }
+  if (!isLocalMachine()) {
+    const u = document.getElementById('vm-cred-user')?.value?.trim() || '';
+    const p = document.getElementById('vm-cred-pass')?.value || '';
+    if (!u) { alert('Enter VM username.'); return; }
+    S.vmUser = u; S.vmPass = p;
+    App.saveState();
+    App.showPanel('features');   // VM: configure deployment features first
+  } else {
+    App.showPanel('models');     // This Machine: skip features
+  }
 }
 
 function addCustomModel() {
@@ -3160,18 +3717,21 @@ async function init() {
     fetch('/api/tools').then(r=>r.json()).then(d=>{ tools=toArr(d); }).catch(()=>{}),
     fetch('/api/port-services').then(r=>r.json()).then(d=>{ if(d) window._portServices=d; }).catch(()=>{}),
     fetch('/api/state').then(r=>r.json()).then(st=>{
-      if (st.VMName)       S.vmName       = st.VMName;
-      if (st.Features?.length)    S.features    = st.Features;
-      if (st.Models?.length)      S.models      = st.Models;
-      if (st.DownloadUrls?.length)S.downloadUrls= st.DownloadUrls;
-      if (st.LocalFiles?.length)  S.localFiles  = st.LocalFiles;
-      if (st.WingetPkgs?.length)  S.wingetPkgs  = st.WingetPkgs;
-      if (st.WingetConfig)        S.wingetConfig= st.WingetConfig;
-      if (st.InstallMode)  S.installMode  = st.InstallMode;
-      if (st.CopyMethod)   S.copyMethod   = st.CopyMethod;
-      if (st.Completed?.length)   S.completed   = st.Completed;
-      if (st.CopiedFiles?.length) S.copiedFiles = st.CopiedFiles;
-      if (st.Tools?.length)       S.tools       = st.Tools;
+      if (st.VMName)               S.vmName       = st.VMName;
+      if (st.VMUser)               S.vmUser       = st.VMUser;
+      if (st.ExposeMode)           S.exposeMode   = st.ExposeMode;
+      if (st.ExposePorts != null)  S.exposePorts  = st.ExposePorts;
+      if (st.Features?.length)     S.features     = st.Features;
+      if (st.Models?.length)       S.models       = st.Models;
+      if (st.DownloadUrls?.length) S.downloadUrls = st.DownloadUrls;
+      if (st.LocalFiles?.length)   S.localFiles   = st.LocalFiles;
+      if (st.WingetPkgs?.length)   S.wingetPkgs   = st.WingetPkgs;
+      if (st.WingetConfig)         S.wingetConfig = st.WingetConfig;
+      if (st.InstallMode)          S.installMode  = st.InstallMode;
+      if (st.CopyMethod)           S.copyMethod   = st.CopyMethod;
+      if (st.Completed?.length)    S.completed    = st.Completed;
+      if (st.CopiedFiles?.length)  S.copiedFiles  = st.CopiedFiles;
+      if (st.Tools?.length)        S.tools        = st.Tools;
     }),
   ]);
   if (!S.vmName) {
@@ -3184,9 +3744,18 @@ async function init() {
     S.vmPass = savedCreds.pass || '';
   }
   if (S.vmName && S.vmUser && S.vmPass) openVMBrowser();
+  // Show target badge in header if already saved
+  if (S.vmName) {
+    const badge = document.getElementById('header-target');
+    if (badge) {
+      badge.textContent = S.vmName === '__local__' ? '🏠 This Machine' : '🖥 ' + S.vmName;
+      badge.style.display = '';
+      badge.style.color = S.vmName === '__local__' ? 'var(--accent)' : 'var(--green)';
+    }
+  }
   WS.connect();
   renderSidebar();
-  App.showPanel('features');
+  App.showPanel('vm');
   initTheme();
   Notes.loadBadge();
 }
@@ -3224,7 +3793,34 @@ const Notes = {
     ta.focus();
     ta.oninput = () => this._updateBadge(ta.value);
   },
-  close() { document.getElementById('notesModal')?.classList.remove('open'); },
+  close() {
+    document.getElementById('notesModal')?.classList.remove('open');
+    // Restore size on close so it opens normal next time
+    document.getElementById('notes-box')?.classList.remove('maximized');
+    const btn = document.getElementById('notes-maximize-btn');
+    if (btn) btn.textContent = '⤢';
+  },
+
+  toggleMaximize() {
+    const box = document.getElementById('notes-box');
+    const btn = document.getElementById('notes-maximize-btn');
+    if (!box) return;
+    const maximized = box.classList.toggle('maximized');
+    if (btn) btn.textContent = maximized ? '⤡' : '⤢';
+    // After toggling, refocus the textarea
+    document.getElementById('notesText')?.focus();
+  },
+
+  addTask() {
+    const ta = document.getElementById('notesText');
+    if (!ta) return;
+    const val = ta.value;
+    const prefix = val.length > 0 && !val.endsWith('\n') ? '\n' : '';
+    ta.value = val + prefix + '- [ ] ';
+    ta.selectionStart = ta.selectionEnd = ta.value.length;
+    ta.focus();
+    this._updateBadge(ta.value);
+  },
   async save() {
     const ta    = document.getElementById('notesText');
     const saved = document.getElementById('notesSaved');

@@ -298,6 +298,32 @@ async function dbOpen(type, host, port, database, user, password, sslMode = 'aut
   }
 }
 
+// Returns table counts for every database — runs parallel connections so it's fast
+app.post('/api/db/db-table-counts', async (req, res) => {
+  const { type, host, port, user, password, sslMode, databases } = req.body;
+  if (!Array.isArray(databases) || !databases.length) return res.json({ ok: true, counts: {} });
+  const counts = {};
+  await Promise.all(databases.map(async dbName => {
+    try {
+      const db = await dbOpen(type, host, port, dbName, user, password, sslMode || 'auto');
+      let c = 0;
+      if (type === 'postgresql') {
+        const r = await db.query(`SELECT COUNT(*)::int AS c FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'`);
+        c = r.rows[0].c;
+      } else if (type === 'mssql') {
+        const r = await db.query(`SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA='dbo'`);
+        c = r.rows[0].c || 0;
+      } else {
+        const r = await db.query(`SELECT COUNT(*) AS c FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE'`);
+        c = r.rows[0].c || 0;
+      }
+      counts[dbName] = c;
+      await db.close();
+    } catch { counts[dbName] = null; }
+  }));
+  res.json({ ok: true, counts });
+});
+
 app.post('/api/db/connect', async (req, res) => {
   const { type, host, port, database, user, password, sslMode } = req.body;
   try {
@@ -332,19 +358,31 @@ app.post('/api/db/tables', async (req, res) => {
     const db = await dbOpen(type, host, port, database, user, password, sslMode || 'auto');
     let tables = [];
     if (type === 'postgresql') {
-      // n_live_tup from pg_stat_user_tables: fast catalog estimate, no full scan needed
+      // Fast catalog estimate first (readable by any user, no ownership restriction)
       const r = await db.query(
         `SELECT t.table_name,
                 COUNT(c.column_name)::int                  AS col_count,
-                COALESCE(s.n_live_tup, 0)::bigint          AS row_count
+                CASE WHEN pc.reltuples < 0 THEN NULL
+                     ELSE pc.reltuples::bigint END          AS row_count
          FROM information_schema.tables t
          LEFT JOIN information_schema.columns c USING (table_name, table_schema)
-         LEFT JOIN pg_stat_user_tables s ON s.relname = t.table_name
-                                        AND s.schemaname = t.table_schema
-         WHERE t.table_schema='public' AND t.table_type='BASE TABLE'
-         GROUP BY t.table_name, s.n_live_tup
+         JOIN pg_class     pc ON pc.relname = t.table_name
+         JOIN pg_namespace pn ON pn.oid = pc.relnamespace
+                              AND pn.nspname = t.table_schema
+         WHERE t.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+         GROUP BY t.table_name, pc.reltuples
          ORDER BY t.table_name`);
       tables = r.rows;
+      // For tables never ANALYZEd (reltuples = -1 → null), run exact COUNT(*)
+      const unanalyzed = tables.filter(t => t.row_count == null);
+      if (unanalyzed.length > 0) {
+        await Promise.all(unanalyzed.map(async t => {
+          try {
+            const cr = await db.query(`SELECT COUNT(*)::bigint AS c FROM "${t.table_name}"`);
+            t.row_count = cr.rows[0].c;
+          } catch (_) { t.row_count = 0; }
+        }));
+      }
     } else if (type === 'mssql') {
       // sys.partitions gives fast row-count estimates without a full scan
       const r = await db.query(
@@ -517,6 +555,225 @@ app.post('/api/db/export', async (req, res) => {
     res.setHeader('Content-Type','text/plain; charset=utf-8');
     res.send(out);
   } catch(e) { res.json({ ok:false, error: dbErrMsg(e) }); }
+});
+
+// ── VM Port Exposure ──────────────────────────────────────────────────────────
+
+// Returns currently active portproxy rules (forwarded ports) + host external IP
+app.get('/api/vm/exposure-status', (req, res) => {
+  runPS(
+    `$rules = @(); ` +
+    `(netsh interface portproxy show v4tov4 2>$null) -split '\\r?\\n' | ForEach-Object { ` +
+    `  if ($_ -match '^\\s+\\S+\\s+(\\d+)\\s+\\S+\\s+(\\d+)') { $rules += [int]$Matches[2] } ` +
+    `}; ` +
+    `$hostIp = (Get-NetIPAddress -AddressFamily IPv4 | ` +
+    `  Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | ` +
+    `  Sort-Object @{E={$a=$_.InterfaceAlias;if($a -match 'WLAN|Wi-Fi'){1}elseif($a -match 'Ethernet'){2}else{3}}} | ` +
+    `  Select-Object -First 1).IPAddress; ` +
+    `ConvertTo-Json -InputObject ([ordered]@{ports=@($rules|Sort-Object -Unique);hostIp="$hostIp"}) -Compress`,
+    (out) => { try { res.json(JSON.parse(out || '{}')); } catch { res.json({ ports: [], hostIp: null }); } }
+  );
+});
+
+// Returns TCP ports listening on the local host machine (simple list)
+app.get('/api/host/ports', (req, res) => {
+  runPS(
+    `$ex = @(135,139,445,2179,5985,47001); ` +
+    `$p = @(Get-NetTCPConnection -State Listen -EA SilentlyContinue | ` +
+    `  Where-Object { $_.LocalPort -notin $ex -and $_.LocalPort -lt 49000 } | ` +
+    `  Select-Object -ExpandProperty LocalPort | Sort-Object -Unique); ` +
+    `if ($p.Count -gt 0) { ConvertTo-Json -InputObject $p -Compress } else { Write-Output '[]' }`,
+    (out) => { try { const d = JSON.parse(out || '[]'); res.json(Array.isArray(d) ? d : [d]); } catch { res.json([]); } }
+  );
+});
+
+// Returns rich port info: process name, portproxy target, VM name from exposure file
+app.get('/api/host/ports-rich', (req, res) => {
+  const expFile = EXPOSURE_FILE;
+  runPS(
+    `$ex = @(135,139,445,2179,5985,47001); ` +
+    `$conns = @(Get-NetTCPConnection -State Listen -EA SilentlyContinue | ` +
+    `  Where-Object { $_.LocalPort -notin $ex -and $_.LocalPort -lt 49000 } | ` +
+    `  Sort-Object LocalPort -Unique); ` +
+    `$pMap = @{}; ` +
+    `Get-Process -Id @($conns.OwningProcess) -EA SilentlyContinue | ForEach-Object { $pMap[$_.Id] = @{n=$_.ProcessName;d=$_.Description} }; ` +
+    `$pp = @{}; ` +
+    `(netsh interface portproxy show v4tov4 2>$null) -split '\\r?\\n' | ForEach-Object { ` +
+    `  if ($_ -match '^\\s*[\\d.]+\\s+(\\d+)\\s+([\\d.]+)\\s+(\\d+)') { $pp[[int]$Matches[1]]=@{ip=$Matches[2];port=[int]$Matches[3]} } ` +
+    `}; ` +
+    `$vmIpMap = @{}; ` +
+    `if (Test-Path '${expFile.replace(/\\/g,'\\\\').replace(/'/g,"''")}') { ` +
+    `  try { $exp=Get-Content '${expFile.replace(/\\/g,'\\\\').replace(/'/g,"''")}' -Raw | ConvertFrom-Json; $vmIpMap["$($exp.vmIp)"]="$($exp.vmName)" } catch {} ` +
+    `}; ` +
+    `$r = @($conns | ForEach-Object { ` +
+    `  $port=$_.LocalPort; $pid=$_.OwningProcess; $pr=$pMap[$pid]; $ppI=$pp[$port]; ` +
+    `  [ordered]@{port=$port;pid=$pid;process=if($pr){"$($pr.n)"}else{""};description=if($pr){"$($pr.d)"}else{""}; ` +
+    `   isPortProxy=[bool]$ppI;proxyIp=if($ppI){"$($ppI.ip)"}else{$null};proxyPort=if($ppI){[int]$ppI.port}else{0}; ` +
+    `   vmName=if($ppI){"$($vmIpMap[$ppI.ip])"}else{$null}} ` +
+    `}); ` +
+    `if ($r.Count -gt 0) { ConvertTo-Json -InputObject $r -Compress } else { Write-Output "[]" }`,
+    (out) => { try { const d = JSON.parse(out || '[]'); res.json(Array.isArray(d) ? d : [d]); } catch { res.json([]); } }
+  );
+});
+
+// On-demand: resolve process name for a specific local port (for "Request" button)
+app.get('/api/host/resolve-port-process', (req, res) => {
+  const port = +req.query.port;
+  if (!port) return res.status(400).json({ error: 'port required' });
+  runPS(
+    `$c = Get-NetTCPConnection -LocalPort ${port} -State Listen -EA SilentlyContinue | Select-Object -First 1; ` +
+    `if ($c) { $proc = Get-Process -Id $c.OwningProcess -EA SilentlyContinue; ` +
+    `  ConvertTo-Json -InputObject @{pid=$c.OwningProcess;process="$($proc.ProcessName)";description="$($proc.Description)";company="$($proc.Company)"} -Compress ` +
+    `} else { Write-Output '{}' }`,
+    (out) => { try { res.json(JSON.parse(out || '{}')); } catch { res.json({}); } }
+  );
+});
+
+// Clear all VM portproxy rules + firewall rules (call before switching to a different VM)
+app.post('/api/vm/clear-exposure', (req, res) => {
+  runPS(
+    `$removed = 0; ` +
+    `(netsh interface portproxy show v4tov4 2>$null) -split '\\r?\\n' | ForEach-Object { ` +
+    `  if ($_ -match '^\\s*[\\d.]+\\s+(\\d+)') { ` +
+    `    $p = [int]$Matches[1]; ` +
+    `    netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=$p 2>&1 | Out-Null; ` +
+    `    Remove-NetFirewallRule -DisplayName "VMProxy-$p" -EA SilentlyContinue; ` +
+    `    $removed++ ` +
+    `  } ` +
+    `}; ` +
+    `Remove-NetFirewallRule -DisplayName 'VM-FullExposure-Auto'   -EA SilentlyContinue; ` +
+    `Remove-NetFirewallRule -DisplayName 'VM-PortsExposure-Auto' -EA SilentlyContinue; ` +
+    `Write-Output "REMOVED:$removed"`,
+    (out) => {
+      const n = +(out.match(/REMOVED:(\d+)/)?.[1] || '0');
+      try { if (fs.existsSync(EXPOSURE_FILE)) fs.unlinkSync(EXPOSURE_FILE); } catch {}
+      res.json({ ok: true, removed: n });
+    }
+  );
+});
+
+// Test PSSession credentials for a VM
+app.post('/api/vm/test-credentials', (req, res) => {
+  const { vmName, vmUser, vmPass } = req.body;
+  if (!vmName || !vmUser || !vmPass) return res.status(400).json({ ok: false, error: 'vmName, vmUser, vmPass required' });
+  const esc = s => String(s).replace(/'/g, "''");
+  runPS(
+    `$cred = New-Object PSCredential('${esc(vmUser)}', (ConvertTo-SecureString '${esc(vmPass)}' -AsPlainText -Force)); ` +
+    `try { $r = Invoke-Command -VMName '${esc(vmName)}' -Credential $cred -ScriptBlock { $env:COMPUTERNAME } -EA Stop; Write-Output "OK:$r" } ` +
+    `catch { Write-Output "ERR:$($_.Exception.Message)" }`,
+    (out) => {
+      const line = out.trim();
+      if (line.startsWith('OK:')) res.json({ ok: true, computerName: line.slice(3) });
+      else res.json({ ok: false, error: line.startsWith('ERR:') ? line.slice(4) : line });
+    }
+  );
+});
+
+// TCP probe: check which ports on a host are open (for DB auto-detect)
+app.post('/api/probe-ports', (req, res) => {
+  const { host, ports } = req.body;
+  if (!host || !Array.isArray(ports) || !ports.length) return res.status(400).json({ error: 'host and ports[] required' });
+  const net = require('net');
+  const results = {};
+  const checks = ports.map(port => new Promise(resolve => {
+    const sock = net.createConnection({ host, port: +port });
+    sock.setTimeout(1500);
+    sock.on('connect', () => { results[port] = true;  sock.destroy(); resolve(); });
+    sock.on('timeout', () => { results[port] = false; sock.destroy(); resolve(); });
+    sock.on('error',   () => { results[port] = false;               resolve(); });
+  }));
+  Promise.all(checks).then(() => res.json(results));
+});
+
+// Expose VM ports via portproxy + firewall rules (SSE stream, mode: 'full' | 'ports')
+app.post('/api/vm/expose', (req, res) => {
+  const { vmName, vmUser, vmPass, mode, ports } = req.body;
+  if (!vmName || !vmUser || !vmPass) return res.status(400).json({ error: 'vmName, vmUser, vmPass required' });
+
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.flushHeaders();
+
+  const send = obj => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} };
+  const portList = mode === 'ports' ? (Array.isArray(ports) ? ports : []).map(p => +p).filter(p => p > 0 && p < 65536) : [];
+  if (mode === 'ports' && !portList.length) { send({ type: 'error', error: 'No valid ports specified' }); return res.end(); }
+
+  const esc = s => String(s).replace(/'/g, "''");
+  const tmpScript = path.join(os.tmpdir(), `vm_expose_${Date.now()}.ps1`);
+
+  const lines = [
+    `$ErrorActionPreference = 'Stop'`,
+    `$cred = New-Object PSCredential('${esc(vmUser)}', (ConvertTo-SecureString '${esc(vmPass)}' -AsPlainText -Force))`,
+    `$vmIp = @(Get-VMNetworkAdapter -VMName '${esc(vmName)}' -EA SilentlyContinue | ForEach-Object { $_.IPAddresses } | Where-Object { $_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$' })[0]`,
+    `if (-not $vmIp) { Write-Output 'ERROR:Cannot resolve VM IP'; exit 1 }`,
+    `Write-Output "VM_IP:$vmIp"`,
+  ];
+
+  if (mode === 'full') {
+    lines.push(
+      `Write-Output 'STEP:Enabling RDP in VM'`,
+      `Invoke-Command -VMName '${esc(vmName)}' -Credential $cred -ScriptBlock {`,
+      `  Set-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server' fDenyTSConnections -Value 0 -Type DWord`,
+      `  Set-Service TermService -StartupType Automatic -EA SilentlyContinue; Start-Service TermService -EA SilentlyContinue`,
+      `  Get-NetFirewallRule -DisplayGroup 'Remote Desktop' -EA SilentlyContinue | Set-NetFirewallRule -Profile Any -Enabled True`,
+      `}`,
+      `Write-Output 'STEP:Scanning VM listening ports'`,
+      `$ex = @(135,139,445,2179,5985,47001)`,
+      `$vmPorts = @(Invoke-Command -VMName '${esc(vmName)}' -Credential $cred -ScriptBlock {`,
+      `  Get-NetTCPConnection -State Listen | Where-Object { $_.LocalAddress -ne '127.0.0.1' -and $_.LocalPort -notin $using:ex -and $_.LocalPort -lt 49000 } | Select-Object -ExpandProperty LocalPort | Sort-Object -Unique`,
+      `})`,
+      `if (3389 -notin $vmPorts) { $vmPorts = @(3389) + @($vmPorts) }`,
+      `Write-Output "PORTS:$($vmPorts -join ',')"`,
+      `Write-Output 'STEP:Opening VM firewall for all detected ports'`,
+      `Invoke-Command -VMName '${esc(vmName)}' -Credential $cred -ScriptBlock {`,
+      `  Remove-NetFirewallRule -DisplayName 'VM-FullExposure-Auto' -EA SilentlyContinue`,
+      `  New-NetFirewallRule -DisplayName 'VM-FullExposure-Auto' -Direction Inbound -Protocol TCP -LocalPort $using:vmPorts -Action Allow -Profile Any | Out-Null`,
+      `}`
+    );
+  } else {
+    lines.push(
+      `$vmPorts = @(${portList.join(',')})`,
+      `Write-Output "PORTS:$($vmPorts -join ',')"`,
+      `Write-Output 'STEP:Opening VM firewall for selected ports'`,
+      `Invoke-Command -VMName '${esc(vmName)}' -Credential $cred -ScriptBlock {`,
+      `  Remove-NetFirewallRule -DisplayName 'VM-PortsExposure-Auto' -EA SilentlyContinue`,
+      `  New-NetFirewallRule -DisplayName 'VM-PortsExposure-Auto' -Direction Inbound -Protocol TCP -LocalPort $using:vmPorts -Action Allow -Profile Any | Out-Null`,
+      `}`
+    );
+  }
+
+  lines.push(
+    `Write-Output 'STEP:Configuring host portproxy and firewall rules'`,
+    `foreach ($port in $vmPorts) {`,
+    `  netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=$port 2>&1 | Out-Null`,
+    `  netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=$port connectaddress=$vmIp connectport=$port | Out-Null`,
+    `  $rn = "VMProxy-$port"`,
+    `  Remove-NetFirewallRule -DisplayName $rn -EA SilentlyContinue`,
+    `  New-NetFirewallRule -DisplayName $rn -Direction Inbound -Protocol TCP -LocalPort $port -Action Allow -Profile Any | Out-Null`,
+    `}`,
+    `$hostIp = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | Sort-Object @{E={$a=$_.InterfaceAlias;if($a -match 'WLAN|Wi-Fi'){1}elseif($a -match 'Ethernet'){2}else{3}}} | Select-Object -First 1).IPAddress`,
+    `$json = [ordered]@{ vmName='${esc(vmName)}'; vmIp=$vmIp; hostIp=$hostIp; rdp=(3389 -in $vmPorts); ports=@($vmPorts|ForEach-Object{[int]$_}); timestamp=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') } | ConvertTo-Json -Compress`,
+    `$utf8 = New-Object System.Text.UTF8Encoding $false`,
+    `[System.IO.File]::WriteAllText('C:\\ollama-ssl\\vm-exposure.json', $json, $utf8)`,
+    `Write-Output "DONE:$hostIp"`
+  );
+
+  fs.writeFileSync(tmpScript, lines.join('\r\n'), 'utf8');
+  const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', tmpScript]);
+  res.on('close', () => { try { ps.kill(); } catch {} });
+  ps.stdout.on('data', d => {
+    for (const line of cleanOutput(d.toString('utf8')).split('\n').filter(l => l.trim())) {
+      if      (line.startsWith('VM_IP:'))  send({ type: 'vmip',  ip:     line.slice(6).trim() });
+      else if (line.startsWith('STEP:'))   send({ type: 'step',  text:   line.slice(5).trim() });
+      else if (line.startsWith('PORTS:'))  send({ type: 'ports', ports:  line.slice(6).trim().split(',').map(Number).filter(Boolean) });
+      else if (line.startsWith('DONE:'))   send({ type: 'done',  hostIp: line.slice(5).trim() });
+      else if (line.startsWith('ERROR:'))  send({ type: 'error', error:  line.slice(6).trim() });
+      else                                 send({ type: 'log',   text:   line });
+    }
+  });
+  ps.stderr.on('data', d => { for (const l of cleanOutput(d.toString('utf8')).split('\n').filter(Boolean)) send({ type: 'log', text: l }); });
+  ps.on('close', code => { if (code !== 0) send({ type: 'error', error: `Exit ${code}` }); try { fs.unlinkSync(tmpScript); } catch {} res.end(); });
+  ps.on('error', e => { send({ type: 'error', error: e.message }); res.end(); });
 });
 
 // ── Fix pg_hba.conf via PSSession ─────────────────────────────────────────────
