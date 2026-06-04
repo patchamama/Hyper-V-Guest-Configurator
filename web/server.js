@@ -94,6 +94,22 @@ app.get('/api/vms', (req, res) => {
   });
 });
 
+// Resolve current IPv4 of a Hyper-V VM by name — called fresh on every DB connect
+app.get('/api/vm-ip', (req, res) => {
+  const vmName = (req.query.vmName || '').trim();
+  if (!vmName) return res.status(400).json({ ok: false, error: 'vmName required' });
+  runPS(
+    `$addrs = @(Get-VMNetworkAdapter -VMName '${vmName.replace(/'/g, "''")}' -ErrorAction SilentlyContinue | ` +
+    `ForEach-Object { $_.IPAddresses } | Where-Object { $_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$' }); ` +
+    `if ($addrs.Count -gt 0) { $addrs[0] } else { '' }`,
+    (out, err) => {
+      const ip = out.trim().split(/\r?\n/)[0].trim();
+      if (!ip) return res.json({ ok: false, error: err || 'No IPv4 address found for this VM' });
+      res.json({ ok: true, ip });
+    }
+  );
+});
+
 // Debug endpoint — returns raw PS stdout/stderr without parsing
 app.get('/api/vms/debug', (req, res) => {
   runPS(
@@ -108,7 +124,7 @@ app.get('/api/state', (req, res) => {
   try {
     if (!fs.existsSync(STATE_FILE)) return res.json(blank);
     res.json({ ...blank, ...JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
 });
 
 app.post('/api/state', (req, res) => {
@@ -117,14 +133,14 @@ app.post('/api/state', (req, res) => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(STATE_FILE, JSON.stringify(req.body, null, 2), 'utf8');
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
 });
 
 app.delete('/api/state', (req, res) => {
   try {
     if (fs.existsSync(STATE_FILE)) fs.unlinkSync(STATE_FILE);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
 });
 
 app.get('/api/vm-exposure', (req, res) => {
@@ -132,35 +148,134 @@ app.get('/api/vm-exposure', (req, res) => {
     if (!fs.existsSync(EXPOSURE_FILE)) return res.json(null);
     const raw = fs.readFileSync(EXPOSURE_FILE, 'utf8').replace(/^﻿/, '');
     res.json(JSON.parse(raw));
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
 });
 
 app.post('/api/vm-exposure', (req, res) => {
   try {
     fs.writeFileSync(EXPOSURE_FILE, JSON.stringify(req.body, null, 2), 'utf8');
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
 });
 
 app.delete('/api/vm-exposure', (req, res) => {
   try {
     if (fs.existsSync(EXPOSURE_FILE)) fs.unlinkSync(EXPOSURE_FILE);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
 });
 
 // ── Database Admin ─────────────────────────────────────────────────────────────
 
-async function dbOpen(type, host, port, database, user, password) {
+// Read a PostgreSQL pre-auth error via raw TCP socket decoded as Latin-1.
+// The pg library decodes server bytes as UTF-8, replacing non-ASCII with U+FFFD.
+// This fetches the same error with correct encoding, preserving German characters.
+async function pgRawError(host, port, user, dbName) {
+  return new Promise(resolve => {
+    const net = require('net');
+    const sock = net.createConnection({ host, port: +port });
+    let buf = Buffer.alloc(0);
+    const done = v => { try { sock.destroy(); } catch {} resolve(v); };
+    sock.setTimeout(4000);
+    sock.on('timeout', () => done(null));
+    sock.on('error',   () => done(null));
+    sock.once('connect', () => {
+      const params = Buffer.from('user\0' + user + '\0database\0' + dbName + '\0\0', 'latin1');
+      const hdr = Buffer.allocUnsafe(8);
+      hdr.writeInt32BE(8 + params.length, 0);
+      hdr.writeInt32BE(196608, 4); // protocol 3.0
+      sock.write(Buffer.concat([hdr, params]));
+    });
+    sock.on('data', chunk => {
+      buf = Buffer.concat([buf, chunk]);
+      if (buf.length < 5) return;
+      const type = buf[0];
+      const mlen = buf.readInt32BE(1);
+      if (buf.length < 1 + mlen) return;
+      const body = buf.slice(5, 1 + mlen);
+      if (type === 0x45) { // 'E' = ErrorResponse
+        let i = 0, msg = '';
+        while (i < body.length) {
+          const ft = body[i++]; if (!ft) break;
+          const nul = body.indexOf(0, i); if (nul < 0) break;
+          if (ft === 0x4D) msg = body.slice(i, nul).toString('latin1');
+          i = nul + 1;
+        }
+        done(msg || null);
+      } else { done(null); }
+    });
+  });
+}
+
+// Sync fallback — used where error is already captured as a JS string.
+function dbErrMsg(e) { return e?.message || String(e); }
+
+// Async version — recovers German/Latin-1 chars by re-fetching via raw socket.
+async function dbErrMsgAsync(e, host, port, user, dbName) {
+  const raw = e?.message || String(e);
+  if (raw.includes('�') && host && port && user) {
+    try {
+      const fix = await pgRawError(host, port, user, dbName || 'postgres');
+      if (fix && !fix.includes('�')) return fix;
+    } catch {}
+  }
+  return raw;
+}
+
+async function dbOpen(type, host, port, database, user, password, sslMode = 'auto') {
   if (type === 'postgresql') {
     let pg; try { pg = require('pg'); } catch { throw new Error('Package missing – run: npm install pg'); }
-    const c = new pg.Client({ host, port: +port, database: database || 'postgres', user, password, connectionTimeoutMillis: 8000 });
-    await c.connect();
+    const requestedDb = database || 'postgres';
+    const isPgHba = m => m.includes('pg_hba') || m.includes('verschl') || m.includes('encryption');
+    const noSsl   = m => m.includes('does not support ssl') || m.includes('ssl connections');
+    const tryConn = async (ssl, dbName) => {
+      const c = new pg.Client({
+        host, port: +port, database: dbName, user, password,
+        connectionTimeoutMillis: 8000,
+        ...(ssl ? { ssl: { rejectUnauthorized: false } } : {}),
+      });
+      await c.connect();
+      return c;
+    };
+    // Build attempt list based on sslMode
+    // 'auto': plain first (try both db names), then ssl fallback
+    // 'on':   ssl only
+    // 'off':  plain only
+    const sslValues = sslMode === 'on' ? [true] : sslMode === 'off' ? [false] : [false, true];
+    const dbNames   = [requestedDb, ...(user && user !== requestedDb ? [user] : [])];
+    const attempts  = sslValues.flatMap(ssl => dbNames.map(db => [ssl, db]));
+
+    let c, usedSsl = false, usedDb = requestedDb, pgHbaErr, noSslErr;
+    for (const [ssl, dbName] of attempts) {
+      try {
+        c = await tryConn(ssl, dbName);
+        usedSsl = ssl;
+        usedDb  = dbName;
+        break;
+      } catch (e) {
+        const msg = dbErrMsg(e).toLowerCase();
+        if (isPgHba(msg)) { pgHbaErr = pgHbaErr || e; continue; }
+        if (noSsl(msg))   { noSslErr = noSslErr || e; continue; }
+        throw e;
+      }
+    }
+    // Prefer pg_hba error (root cause) over "does not support SSL" (symptom).
+    // Re-fetch the error with Latin-1 decoding so German chars display correctly.
+    if (!c) {
+      const rootErr = pgHbaErr || noSslErr;
+      if (rootErr) {
+        const cleanMsg = await dbErrMsgAsync(rootErr, host, port, user, requestedDb);
+        throw new Error(cleanMsg);
+      }
+      throw new Error('Connection failed');
+    }
     return {
       query:  async (sql, p=[]) => { const r = await c.query(sql, p); return { rows: r.rows, fields: (r.fields||[]).map(f=>f.name) }; },
       close:  ()  => c.end(),
       esc:    v   => v===null?'NULL':typeof v==='number'||typeof v==='boolean'?String(v):`'${String(v).replace(/'/g,"''")}'`,
       qid:    s   => `"${String(s).replace(/"/g,'""')}"`,
+      ssl:    usedSsl,
+      database: usedDb,
     };
   } else if (type === 'mssql') {
     let sql; try { sql = require('mssql'); } catch { throw new Error('Package missing – run: npm install mssql'); }
@@ -184,9 +299,9 @@ async function dbOpen(type, host, port, database, user, password) {
 }
 
 app.post('/api/db/connect', async (req, res) => {
-  const { type, host, port, database, user, password } = req.body;
+  const { type, host, port, database, user, password, sslMode } = req.body;
   try {
-    const db = await dbOpen(type, host, port, database, user, password);
+    const db = await dbOpen(type, host, port, database, user, password, sslMode || 'auto');
     let dbs = [];
     if (type === 'postgresql') {
       const r = await db.query("SELECT datname FROM pg_database WHERE datistemplate=false ORDER BY datname");
@@ -198,45 +313,72 @@ app.post('/api/db/connect', async (req, res) => {
       const r = await db.query("SHOW DATABASES");
       dbs = r.rows.map(row => Object.values(row)[0]);
     }
+    const ssl = db.ssl || false;
+    const connectedDb = db.database || database || '';
     await db.close();
-    res.json({ ok:true, databases: dbs });
-  } catch(e) { res.json({ ok:false, error: e.message }); }
+    res.json({ ok: true, databases: dbs, ssl, database: connectedDb });
+  } catch(e) {
+    // Try raw socket to recover proper Latin-1 encoding of PostgreSQL error messages
+    const msg = type === 'postgresql'
+      ? await dbErrMsgAsync(e, host, port, user, database || 'postgres')
+      : dbErrMsg(e);
+    res.json({ ok: false, error: msg });
+  }
 });
 
 app.post('/api/db/tables', async (req, res) => {
-  const { type, host, port, database, user, password } = req.body;
+  const { type, host, port, database, user, password, sslMode } = req.body;
   try {
-    const db = await dbOpen(type, host, port, database, user, password);
+    const db = await dbOpen(type, host, port, database, user, password, sslMode || 'auto');
     let tables = [];
     if (type === 'postgresql') {
+      // n_live_tup from pg_stat_user_tables: fast catalog estimate, no full scan needed
       const r = await db.query(
-        `SELECT t.table_name, COUNT(c.column_name)::int AS col_count
+        `SELECT t.table_name,
+                COUNT(c.column_name)::int                  AS col_count,
+                COALESCE(s.n_live_tup, 0)::bigint          AS row_count
          FROM information_schema.tables t
          LEFT JOIN information_schema.columns c USING (table_name, table_schema)
+         LEFT JOIN pg_stat_user_tables s ON s.relname = t.table_name
+                                        AND s.schemaname = t.table_schema
          WHERE t.table_schema='public' AND t.table_type='BASE TABLE'
-         GROUP BY t.table_name ORDER BY t.table_name`);
+         GROUP BY t.table_name, s.n_live_tup
+         ORDER BY t.table_name`);
       tables = r.rows;
     } else if (type === 'mssql') {
+      // sys.partitions gives fast row-count estimates without a full scan
       const r = await db.query(
-        `SELECT t.TABLE_NAME AS table_name, COUNT(c.COLUMN_NAME) AS col_count
+        `SELECT t.TABLE_NAME AS table_name,
+                COUNT(c.COLUMN_NAME)                       AS col_count,
+                COALESCE(SUM(p.rows), 0)                   AS row_count
          FROM INFORMATION_SCHEMA.TABLES t
-         LEFT JOIN INFORMATION_SCHEMA.COLUMNS c ON t.TABLE_NAME=c.TABLE_NAME AND t.TABLE_SCHEMA=c.TABLE_SCHEMA
+         LEFT JOIN INFORMATION_SCHEMA.COLUMNS c
+               ON t.TABLE_NAME=c.TABLE_NAME AND t.TABLE_SCHEMA=c.TABLE_SCHEMA
+         LEFT JOIN sys.tables  st ON st.name = t.TABLE_NAME
+         LEFT JOIN sys.partitions p
+               ON st.object_id = p.object_id AND p.index_id IN (0,1)
          WHERE t.TABLE_TYPE='BASE TABLE' AND t.TABLE_SCHEMA='dbo'
          GROUP BY t.TABLE_NAME ORDER BY t.TABLE_NAME`);
-      tables = r.rows.map(r => ({ table_name: r.table_name, col_count: r.col_count || 0 }));
+      tables = r.rows.map(r => ({ table_name: r.table_name, col_count: r.col_count || 0, row_count: r.row_count || 0 }));
     } else {
-      const r = await db.query('SHOW TABLES');
-      tables = r.rows.map(row => ({ table_name: Object.values(row)[0], col_count: 0 }));
+      // MySQL/MariaDB: TABLE_ROWS is an InnoDB estimate (fast, no scan)
+      const r = await db.query(
+        `SELECT TABLE_NAME AS table_name,
+                TABLE_ROWS AS row_count
+         FROM information_schema.TABLES
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'
+         ORDER BY TABLE_NAME`);
+      tables = r.rows.map(row => ({ table_name: row.table_name, col_count: 0, row_count: row.row_count || 0 }));
     }
     await db.close();
     res.json({ ok:true, tables });
-  } catch(e) { res.json({ ok:false, error: e.message }); }
+  } catch(e) { res.json({ ok:false, error: dbErrMsg(e) }); }
 });
 
 app.post('/api/db/columns', async (req, res) => {
-  const { type, host, port, database, user, password, table } = req.body;
+  const { type, host, port, database, user, password, table, sslMode } = req.body;
   try {
-    const db = await dbOpen(type, host, port, database, user, password);
+    const db = await dbOpen(type, host, port, database, user, password, sslMode || 'auto');
     let cols = [];
     if (type === 'postgresql') {
       const r = await db.query(
@@ -254,64 +396,95 @@ app.post('/api/db/columns', async (req, res) => {
     }
     await db.close();
     res.json({ ok:true, columns: cols });
-  } catch(e) { res.json({ ok:false, error: e.message }); }
+  } catch(e) { res.json({ ok:false, error: dbErrMsg(e) }); }
 });
 
 app.post('/api/db/query', async (req, res) => {
-  const { type, host, port, database, user, password, sql } = req.body;
+  const { type, host, port, database, user, password, sql, sslMode } = req.body;
   if (!sql?.trim()) return res.json({ ok:false, error:'No SQL provided' });
   try {
-    const db = await dbOpen(type, host, port, database, user, password);
+    const db = await dbOpen(type, host, port, database, user, password, sslMode || 'auto');
     const r = await db.query(sql);
     await db.close();
     const rows = (r.rows||[]);
     res.json({ ok:true, rows: rows.slice(0,500), fields: r.fields||[], total: rows.length });
-  } catch(e) { res.json({ ok:false, error: e.message }); }
+  } catch(e) { res.json({ ok:false, error: dbErrMsg(e) }); }
 });
 
 app.post('/api/db/search', async (req, res) => {
-  const { type, host, port, database, user, password, query, tableList } = req.body;
-  if (!query?.trim()) return res.json({ ok:false, error:'No search term' });
+  const { type, host, port, database, user, password, query, tableList, sslMode,
+          rowLimit = 100, searchMeta = true } = req.body;
+  if (!query?.trim()) return res.json({ ok: false, error: 'No search term' });
+
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.flushHeaders();
+
+  const send = obj => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} };
+  let cancelled = false;
+  res.on('close', () => { cancelled = true; }); // res, not req — in Node 18+ req.close fires on body-read, not on client disconnect
+
+  let db;
   try {
-    const db = await dbOpen(type, host, port, database, user, password);
-    const results = [];
-    for (const tname of (tableList||[]).slice(0,20)) {
+    db = await dbOpen(type, host, port, database, user, password, sslMode || 'auto');
+  } catch (e) {
+    send({ type: 'error', error: dbErrMsg(e) });
+    return res.end();
+  }
+
+  const tables = tableList || [];
+  const limit  = Math.min(Math.max(1, +rowLimit || 100), 1000);
+  const lq     = query.toLowerCase();
+  send({ type: 'start', total: tables.length });
+
+  let found = 0;
+  for (let i = 0; i < tables.length; i++) {
+    if (cancelled) break;
+    const tname = tables[i];
+    send({ type: 'progress', table: tname, idx: i + 1, total: tables.length });
+    try {
       let cols = [], rrows = [];
       if (type === 'postgresql') {
         const cr = await db.query(
-          `SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=$1 ORDER BY ordinal_position`,[tname]);
-        cols = cr.rows.map(r=>r.column_name);
+          `SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=$1 ORDER BY ordinal_position`, [tname]);
+        cols = cr.rows.map(r => r.column_name);
         if (!cols.length) continue;
-        const where = cols.map(c=>`CAST("${c}" AS TEXT) ILIKE $1`).join(' OR ');
-        const rr = await db.query(`SELECT * FROM "${tname}" WHERE ${where} LIMIT 20`,[`%${query}%`]);
+        const where = cols.map(c => `CAST("${c}" AS TEXT) ILIKE $1`).join(' OR ');
+        const rr = await db.query(`SELECT * FROM "${tname}" WHERE ${where} LIMIT ${limit}`, [`%${query}%`]);
         rrows = rr.rows;
       } else if (type === 'mssql') {
         const cr = await db.query(`SELECT COLUMN_NAME AS column_name FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='${tname.replace(/'/g,"''")}' AND TABLE_SCHEMA='dbo' ORDER BY ORDINAL_POSITION`);
-        cols = cr.rows.map(r=>r.column_name);
+        cols = cr.rows.map(r => r.column_name);
         if (!cols.length) continue;
-        const safeQ = query.replace(/'/g,"''");
-        const where = cols.map(c=>`CAST([${c.replace(/\]/g,']]')}] AS NVARCHAR(MAX)) LIKE '%${safeQ}%'`).join(' OR ');
-        const rr = await db.query(`SELECT TOP 20 * FROM [${tname.replace(/\]/g,']]')}] WHERE ${where}`);
+        const safeQ = query.replace(/'/g, "''");
+        const where = cols.map(c => `CAST([${c.replace(/\]/g, ']]')}] AS NVARCHAR(MAX)) LIKE '%${safeQ}%'`).join(' OR ');
+        const rr = await db.query(`SELECT TOP ${limit} * FROM [${tname.replace(/\]/g, ']]')}] WHERE ${where}`);
         rrows = rr.rows;
       } else {
         const cr = await db.query(`SHOW COLUMNS FROM \`${tname}\``);
-        cols = cr.rows.map(r=>r.Field||r.column_name);
+        cols = cr.rows.map(r => r.Field || r.column_name);
         if (!cols.length) continue;
-        const where = cols.map(c=>`CAST(\`${c}\` AS CHAR) LIKE ?`).join(' OR ');
-        const rr = await db.query(`SELECT * FROM \`${tname}\` WHERE ${where} LIMIT 20`,cols.map(()=>`%${query}%`));
+        const where = cols.map(c => `CAST(\`${c}\` AS CHAR) LIKE ?`).join(' OR ');
+        const rr = await db.query(`SELECT * FROM \`${tname}\` WHERE ${where} LIMIT ${limit}`, cols.map(() => `%${query}%`));
         rrows = rr.rows;
       }
-      if (rrows.length) results.push({ table:tname, columns:cols, rows:rrows });
-    }
-    await db.close();
-    res.json({ ok:true, results, searched:(tableList||[]).slice(0,20).length });
-  } catch(e) { res.json({ ok:false, error: e.message }); }
+      const metaCols  = searchMeta ? cols.filter(c => c.toLowerCase().includes(lq)) : [];
+      const metaTable = searchMeta && tname.toLowerCase().includes(lq);
+      if (rrows.length || metaCols.length || metaTable) {
+        found++;
+        send({ type: 'result', table: tname, columns: cols, rows: rrows, metaCols, metaTable });
+      }
+    } catch (_) { /* skip table on error, continue searching */ }
+  }
+  try { await db.close(); } catch {}
+  send({ type: 'done', searched: tables.length, found, cancelled });
+  res.end();
 });
 
 app.post('/api/db/export', async (req, res) => {
-  const { type, host, port, database, user, password } = req.body;
+  const { type, host, port, database, user, password, sslMode } = req.body;
   try {
-    const db = await dbOpen(type, host, port, database, user, password);
+    const db = await dbOpen(type, host, port, database, user, password, sslMode || 'auto');
     let out = `-- Export: ${database}  type: ${type}  date: ${new Date().toISOString()}\n\n`;
     let tnames = [];
     if (type === 'postgresql') {
@@ -343,24 +516,115 @@ app.post('/api/db/export', async (req, res) => {
     res.setHeader('Content-Disposition',`attachment; filename="${database}_export.sql"`);
     res.setHeader('Content-Type','text/plain; charset=utf-8');
     res.send(out);
-  } catch(e) { res.json({ ok:false, error: e.message }); }
+  } catch(e) { res.json({ ok:false, error: dbErrMsg(e) }); }
+});
+
+// ── Fix pg_hba.conf via PSSession ─────────────────────────────────────────────
+// Adds host entries for the connecting host IPs so external connections are allowed.
+app.post('/api/db/fix-pghba', async (req, res) => {
+  const { vmName, vmUser, vmPass, pgDataDir } = req.body;
+  if (!vmName || !vmUser || !vmPass) return res.json({ ok: false, error: 'vmName, vmUser, vmPass required' });
+
+  // Determine the host IPs that need access (all non-loopback IPv4 addresses)
+  const os = require('os');
+  const hostIps = Object.values(os.networkInterfaces())
+    .flat().filter(n => n.family === 'IPv4' && !n.internal).map(n => n.address);
+
+  // Build CIDR list from host IPs — use /32 for exact match
+  const cidrs = hostIps.map(ip => `${ip}/32`);
+  // Also add common Hyper-V subnets
+  const extra = ['172.31.48.0/20', '172.16.0.0/12', '192.168.0.0/16'];
+  const allCidrs = [...new Set([...cidrs, ...extra])];
+
+  const cidrLines = allCidrs.map(c => `host    all             all             ${c.padEnd(24)}scram-sha-256`).join('\r\n');
+
+  // Build the PowerShell script as a temp file — avoids quoting issues with inline ScriptBlock
+  const tmpScript = path.join(os.tmpdir(), `fix_pghba_${Date.now()}.ps1`);
+  const newLines = `\r\n# Added by ollama-ssl-installator\r\n${cidrLines}\r\n`;
+  const psScript = [
+    `$ErrorActionPreference = 'Stop'`,
+    `$dataDir = '${(pgDataDir || '').replace(/'/g, "''")}'`,
+    `if (-not $dataDir) {`,
+    `    $f = Get-ChildItem 'C:\\Program Files\\PostgreSQL' -Recurse -Filter 'pg_hba.conf' -EA SilentlyContinue | Select-Object -First 1`,
+    `    $dataDir = if ($f) { $f.DirectoryName } else { $null }`,
+    `}`,
+    `if (-not $dataDir) { throw 'pg_hba.conf not found' }`,
+    `$hbaPath = Join-Path $dataDir 'pg_hba.conf'`,
+    `$pgCtl   = Join-Path (Split-Path $dataDir -Parent) 'bin\\pg_ctl.exe'`,
+    `$bytes   = [System.IO.File]::ReadAllBytes($hbaPath)`,
+    `if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $bytes = $bytes[3..($bytes.Length-1)] }`,
+    `$text    = [System.Text.Encoding]::UTF8.GetString($bytes)`,
+    `$marker  = '# Added by ollama-ssl-installator'`,
+    `if ($text -notmatch [regex]::Escape($marker)) {`,
+    `    $enc = New-Object System.Text.UTF8Encoding($false)`,
+    `    [System.IO.File]::WriteAllText($hbaPath, $text + ${JSON.stringify(newLines)}, $enc)`,
+    `    if (Test-Path $pgCtl) { & $pgCtl reload -D $dataDir | Out-Null }`,
+    `    Write-Output 'UPDATED'`,
+    `} else { Write-Output 'ALREADY_DONE' }`,
+  ].join('\r\n');
+
+  fs.writeFileSync(tmpScript, psScript, 'utf8');
+  try {
+    const result = await new Promise((resolve, reject) => {
+      const cmd = [
+        `$cred = New-Object PSCredential('${vmUser.replace(/'/g,"''")}', (ConvertTo-SecureString '${vmPass.replace(/'/g,"''")}' -AsPlainText -Force))`,
+        `Invoke-Command -VMName '${vmName.replace(/'/g,"''")}' -Credential $cred -FilePath '${tmpScript}'`,
+      ].join('; ');
+      const proc = spawn('powershell', ['-NonInteractive', '-Command', cmd], { timeout: 35000 });
+      let out = '', err = '';
+      proc.stdout.on('data', d => out += d);
+      proc.stderr.on('data', d => err += d);
+      proc.on('close', code => code === 0 ? resolve(out.trim()) : reject(new Error(err.trim() || `exit ${code}`)));
+    });
+    res.json({ ok: true, message: result.includes('UPDATED') ? 'pg_hba.conf updated and reloaded.' : 'Already configured.', cidrs: allCidrs });
+  } catch (e) {
+    res.json({ ok: false, error: dbErrMsg(e) });
+  } finally {
+    try { fs.unlinkSync(tmpScript); } catch {}
+  }
 });
 
 // ── VM Tools Installation ──────────────────────────────────────────────────────
 
+const _wg = (id, tag) =>
+  `winget install --id ${id} --source winget --accept-package-agreements --accept-source-agreements --silent 2>&1; Write-Output '${tag}_DONE'`;
+
 const VM_INSTALL_CMDS = {
-  ssh:      `Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -EA SilentlyContinue; Start-Service sshd -EA SilentlyContinue; Set-Service sshd -StartupType Automatic -EA SilentlyContinue; New-NetFirewallRule -DisplayName 'OpenSSH-Server-In-TCP' -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow -Profile Any -EA SilentlyContinue; Write-Output 'SSH_DONE'`,
-  ftp:      `winget install --id GlFtpD.GlFTPD --source winget --accept-package-agreements --accept-source-agreements --silent 2>&1; Write-Output 'FTP_DONE'`,
-  proftpd:  `winget install --id WinSCP.WinSCP --source winget --accept-package-agreements --accept-source-agreements --silent 2>&1; Write-Output 'WINSCP_DONE'`,
-  xampp:    `winget install --id ApacheFriends.Xampp.8_2 --source winget --accept-package-agreements --accept-source-agreements --silent 2>&1; Write-Output 'XAMPP_DONE'`,
-  mysql:    `winget install --id Oracle.MySQL --source winget --accept-package-agreements --accept-source-agreements --silent 2>&1; Write-Output 'MYSQL_DONE'`,
-  nodejs:   `winget install --id OpenJS.NodeJS.LTS --source winget --accept-package-agreements --accept-source-agreements --silent 2>&1; Write-Output 'NODE_DONE'`,
-  git:      `winget install --id Git.Git --source winget --accept-package-agreements --accept-source-agreements --silent 2>&1; Write-Output 'GIT_DONE'`,
-  claude:   `winget install --id Git.Git --source winget --accept-package-agreements --accept-source-agreements --silent 2>&1 | Out-Null; winget install --id OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements --silent 2>&1 | Out-Null; $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH','User'); npm install -g @anthropic-ai/claude-code 2>&1; Write-Output 'CLAUDE_DONE'`,
-  opencode: `winget install --id OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements --silent 2>&1 | Out-Null; $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH','User'); npm install -g opencode-ai 2>&1; Write-Output 'OPENCODE_DONE'`,
-  codex:    `winget install --id OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements --silent 2>&1 | Out-Null; $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH','User'); npm install -g @openai/codex 2>&1; Write-Output 'CODEX_DONE'`,
-  putty:    `winget install --id PuTTY.PuTTY --source winget --accept-package-agreements --accept-source-agreements --silent 2>&1; Write-Output 'PUTTY_DONE'`,
-  libreoffice: `winget install --id TheDocumentFoundation.LibreOffice --source winget --accept-package-agreements --accept-source-agreements --silent 2>&1; Write-Output 'LO_DONE'`,
+  // Remote Access
+  ssh:          `Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -EA SilentlyContinue; Start-Service sshd -EA SilentlyContinue; Set-Service sshd -StartupType Automatic -EA SilentlyContinue; New-NetFirewallRule -DisplayName 'OpenSSH-Server-In-TCP' -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow -Profile Any -EA SilentlyContinue; Write-Output 'SSH_DONE'`,
+  ftp:          _wg('GlFtpD.GlFTPD',                        'FTP'),
+  winscp:       _wg('WinSCP.WinSCP',                        'WINSCP'),
+  putty:        _wg('PuTTY.PuTTY',                          'PUTTY'),
+  // Browsers
+  firefox:      _wg('Mozilla.Firefox',                      'FIREFOX'),
+  chrome:       _wg('Google.Chrome',                        'CHROME'),
+  // Editors & IDEs
+  notepadpp:    _wg('Notepad++.Notepad++',                  'NOTEPADPP'),
+  vscode:       _wg('Microsoft.VisualStudioCode',           'VSCODE'),
+  // Development & Runtime
+  git:          _wg('Git.Git',                              'GIT'),
+  nodejs:       _wg('OpenJS.NodeJS.LTS',                    'NODE'),
+  python312:    _wg('Python.Python.3.12',                   'PYTHON'),
+  docker:       _wg('Docker.DockerDesktop',                 'DOCKER'),
+  // Web & Application Servers
+  xampp:        _wg('ApacheFriends.Xampp.8_2',              'XAMPP'),
+  // Databases
+  postgresql18: _wg('PostgreSQL.PostgreSQL.18',             'POSTGRESQL'),
+  mysql:        _wg('Oracle.MySQL',                         'MYSQL'),
+  mssqldev:     _wg('Microsoft.SQLServer.2022.Developer',   'MSSQL_DEV'),
+  mssqlexpress: _wg('Microsoft.SQLServer.2022.Express',     'MSSQL_EXP'),
+  ssms:         _wg('Microsoft.SQLServerManagementStudio',  'SSMS'),
+  heidisql:     _wg('HeidiSQL.HeidiSQL',                    'HEIDISQL'),
+  // Office, Media & Utilities
+  libreoffice:  _wg('TheDocumentFoundation.LibreOffice',    'LO'),
+  openoffice:   _wg('Apache.OpenOffice',                    'OO'),
+  vlc:          _wg('VideoLAN.VLC',                         'VLC'),
+  sevenzip:     _wg('7zip.7zip',                            '7ZIP'),
+  chocolatey:   _wg('Chocolatey.Chocolatey',                'CHOCO'),
+  // AI Developer Tools (npm-based, require Node.js + Git)
+  claude:       `winget install --id Git.Git --source winget --accept-package-agreements --accept-source-agreements --silent 2>&1 | Out-Null; winget install --id OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements --silent 2>&1 | Out-Null; $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH','User'); npm install -g @anthropic-ai/claude-code 2>&1; Write-Output 'CLAUDE_DONE'`,
+  opencode:     `winget install --id OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements --silent 2>&1 | Out-Null; $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH','User'); npm install -g opencode-ai 2>&1; Write-Output 'OPENCODE_DONE'`,
+  codex:        `winget install --id OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements --silent 2>&1 | Out-Null; $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH','User'); npm install -g @openai/codex 2>&1; Write-Output 'CODEX_DONE'`,
 };
 
 app.post('/api/vm-tools/enable-rdp', (req, res) => {
@@ -374,9 +638,28 @@ app.post('/api/vm-tools/enable-rdp', (req, res) => {
   });
 });
 
+// DB tools that support a superuser password at install time
+const DB_PASS_CMDS = {
+  postgresql18: (u, p) => {
+    const safe = p.replace(/'/g, "''");
+    return `winget install --id PostgreSQL.PostgreSQL.18 --source winget --accept-package-agreements --accept-source-agreements --silent --override "/S /Password=${safe}" 2>&1; Write-Output 'POSTGRESQL_DONE'`;
+  },
+  mysql: (u, p) => {
+    const safe = p.replace(/'/g, "''");
+    return `winget install --id Oracle.MySQL --source winget --accept-package-agreements --accept-source-agreements --silent 2>&1; Write-Output 'MYSQL_DONE'`;
+  },
+  mssqldev: (u, p) => {
+    return `winget install --id Microsoft.SQLServer.2022.Developer --source winget --accept-package-agreements --accept-source-agreements --silent 2>&1; Write-Output 'MSSQL_DEV_DONE'`;
+  },
+  mssqlexpress: (u, p) => {
+    return `winget install --id Microsoft.SQLServer.2022.Express --source winget --accept-package-agreements --accept-source-agreements --silent 2>&1; Write-Output 'MSSQL_EXP_DONE'`;
+  },
+};
+
 app.post('/api/vm-tools/install', (req, res) => {
-  const { vmName, user, pass, tool } = req.body;
-  const cmd = VM_INSTALL_CMDS[tool];
+  const { vmName, user, pass, tool, dbUser = '', dbPass = '' } = req.body;
+  // Build command: use DB-specific password command if credentials provided, else default
+  let cmd = (dbPass && DB_PASS_CMDS[tool]) ? DB_PASS_CMDS[tool](dbUser, dbPass) : VM_INSTALL_CMDS[tool];
   if (!cmd || !vmName || !user || !pass) return res.status(400).json({ error:'Missing params or unknown tool' });
   const esc = s => String(s).replace(/\\/g,'\\\\').replace(/"/g,'\\"');
   const psCmd = `$cred=New-Object PSCredential("${esc(user)}",(ConvertTo-SecureString "${esc(pass)}" -AsPlainText -Force));Invoke-Command -VMName "${esc(vmName)}" -Credential $cred -ScriptBlock { ${cmd} }`;
@@ -427,7 +710,7 @@ app.get('/api/downloads', (req, res) => {
         return null;
       }).filter(Boolean);
     res.json(entries);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
 });
 
 app.get('/api/softwares', (req, res) => {
@@ -448,7 +731,7 @@ app.get('/api/softwares', (req, res) => {
           })
       }));
     res.json(folders);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
 });
 
 app.get('/api/config', (req, res) => res.json({ scriptDir: toWinPath(SCRIPT_DIR) }));
@@ -462,14 +745,14 @@ app.post('/api/winget', (req, res) => {
   if (list.find(p => p.id === id)) return res.json({ ok: true, exists: true });
   list.push({ name, id });
   try { fs.writeFileSync(WINGET_FILE, JSON.stringify(list, null, 2), 'utf8'); res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
 });
 
 app.delete('/api/winget/:id', (req, res) => {
   const id = decodeURIComponent(req.params.id);
   const list = loadWinget().filter(p => p.id !== id);
   try { fs.writeFileSync(WINGET_FILE, JSON.stringify(list, null, 2), 'utf8'); res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
 });
 
 app.get('/api/winget/search', (req, res) => {
@@ -549,7 +832,7 @@ app.post('/api/port-services', (req, res) => {
   try {
     fs.writeFileSync(PORT_SERVICES_FILE, JSON.stringify(req.body, null, 2), 'utf8');
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
 });
 
 // Always reads from disk so edits to ollama-models.json take effect without restart
@@ -559,7 +842,7 @@ app.get('/api/tools', (req, res) => {
   try {
     if (!fs.existsSync(TOOLS_FILE)) return res.json([]);
     res.json(JSON.parse(fs.readFileSync(TOOLS_FILE, 'utf8')));
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
 });
 
 app.get('/api/host-info', (req, res) => {
@@ -657,7 +940,7 @@ app.post('/api/refresh-elo-tokens/start', (req, res) => {
 app.post('/api/refresh-elo-tokens/done', (req, res) => {
   const sig = path.join(SCRIPT_DIR, '.elo-refresh-done');
   try { fs.writeFileSync(sig, '1', 'utf8'); res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
 });
 
 app.get('/api/refresh-elo-tokens/status', (req, res) => {
@@ -672,14 +955,14 @@ app.get('/api/notes', (req, res) => {
   try {
     const content = fs.existsSync(NOTES_FILE) ? fs.readFileSync(NOTES_FILE, 'utf8') : '';
     res.json({ content });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
 });
 
 app.post('/api/notes', (req, res) => {
   try {
     fs.writeFileSync(NOTES_FILE, req.body.content ?? '', 'utf8');
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
 });
 
 // ── Output helpers ────────────────────────────────────────────────────────────

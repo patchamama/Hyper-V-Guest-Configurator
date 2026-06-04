@@ -202,7 +202,7 @@ input:focus{border-color:var(--accent)}
     <a id="filesUrlLink" href="#" style="color:var(--muted);text-decoration:none;font-size:10px" target="_blank">files</a>
   </span>
   <div class="ml" style="display:flex;gap:8px">
-    <button class="hbtn" onclick="Notes.open()">📝 Notes</button>
+    <button class="hbtn" onclick="Notes.open()" id="notes-btn">📝 Notes<span id="notes-badge" style="display:none;margin-left:5px;background:var(--accent);color:#fff;border-radius:9px;font-size:10px;padding:1px 6px;vertical-align:middle;font-weight:700"></span></button>
     <button class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode">🌙</button>
     <button class="hbtn" onclick="App.resetState()">↺ Reset</button>
     <button class="hbtn" onclick="App.showPanel('execute')" style="color:var(--green);border-color:var(--green)">▶ Execute</button>
@@ -350,13 +350,12 @@ const NAV = [
   { id: 'models',      label: 'Ollama Models',  sec: null        },
   { id: 'downloads',   label: 'Downloads',      sec: null        },
   { id: 'local',       label: 'Local Files',    sec: null        },
-  { id: 'winget',      label: 'Winget',         sec: null        },
-  { id: 'tools',       label: 'Tools',          sec: null        },
+  { id: 'vmtools',     label: 'Tools',          sec: null        },
+  { id: 'tools',       label: 'AddOns',         sec: null        },
   { id: 'installmode', label: 'Install Mode',   sec: null        },
   { id: 'execute',     label: 'Execute',        sec: 'Run'       },
   { id: 'vmexposure',  label: 'VM Exposure',    sec: 'Status'    },
   { id: 'dbadmin',     label: 'DB Admin',       sec: null        },
-  { id: 'vmtools',     label: 'VM Tools',       sec: null        },
   { id: 'help',        label: 'Help',           sec: 'Help'      },
 ];
 
@@ -383,7 +382,6 @@ function isDone(id) {
     models:      S.models.length > 0 || (S.features.length > 0 && !hasWSL()),
     downloads:   S.downloadUrls.length > 0,
     local:       S.localFiles.length > 0,
-    winget:      S.wingetPkgs.length > 0,
     tools:       S.tools.length > 0 || tools.length === 0,
     installmode: S.localFiles.length > 0,
     credentials: !!S.vmUser,
@@ -392,24 +390,69 @@ function isDone(id) {
 }
 
 // ── Panel system ──────────────────────────────────────────────────────────────
+// Panels whose DOM is kept alive across navigation (user-entered data, query results, execution state)
+const _keepAlive  = new Set(['execute', 'dbadmin', 'vmtools', 'vmexposure']);
+const _panelCache = {};   // id → div element (only for _keepAlive panels)
+
 const App = {
   showPanel(id) {
     currentPanel = id;
     renderSidebar();
-    document.getElementById('main').innerHTML = '';
-    const p = document.createElement('div');
-    p.className = 'panel show';
-    p.innerHTML = panels[id]?.() || '<div class="card"><h2>Coming soon</h2></div>';
-    document.getElementById('main').appendChild(p);
-    if (id === 'execute')    Exec.onPanelShow();
-    if (id === 'vmexposure') { App.loadPortServices().then(() => App.loadVMExposure()); }
-    if (id === 'dbadmin')    DB.init();
-    if (id === 'vmtools')    VMTools.initPanel();
+
+    const main = document.getElementById('main');
+
+    // Hide every kept-alive panel
+    Object.values(_panelCache).forEach(el => { el.style.display = 'none'; el.classList.remove('show'); });
+
+    if (_keepAlive.has(id)) {
+      // ── Persistent panel ────────────────────────────────────────────────────
+      // Remove any transient panel that may be visible
+      const transient = main.querySelector('[data-transient]');
+      if (transient) { transient.style.display = 'none'; }
+
+      if (!_panelCache[id]) {
+        // First visit: render once and keep in DOM
+        const p = document.createElement('div');
+        p.className = 'panel show';
+        p.innerHTML = panels[id]?.() || '<div class="card"><h2>Coming soon</h2></div>';
+        main.appendChild(p);
+        _panelCache[id] = p;
+        // One-time init hooks
+        if (id === 'dbadmin')    DB.init();
+        if (id === 'vmtools')    VMTools.initPanel();
+        if (id === 'execute')    Exec.onPanelShow();
+        if (id === 'vmexposure') App.loadPortServices().then(() => App.loadVMExposure());
+      } else {
+        // Revisit: just show the cached element
+        _panelCache[id].style.display = '';
+        _panelCache[id].classList.add('show');
+        // Hooks that are safe/useful to re-run on every visit
+        if (id === 'execute')    Exec.onPanelShow();
+        if (id === 'vmtools')    VMTools.initPanel();
+        if (id === 'vmexposure') App.loadPortServices().then(() => App.loadVMExposure());
+      }
+    } else {
+      // ── Transient panel (re-renders each time from S state) ─────────────────
+      let transient = main.querySelector('[data-transient]');
+      if (!transient) {
+        transient = document.createElement('div');
+        transient.dataset.transient = '1';
+        main.appendChild(transient);
+      }
+      transient.className = 'panel show';
+      transient.style.display = '';
+      transient.innerHTML = panels[id]?.() || '<div class="card"><h2>Coming soon</h2></div>';
+    }
   },
+
   async resetState() {
     if (!confirm('Reset all progress and selections?')) return;
     await fetch('/api/state', { method: 'DELETE' });
     Object.assign(S, { vmName:'', features:[], models:[], downloadUrls:[], localFiles:[], wingetPkgs:[], wingetConfig:{}, tools:[], installMode:'copy-only', vmUser:'', vmPass:'', completed:[], copyMethod:'http', copiedFiles:[] });
+    // Destroy cached panels so they re-initialize with fresh state
+    const main = document.getElementById('main');
+    Object.entries(_panelCache).forEach(([, el]) => { try { main.removeChild(el); } catch {} });
+    Object.keys(_panelCache).forEach(k => delete _panelCache[k]);
     renderSidebar();
     this.showPanel('features');
   },
@@ -556,17 +599,45 @@ const DB = {
   conn: null,
   tables: [],
 
+  _lsKey: 'db_conn_params',
+
   async init() {
     const typeEl = document.getElementById('db-type');
     if (!typeEl) return;
+    // Restore saved params
+    try {
+      const saved = JSON.parse(localStorage.getItem(this._lsKey) || 'null');
+      if (saved) {
+        if (saved.type) { typeEl.value = saved.type; }
+        if (saved.port) document.getElementById('db-port').value = saved.port;
+        if (saved.user) document.getElementById('db-user').value = saved.user;
+        if (saved.password) document.getElementById('db-pass').value = saved.password;
+        if (saved.sslMode) { const s = document.getElementById('db-ssl'); if (s) s.value = saved.sslMode; }
+        if (saved.vmName) {
+          const vmEl = document.getElementById('db-vm');
+          if (vmEl) { vmEl.value = saved.vmName; await this.onVMSelect(saved.vmName); }
+        } else if (saved.host) {
+          document.getElementById('db-host').value = saved.host;
+        }
+      }
+    } catch {}
     typeEl.onchange = () => {
       const portEl = document.getElementById('db-port');
       if (portEl) portEl.value = { postgresql:'5432', mysql:'3306', mssql:'1433' }[typeEl.value] || '5432';
     };
+  },
+
+  async onVMSelect(vmName) {
+    const note   = document.getElementById('db-vm-ip-note');
     const hostEl = document.getElementById('db-host');
-    if (hostEl && !hostEl.value) {
-      const d = await fetch('/api/vm-exposure').then(r => r.json()).catch(() => null);
-      if (d?.hostIp) hostEl.value = d.hostIp;
+    if (!vmName) { if (note) note.textContent = ''; return; }
+    if (note) note.textContent = 'resolving…';
+    const r = await fetch(`/api/vm-ip?vmName=${encodeURIComponent(vmName)}`).then(r => r.json()).catch(() => ({ ok: false, error: 'fetch failed' }));
+    if (r.ok && r.ip) {
+      if (hostEl) hostEl.value = r.ip;
+      if (note) note.textContent = `→ ${r.ip}`;
+    } else {
+      if (note) note.textContent = r.error || 'not found';
     }
   },
 
@@ -575,29 +646,82 @@ const DB = {
       type:     document.getElementById('db-type')?.value     || 'postgresql',
       host:     document.getElementById('db-host')?.value     || '',
       port:     document.getElementById('db-port')?.value     || '5432',
-      database: document.getElementById('db-database')?.value || 'postgres',
+      database: document.getElementById('db-database')?.value || '',
       user:     document.getElementById('db-user')?.value     || '',
       password: document.getElementById('db-pass')?.value     || '',
+      sslMode:  document.getElementById('db-ssl')?.value      || 'auto',
     };
   },
 
   async connect() {
     const conn = this.getConn();
-    const btn = document.getElementById('db-connect-btn');
-    const res = document.getElementById('db-connect-result');
+    const btn  = document.getElementById('db-connect-btn');
+    const res  = document.getElementById('db-connect-result');
+    const vmName = document.getElementById('db-vm')?.value || '';
+    // Always re-resolve the VM IP at connect time so a changed DHCP address is handled automatically
+    if (vmName) {
+      res.innerHTML = '<span style="color:var(--muted)">Resolving VM IP…</span>';
+      const r = await fetch(`/api/vm-ip?vmName=${encodeURIComponent(vmName)}`).then(r => r.json()).catch(() => ({ ok: false, error: 'fetch failed' }));
+      if (!r.ok) { res.innerHTML = `<span style="color:var(--red)">Cannot resolve IP for VM "${vmName}": ${r.error}</span>`; return; }
+      conn.host = r.ip;
+      const hostEl = document.getElementById('db-host');
+      if (hostEl) hostEl.value = r.ip;
+      const note = document.getElementById('db-vm-ip-note');
+      if (note) note.textContent = `→ ${r.ip}`;
+    }
     if (!conn.host || !conn.user) { res.innerHTML = '<span style="color:var(--red)">Host and user are required.</span>'; return; }
+    try { localStorage.setItem(this._lsKey, JSON.stringify({ type: conn.type, host: conn.host, port: conn.port, user: conn.user, password: conn.password, sslMode: conn.sslMode, vmName })); } catch {}
     btn.disabled = true; btn.textContent = 'Connecting…';
     const r = await fetch('/api/db/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(conn) }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }));
     btn.disabled = false; btn.textContent = 'Test Connection';
-    if (!r.ok) { res.innerHTML = `<span style="color:var(--red)">✗ ${r.error}</span>`; return; }
+    if (!r.ok) {
+      const isPgHba = r.error && (r.error.includes('pg_hba') || r.error.includes('Verschl') || r.error.toLowerCase().includes('encryption'));
+      const fixBtn = isPgHba
+        ? ` <button class="btn" style="font-size:11px;padding:3px 8px;margin-left:8px" onclick="DB.fixPgHba()">⚙ Fix pg_hba.conf</button>`
+        : '';
+      res.innerHTML = `<span style="color:var(--red)">✗ ${r.error}</span>${fixBtn}`;
+      return;
+    }
+    // Use the database we actually connected to (may differ if pg_hba required a specific db)
+    const actualDb = r.database || conn.database || (r.databases || [])[0] || '';
+    conn.database = actualDb;
+    document.getElementById('db-database').value = actualDb;
     this.conn = conn;
-    res.innerHTML = `<span style="color:var(--green)">✓ Connected — ${(r.databases || []).length} database(s)</span>`;
+    const sslNote = r.ssl ? ' <span style="font-size:11px;color:var(--accent)">[SSL]</span>' : '';
+    res.innerHTML = `<span style="color:var(--green)">✓ Connected — ${(r.databases || []).length} database(s)${sslNote}</span>`;
     const dbSel = document.getElementById('db-database-sel');
     if (dbSel) {
-      dbSel.innerHTML = (r.databases || []).map(d => `<option value="${d}" ${d === conn.database ? 'selected' : ''}>${d}</option>`).join('');
+      dbSel.innerHTML = (r.databases || []).map(d => `<option value="${d}" ${d === actualDb ? 'selected' : ''}>${d}</option>`).join('');
       document.getElementById('db-tables-section').style.display = '';
       dbSel.onchange = () => { document.getElementById('db-database').value = dbSel.value; this.conn.database = dbSel.value; this.loadTables(dbSel.value); };
-      this.loadTables(dbSel.value || r.databases?.[0] || conn.database);
+      this.loadTables(actualDb || r.databases?.[0] || conn.database);
+    }
+  },
+
+  async fixPgHba() {
+    const res = document.getElementById('db-connect-result');
+    // Get VM credentials from VM Tools panel (or prompt)
+    const vmName = document.getElementById('vmt-vm')?.value || S.vmName || '';
+    const vmUser = document.getElementById('vmt-user')?.value || S.vmUser || '';
+    const vmPass = document.getElementById('vmt-pass')?.value || S.vmPass || '';
+    if (!vmName || !vmUser || !vmPass) {
+      const name = prompt('VM Name (Hyper-V):', vmName || 'ELO25_sdd');
+      if (!name) return;
+      const user = prompt('VM Admin User:', vmUser || 'Administrator');
+      if (!user) return;
+      const pass = prompt('VM Admin Password:', '');
+      if (!pass) return;
+      S.vmName = name; S.vmUser = user; S.vmPass = pass;
+    }
+    res.innerHTML = '<span style="color:var(--muted)">⚙ Fixing pg_hba.conf…</span>';
+    const r = await fetch('/api/db/fix-pghba', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vmName: S.vmName, vmUser: S.vmUser, vmPass: S.vmPass }),
+    }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }));
+    if (r.ok) {
+      res.innerHTML = `<span style="color:var(--green)">✓ ${r.message} <button class="btn btn-p" style="font-size:11px;padding:3px 8px;margin-left:6px" onclick="DB.connect()">Retry Connection</button></span>`;
+    } else {
+      res.innerHTML = `<span style="color:var(--red)">✗ Fix failed: ${r.error}</span>`;
     }
   },
 
@@ -605,10 +729,14 @@ const DB = {
     if (!this.conn) return;
     this.conn = { ...this.conn, database };
     const r = await fetch('/api/db/tables', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.conn) }).then(r => r.json()).catch(() => ({ ok: false, tables: [] }));
-    this.tables = (r.tables || []).map(t => t.table_name);
+    const tableData = r.tables || [];
+    this.tables = tableData.map(t => t.table_name);
     const tsel = document.getElementById('db-table-sel');
     if (tsel) {
-      tsel.innerHTML = this.tables.map(t => `<option value="${t}">${t}</option>`).join('');
+      const fmtRows = n => { const v = Number(n); return isNaN(v) ? '?' : v.toLocaleString(); };
+      tsel.innerHTML = tableData.map(t =>
+        `<option value="${t.table_name}">${t.table_name} (${fmtRows(t.row_count)})</option>`
+      ).join('');
       tsel.onchange = () => this.selectTable(tsel.value);
       if (this.tables.length) this.selectTable(this.tables[0]);
     }
@@ -633,8 +761,9 @@ const DB = {
     out.innerHTML = '<span style="color:var(--muted)">Executing…</span>';
     const r = await fetch('/api/db/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...this.conn, sql }) }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }));
     if (!r.ok) { out.innerHTML = `<span style="color:var(--red)">✗ ${r.error}</span>`; return; }
-    if (!r.rows?.length) { out.innerHTML = '<span style="color:var(--muted)">Query completed — no rows returned.</span>'; return; }
+    if (!r.rows?.length) { this.lastRows = []; this.lastFields = []; out.innerHTML = '<span style="color:var(--muted)">Query completed — no rows returned.</span>'; return; }
     const fields = r.fields?.length ? r.fields : Object.keys(r.rows[0] || {});
+    this.lastRows = r.rows; this.lastFields = fields;
     const th = `style="padding:4px 8px;text-align:left;white-space:nowrap;color:var(--muted);font-size:11px;border-bottom:1px solid var(--border)"`;
     const td = `style="padding:3px 8px;font-size:11px;font-family:var(--mono);border-bottom:1px solid var(--sur2);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis"`;
     const hdr = `<tr>${fields.map(f => `<th ${th}>${f}</th>`).join('')}</tr>`;
@@ -642,24 +771,107 @@ const DB = {
     out.innerHTML = `<div style="overflow:auto;max-height:320px"><table style="border-collapse:collapse">${hdr}${rows}</table></div><div style="color:var(--muted);font-size:11px;margin-top:4px">${r.rows.length} row(s)${r.total > 500 ? ' (limited to 500)' : ''}</div>`;
   },
 
+  _searchAbort: null,
+  lastRows: [], lastFields: [],
+
   async search() {
     if (!this.conn) { alert('Connect first.'); return; }
     const q = document.getElementById('db-search-input')?.value?.trim();
     if (!q) return;
-    const out = document.getElementById('db-query-out');
-    out.innerHTML = '<span style="color:var(--muted)">Searching…</span>';
-    const r = await fetch('/api/db/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...this.conn, query: q, tableList: this.tables }) }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }));
-    if (!r.ok) { out.innerHTML = `<span style="color:var(--red)">✗ ${r.error}</span>`; return; }
-    if (!r.results?.length) { out.innerHTML = `<span style="color:var(--muted)">No matches found (searched ${r.searched || 0} table(s)).</span>`; return; }
+    if (this._searchAbort) { this._searchAbort.abort(); this._searchAbort = null; }
+
+    const rowLimit   = Math.max(1, parseInt(document.getElementById('db-search-rows')?.value) || 100);
+    const searchMeta = document.getElementById('db-search-meta')?.checked ?? true;
+
+    const out      = document.getElementById('db-query-out');
+    const progWrap = document.getElementById('db-search-progress');
+    const progBar  = document.getElementById('db-search-bar');
+    const progLbl  = document.getElementById('db-search-label');
+
+    out.innerHTML = '';
+    if (progWrap) progWrap.style.display = '';
+    if (progBar)  progBar.style.width = '0%';
+    if (progLbl)  progLbl.textContent = 'Connecting…';
+
+    this._searchAbort = new AbortController();
+    try {
+      const resp = await fetch('/api/db/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...this.conn, query: q, tableList: this.tables, rowLimit, searchMeta }),
+        signal: this._searchAbort.signal,
+      });
+      const reader = resp.body.getReader();
+      const dec    = new TextDecoder();
+      let buf = '', found = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n'); buf = lines.pop() || '';
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line.startsWith('data: ')) continue;
+          let msg; try { msg = JSON.parse(line.slice(6)); } catch { continue; }
+          if (msg.type === 'start') {
+            if (progLbl) progLbl.textContent = `0 / ${msg.total} tables…`;
+          } else if (msg.type === 'progress') {
+            const pct = Math.round((msg.idx / msg.total) * 100);
+            if (progBar) progBar.style.width = pct + '%';
+            if (progLbl) progLbl.textContent = `${msg.idx} / ${msg.total} — ${msg.table}`;
+          } else if (msg.type === 'result') {
+            found++;
+            this._appendSearchResult(out, msg, q);
+          } else if (msg.type === 'done') {
+            if (progBar) progBar.style.width = '100%';
+            if (progLbl) progLbl.textContent = `Done — ${found} match${found !== 1 ? 'es' : ''} in ${msg.searched} table${msg.searched !== 1 ? 's' : ''}${msg.cancelled ? ' (cancelled)' : ''}`;
+            if (!found) out.innerHTML = `<span style="color:var(--muted)">No matches found (searched ${msg.searched} table(s)).</span>`;
+          } else if (msg.type === 'error') {
+            if (progWrap) progWrap.style.display = 'none';
+            out.innerHTML = `<span style="color:var(--red)">✗ ${msg.error}</span>`;
+          }
+        }
+      }
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        if (document.getElementById('db-search-progress')) document.getElementById('db-search-progress').style.display = 'none';
+        out.innerHTML = `<span style="color:var(--red)">✗ ${e.message}</span>`;
+      }
+    }
+    this._searchAbort = null;
+  },
+
+  cancelSearch() {
+    if (this._searchAbort) { this._searchAbort.abort(); this._searchAbort = null; }
+  },
+
+  _appendSearchResult(out, msg, query) {
+    const { table, columns, rows, metaCols = [], metaTable = false } = msg;
+    const lq = query.toLowerCase();
     const th = `style="padding:4px 8px;text-align:left;white-space:nowrap;color:var(--muted);font-size:11px;border-bottom:1px solid var(--border)"`;
     const td = `style="padding:3px 8px;font-size:11px;font-family:var(--mono);border-bottom:1px solid var(--sur2);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis"`;
-    let html = `<div style="color:var(--muted);font-size:11px;margin-bottom:8px">Found in ${r.results.length} table(s), searched ${r.searched} total</div>`;
-    for (const { table, columns, rows } of r.results) {
-      const hdr = `<tr>${columns.map(c => `<th ${th}>${c}</th>`).join('')}</tr>`;
-      const rws = rows.map(row => `<tr>${columns.map(c => `<td ${td}>${row[c] ?? ''}</td>`).join('')}</tr>`).join('');
-      html += `<div style="margin-bottom:12px"><div style="font-weight:600;color:var(--accent);font-size:12px;margin-bottom:4px">▸ ${table} — ${rows.length} match${rows.length !== 1 ? 'es' : ''}</div><div style="overflow:auto;max-height:200px"><table style="border-collapse:collapse">${hdr}${rws}</table></div></div>`;
-    }
-    out.innerHTML = html;
+    let badges = '';
+    if (metaTable) badges += `<span style="background:rgba(210,153,34,.18);color:var(--yellow);font-size:10px;padding:1px 6px;border-radius:3px;margin-left:6px">table name</span>`;
+    if (metaCols.length) badges += `<span style="background:rgba(210,153,34,.18);color:var(--yellow);font-size:10px;padding:1px 6px;border-radius:3px;margin-left:4px">col: ${metaCols.join(', ')}</span>`;
+    const hdr = columns.length ? `<tr>${columns.map(c => `<th ${th}>${c}</th>`).join('')}</tr>` : '';
+    const rws = rows.map(row => `<tr>${columns.map(c => `<td ${td}>${row[c] ?? ''}</td>`).join('')}</tr>`).join('');
+    const div = document.createElement('div');
+    div.style.marginBottom = '12px';
+    div.innerHTML = `<div style="font-weight:600;color:var(--accent);font-size:12px;margin-bottom:4px">▸ ${table}${badges} <span style="font-weight:400;color:var(--muted)">${rows.length ? rows.length + ' row' + (rows.length !== 1 ? 's' : '') : 'no data rows'}</span></div>`
+      + (rows.length ? `<div style="overflow:auto;max-height:200px"><table style="border-collapse:collapse">${hdr}${rws}</table></div>` : '');
+    out.appendChild(div);
+  },
+
+  exportCsv() {
+    const rows = this.lastRows || [], fields = this.lastFields || [];
+    if (!rows.length) { alert('Run a query first — the result will be exported as CSV.'); return; }
+    const esc = v => { if (v === null || v === undefined) return ''; const s = String(v); return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const csv = [fields.map(esc).join(','), ...rows.map(row => fields.map(f => esc(row[f])).join(','))].join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    a.download = `${this.conn?.database || 'export'}_query.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   },
 
   async exportDb() {
@@ -707,18 +919,18 @@ const VMTools = {
   install(tool) {
     const conn = this.getConn();
     if (!conn.vmName || !conn.user || !conn.pass) { alert('VM Name, user and password are required.'); return; }
-    const isAI = ['claude','opencode','codex'].includes(tool);
-    const outId = isAI ? 'vmt-install-out-ai' : 'vmt-install-out';
-    const out = document.getElementById(outId);
+    const out = document.getElementById('vmt-install-out');
     out.style.display = ''; out.innerHTML = '';
     const btn = document.getElementById(`vmt-btn-${tool}`);
     if (btn) btn.disabled = true;
-    const labels = { ssh:'OpenSSH Server', ftp:'FTP (GlFTPD)', proftpd:'WinSCP/FTP alt', xampp:'XAMPP 8.2', mysql:'MySQL Server', nodejs:'Node.js LTS' };
+    const labels = { ssh:'OpenSSH Server', ftp:'FTP (GlFTPD)', winscp:'WinSCP', xampp:'XAMPP 8.2', mysql:'MySQL 8', nodejs:'Node.js LTS' };
     const hd = document.createElement('div');
     hd.style.cssText = 'color:var(--accent);font-size:12px;font-family:var(--mono);margin-bottom:4px';
     hd.textContent = `▶ Installing ${labels[tool] || tool}…`;
     out.appendChild(hd);
-    fetch('/api/vm-tools/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...conn, tool }) })
+    const dbUser = document.getElementById(`vmt-db-user-${tool}`)?.value?.trim() || '';
+    const dbPass = document.getElementById(`vmt-db-pass-${tool}`)?.value || '';
+    fetch('/api/vm-tools/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...conn, tool, dbUser, dbPass }) })
       .then(async resp => {
         const reader = resp.body.getReader();
         const dec = new TextDecoder();
@@ -836,7 +1048,7 @@ const WingetCfg = {
   _t: null,
   debounce(v) { clearTimeout(this._t); if (v.length > 1) this._t = setTimeout(() => this.search(), 600); },
   setPass(id, val) { if (!S.wingetConfig) S.wingetConfig = {}; S.wingetConfig[id] = { ...(S.wingetConfig[id]||{}), pass: val }; App.saveState(); },
-  async refresh() { winget = await fetch('/api/winget').then(r=>r.json()).catch(()=>[]); App.showPanel('winget'); },
+  async refresh() { winget = await fetch('/api/winget').then(r=>r.json()).catch(()=>[]); App.showPanel('vmtools'); },
   async search() {
     const q = (document.getElementById('wingetSearchQ')?.value || '').trim();
     const out = document.getElementById('wingetSearchRes');
@@ -861,6 +1073,15 @@ const WingetCfg = {
         </div>`;
       }).join('') + '</div>';
   },
+  // Toggle a package in S.wingetPkgs and update the DOM in-place (panel is persistent, no re-render)
+  togglePkg(id, el) {
+    toggleArr(S.wingetPkgs, id);
+    const sel = S.wingetPkgs.includes(id);
+    el.classList.toggle('sel', sel);
+    const chk = el.querySelector('.chk');
+    if (chk) chk.textContent = sel ? '✓' : '';
+    App.saveState();
+  },
   async add(name, id, btn) {
     if (btn) { btn.disabled = true; btn.textContent = '…'; }
     const r = await fetch('/api/winget', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name,id}) }).then(r=>r.json()).catch(()=>({ok:false}));
@@ -870,7 +1091,7 @@ const WingetCfg = {
   async remove(id) {
     await fetch(`/api/winget/${encodeURIComponent(id)}`, { method:'DELETE' }).catch(()=>{});
     winget = await fetch('/api/winget').then(r=>r.json()).catch(()=>winget);
-    App.showPanel('winget');
+    App.showPanel('vmtools');
   },
 };
 
@@ -1030,7 +1251,7 @@ const panels = {
     if (!softwares.length) return `<div class="card"><h2>Local Installers</h2>
       <p class="sub">No folders found in softwares\\.</p>
       <div class="brow"><button class="btn btn-o" onclick="App.showPanel('downloads')">← Back</button>
-      <button class="btn btn-p" onclick="App.showPanel('winget')">Continue →</button></div></div>`;
+      <button class="btn btn-p" onclick="App.showPanel('vmtools')">Continue →</button></div></div>`;
 
     const html = softwares.map(f => {
       const files = f.files.map(fi => {
@@ -1070,7 +1291,7 @@ const panels = {
       ${html}
       <div class="brow">
         <button class="btn btn-o" onclick="App.showPanel('downloads')">← Back</button>
-        <button class="btn btn-p" onclick="App.showPanel('winget')">Continue →</button>
+        <button class="btn btn-p" onclick="App.showPanel('vmtools')">Continue →</button>
       </div>
     </div>`;
   },
@@ -1091,7 +1312,7 @@ const panels = {
             oninput="WingetCfg.setPass('${safeId}',this.value)">
         </div>`;
       }
-      return `<div class="opt ${sel?'sel':''}" onclick="toggleArr(S.wingetPkgs,'${safeId}');App.showPanel('winget')">
+      return `<div class="opt ${sel?'sel':''}" onclick="toggleArr(S.wingetPkgs,'${safeId}');App.showPanel('vmtools')">
         <div class="chk">${sel?'✓':''}</div>
         <div style="flex:1;min-width:0">
           <div class="opt-name" style="${hasDb?'color:var(--elo-orange)':''}">${p.name}</div>
@@ -1121,11 +1342,11 @@ const panels = {
     </div>`;
   },
 
-  // Tools
+  // AddOns (git-based tools)
   tools() {
-    if (!tools.length) return `<div class="card"><h2>Tools</h2>
-      <p class="sub">No tools defined — add entries to <code>tools.json</code> in the project root.</p>
-      <div class="brow"><button class="btn btn-o" onclick="App.showPanel('winget')">← Back</button>
+    if (!tools.length) return `<div class="card"><h2>AddOns</h2>
+      <p class="sub">No add-ons defined — add entries to <code>tools.json</code> in the project root.</p>
+      <div class="brow"><button class="btn btn-o" onclick="App.showPanel('vmtools')">← Back</button>
       <button class="btn btn-p" onclick="App.showPanel('installmode')">Continue →</button></div></div>`;
 
     const opts = tools.map(t => {
@@ -1152,12 +1373,12 @@ const panels = {
     }).join('');
 
     return `<div class="card">
-      <h2>Tools</h2>
-      <p class="sub">Git-based tools cloned to the VM and set up automatically. Dependencies are installed via winget.</p>
+      <h2>AddOns</h2>
+      <p class="sub">Git-based add-ons cloned to the VM and set up automatically. Dependencies are installed via winget.</p>
       <div class="grid">${opts}</div>
       ${tags ? `<div style="margin-top:12px">${tags}</div>` : ''}
       <div class="brow">
-        <button class="btn btn-o" onclick="App.showPanel('winget')">← Back</button>
+        <button class="btn btn-o" onclick="App.showPanel('vmtools')">← Back</button>
         <button class="btn btn-p" onclick="App.showPanel('installmode')">Continue →</button>
       </div>
     </div>`;
@@ -1300,10 +1521,22 @@ const panels = {
 
   // DB Admin
   dbadmin() {
+    const vmOpts = vms.map(v => `<option value="${v.Name}">${v.Name} — ${v.State}</option>`).join('');
     return `
 <div class="card">
   <h2>Database Admin</h2>
-  <p class="sub">Connect directly to PostgreSQL or MySQL running on the exposed VM. Requires <code>npm install pg mysql2</code> in the installator directory.</p>
+  <p class="sub">Connect directly to PostgreSQL, MySQL, or SQL Server running on the exposed VM. SSL is negotiated automatically when required.</p>
+  <div class="fg" style="margin-bottom:12px">
+    <label class="fl">VM (Hyper-V) — IP resolved automatically on each connection</label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="db-vm" style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;padding:7px 12px;flex:1;outline:none" onchange="DB.onVMSelect(this.value)">
+        <option value="">(enter host manually)</option>
+        ${vmOpts}
+      </select>
+      <button class="btn btn-o" style="padding:6px 10px;white-space:nowrap" title="Refresh IP now" onclick="DB.onVMSelect(document.getElementById('db-vm').value)">&#8635;</button>
+      <span id="db-vm-ip-note" style="font-size:11px;color:var(--muted);white-space:nowrap;min-width:100px"></span>
+    </div>
+  </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:14px">
     <div class="fg">
       <label class="fl">Type</label>
@@ -1313,12 +1546,20 @@ const panels = {
         <option value="mssql">SQL Server (MSSQL)</option>
       </select>
     </div>
-    <div class="fg"><label class="fl">Host</label><input type="text" id="db-host" placeholder="172.16.50.148"></div>
+    <div class="fg"><label class="fl">Host</label><input type="text" id="db-host" placeholder="auto-filled from VM"></div>
     <div class="fg"><label class="fl">Port</label><input type="text" id="db-port" value="5432"></div>
-    <div class="fg"><label class="fl">Database</label><input type="text" id="db-database" placeholder="postgres"></div>
     <div class="fg"><label class="fl">User</label><input type="text" id="db-user" placeholder="postgres"></div>
     <div class="fg"><label class="fl">Password</label><input type="password" id="db-pass"></div>
+    <div class="fg">
+      <label class="fl">SSL</label>
+      <select id="db-ssl" style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;padding:7px 12px;width:100%;outline:none">
+        <option value="auto">Auto</option>
+        <option value="on">On</option>
+        <option value="off">Off</option>
+      </select>
+    </div>
   </div>
+  <input type="hidden" id="db-database" value="">
   <div class="brow">
     <button class="btn btn-p" id="db-connect-btn" onclick="DB.connect()">Test Connection</button>
     <span id="db-connect-result" style="font-size:13px;margin-left:8px"></span>
@@ -1341,22 +1582,59 @@ const panels = {
     <div class="brow">
       <button class="btn btn-g" onclick="DB.runQuery()">&#9654; Execute</button>
       <button class="btn btn-o" onclick="DB.exportDb()">&#8595; Export .sql</button>
-      <input type="text" id="db-search-input" placeholder="Search all tables&hellip;" style="flex:1;max-width:240px">
+      <button class="btn btn-o" onclick="DB.exportCsv()">&#8595; Export .csv</button>
+      <input type="text" id="db-search-input" placeholder="Search all tables&hellip;" style="flex:1;max-width:220px" onkeydown="if(event.key==='Enter')DB.search()">
       <button class="btn btn-o" onclick="DB.search()">&#128269; Search</button>
     </div>
-    <div id="db-query-out" style="margin-top:12px"></div>
+    <!-- Search progress -->
+    <div id="db-search-progress" style="display:none;margin-top:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+        <span id="db-search-label" style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1"></span>
+        <button class="hbtn" style="font-size:10px;padding:2px 8px;margin-left:8px;flex-shrink:0" onclick="DB.cancelSearch()">&#x2715; Cancel</button>
+      </div>
+      <div class="pbar-wrap"><div class="pbar" id="db-search-bar" style="width:0%;transition:width .2s"></div></div>
+    </div>
+    <!-- Search options (collapsible) -->
+    <details style="margin-top:8px">
+      <summary style="font-size:11px;color:var(--muted);cursor:pointer;user-select:none;padding:4px 0;list-style:none;display:flex;align-items:center;gap:5px" onclick="this.parentElement.open&&(this.firstChild.data='▸ ')">
+        <span>&#9658; </span>Search options
+      </summary>
+      <div style="margin-top:10px;display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end;padding:10px 12px;background:var(--sur2);border-radius:8px;border:1px solid var(--border)">
+        <div class="fg" style="margin-bottom:0">
+          <label class="fl">Max rows per table</label>
+          <input type="number" id="db-search-rows" value="100" min="1" max="1000" style="width:85px;background:var(--sur);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;padding:6px 10px;outline:none">
+        </div>
+        <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;margin-bottom:2px;user-select:none">
+          <input type="checkbox" id="db-search-meta" checked style="accent-color:var(--accent);width:14px;height:14px">
+          Show tables/columns whose <em>name</em> contains the search term
+        </label>
+      </div>
+    </details>
+    <div id="db-query-out" style="margin-top:14px"></div>
   </div>
 </div>`;
   },
 
-  // VM Tools
+  // Tools (unified: direct install on VM + winget package management)
   vmtools() {
     const mkBtn = (id, label, sub) =>
-      `<div class="opt" style="cursor:default"><div style="flex:1"><div class="opt-name">${label}</div><div class="opt-sub">${sub}</div></div><button class="btn btn-o" id="vmt-btn-${id}" onclick="VMTools.install('${id}')" style="font-size:12px;padding:5px 12px;flex-shrink:0">Install</button></div>`;
+      `<div class="opt" style="cursor:default;min-width:160px"><div style="flex:1"><div class="opt-name">${label}</div><div class="opt-sub">${sub}</div></div><button class="btn btn-o" id="vmt-btn-${id}" onclick="VMTools.install('${id}')" style="font-size:11px;padding:4px 10px;flex-shrink:0">Install</button></div>`;
+    // DB tools with credential fields (user + password shown below the install button)
+    const mkDbBtn = (id, label, sub, userHint, passHint) =>
+      `<div class="opt" style="cursor:default;min-width:200px;flex-direction:column;align-items:stretch;gap:0">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="flex:1"><div class="opt-name">${label}</div><div class="opt-sub">${sub}</div></div>
+          <button class="btn btn-o" id="vmt-btn-${id}" onclick="VMTools.install('${id}')" style="font-size:11px;padding:4px 10px;flex-shrink:0">Install</button>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px" onclick="event.stopPropagation()">
+          <input type="text"     id="vmt-db-user-${id}" placeholder="${userHint||'User'}"     style="width:100px;font-size:11px;padding:4px 7px;background:var(--sur);border:1px solid var(--border);border-radius:4px;color:var(--text);outline:none">
+          <input type="password" id="vmt-db-pass-${id}" placeholder="${passHint||'Password'}" style="flex:1;font-size:11px;padding:4px 7px;background:var(--sur);border:1px solid var(--border);border-radius:4px;color:var(--text);outline:none">
+        </div>
+      </div>`;
     return `
 <div class="card">
-  <h2>VM Software &amp; Services</h2>
-  <p class="sub">Install tools and manage services on the Hyper-V guest VM via PSSession (<code>Invoke-Command -VMName</code>). Hyper-V Guest Services must be enabled on the VM.</p>
+  <h2>Tools &amp; Software</h2>
+  <p class="sub">Install software and manage services on the Hyper-V guest VM via PSSession (<code>Invoke-Command -VMName</code>). Hyper-V Guest Services must be enabled.</p>
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:14px">
     <div class="fg"><label class="fl">VM Name</label><input type="text" id="vmt-vmname" placeholder="ELO25_sdd"></div>
     <div class="fg"><label class="fl">User</label><input type="text" id="vmt-user" placeholder="Administrator"></div>
@@ -1368,37 +1646,111 @@ const panels = {
   </div>
 </div>
 
+<!-- Shared install output — all categories write here -->
+<div id="vmt-install-out" style="display:none;background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;max-height:260px;overflow-y:auto;font-family:var(--mono);font-size:11px;line-height:1.5;margin-bottom:4px"></div>
+
 <div class="card">
-  <h2>System &amp; Server Tools</h2>
-  <p class="sub">Installs via winget or Windows capabilities on the VM. Output streams in real time.</p>
-  <div class="grid" style="margin-bottom:12px">
-    ${mkBtn('ssh',     'OpenSSH Server',  'Windows optional feature')}
-    ${mkBtn('ftp',     'FTP (GlFTPD)',    'via winget')}
-    ${mkBtn('proftpd', 'WinSCP',          'via winget')}
-    ${mkBtn('xampp',   'XAMPP 8.2',       'Apache + PHP + MySQL')}
-    ${mkBtn('mysql',   'MySQL Server',    'Oracle, via winget')}
-    ${mkBtn('nodejs',  'Node.js LTS',     'via winget')}
-    ${mkBtn('git',     'Git',             'via winget')}
-    ${mkBtn('putty',   'PuTTY',           'SSH client, via winget')}
-    ${mkBtn('libreoffice','LibreOffice',  'via winget')}
+  <h2>&#128272; Remote Access &amp; Network</h2>
+  <p class="sub">Connectivity and file-transfer tools.</p>
+  <div class="grid">
+    ${mkBtn('ssh',    'OpenSSH Server', 'Windows optional feature')}
+    ${mkBtn('ftp',    'FTP — GlFTPD',  'via winget')}
+    ${mkBtn('winscp', 'WinSCP',        'SFTP/FTP client, via winget')}
+    ${mkBtn('putty',  'PuTTY',         'SSH/Telnet client, via winget')}
   </div>
-  <div id="vmt-install-out" style="display:none;background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;max-height:240px;overflow-y:auto;font-family:var(--mono);font-size:11px;line-height:1.5"></div>
 </div>
 
 <div class="card">
-  <h2>AI Developer Tools</h2>
-  <p class="sub">Installed via npm on the VM (Node.js must be installed first). Requires internet access on the VM.</p>
-  <div class="grid" style="margin-bottom:12px">
-    ${mkBtn('claude',   'Claude Code',  'Anthropic CLI — needs git + Node.js')}
-    ${mkBtn('opencode', 'OpenCode',     'AI coding tool — needs Node.js')}
-    ${mkBtn('codex',    'OpenAI Codex', 'OpenAI CLI — needs Node.js')}
+  <h2>&#127760; Browsers</h2>
+  <div class="grid">
+    ${mkBtn('firefox', 'Mozilla Firefox', 'via winget')}
+    ${mkBtn('chrome',  'Google Chrome',   'via winget')}
   </div>
-  <div id="vmt-install-out-ai" style="display:none;background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;max-height:240px;overflow-y:auto;font-family:var(--mono);font-size:11px;line-height:1.5"></div>
 </div>
 
 <div class="card">
-  <h2>Windows Services</h2>
-  <p class="sub">View and manage Windows service startup types on the VM.</p>
+  <h2>&#9998; Editors &amp; IDEs</h2>
+  <div class="grid">
+    ${mkBtn('notepadpp', 'Notepad++',          'via winget')}
+    ${mkBtn('vscode',    'Visual Studio Code', 'via winget')}
+  </div>
+</div>
+
+<div class="card">
+  <h2>&#9881; Development &amp; Runtime</h2>
+  <p class="sub">Runtimes and version-control tools.</p>
+  <div class="grid">
+    ${mkBtn('git',      'Git',         'via winget')}
+    ${mkBtn('nodejs',   'Node.js LTS', 'via winget')}
+    ${mkBtn('python312','Python 3.12', 'via winget')}
+    ${mkBtn('docker',   'Docker Desktop', 'Containers, via winget')}
+  </div>
+</div>
+
+<div class="card">
+  <h2>&#127760; Web &amp; Application Servers</h2>
+  <div class="grid">
+    ${mkBtn('xampp', 'XAMPP 8.2', 'Apache + PHP + MySQL')}
+  </div>
+</div>
+
+<div class="card">
+  <h2>&#128451; Databases</h2>
+  <p class="sub" style="margin-bottom:12px">Specify credentials before installing — the installer will use them to configure the initial superuser account.</p>
+  <div class="grid">
+    ${mkDbBtn('postgresql18', 'PostgreSQL 18',           'via winget', 'postgres',      'Superuser password')}
+    ${mkDbBtn('mysql',        'MySQL 8',                 'Oracle, via winget', 'root',  'Root password')}
+    ${mkDbBtn('mssqldev',     'SQL Server 2022 Dev',     'Microsoft, via winget', 'sa', 'SA password')}
+    ${mkDbBtn('mssqlexpress', 'SQL Server 2022 Express', 'Microsoft, via winget', 'sa', 'SA password')}
+    ${mkBtn('ssms',           'SQL Server Mgmt Studio',  'SSMS — no credentials needed')}
+    ${mkBtn('heidisql',       'HeidiSQL',                'DB GUI client, via winget')}
+  </div>
+</div>
+
+<div class="card">
+  <h2>&#128196; Office, Media &amp; Utilities</h2>
+  <div class="grid">
+    ${mkBtn('libreoffice', 'LibreOffice',         'via winget')}
+    ${mkBtn('openoffice',  'Apache OpenOffice',   'via winget')}
+    ${mkBtn('vlc',         'VLC Media Player',    'via winget')}
+    ${mkBtn('sevenzip',    '7-Zip',               'via winget')}
+    ${mkBtn('chocolatey',  'Chocolatey',          'Package manager, via winget')}
+  </div>
+</div>
+
+<div class="card">
+  <h2>&#129302; AI Developer Tools</h2>
+  <p class="sub">Installed via npm (Node.js + Git must be installed first).</p>
+  <div class="grid">
+    ${mkBtn('claude',   'Claude Code',  'Anthropic CLI')}
+    ${mkBtn('opencode', 'OpenCode',     'AI coding assistant')}
+    ${mkBtn('codex',    'OpenAI Codex', 'OpenAI CLI')}
+  </div>
+</div>
+
+<div class="card">
+  <h2>&#128269; Winget Package Search</h2>
+  <p class="sub">Search the Windows Package Manager catalog and manage the package list used during deployment.</p>
+  <div style="display:flex;gap:8px;max-width:500px;margin-bottom:8px">
+    <input type="text" id="wingetSearchQ" placeholder="Search winget (e.g. postgresql)" oninput="WingetCfg.debounce(this.value)">
+    <button class="btn btn-o" onclick="WingetCfg.search()" style="white-space:nowrap">Search</button>
+    <button class="hbtn" onclick="WingetCfg.refresh()" title="Reload package list">&#8635;</button>
+  </div>
+  <div id="wingetSearchRes" style="font-size:13px;margin-bottom:10px"></div>
+  <div class="fhdr">Configured packages <span style="font-weight:400;color:var(--muted);margin-left:6px;font-size:11px">(winget.json — used during deployment)</span></div>
+  <div class="grid" style="margin-top:6px">${winget.map(p => {
+    const sel = S.wingetPkgs.includes(p.id);
+    const cfg = (S.wingetConfig || {})[p.id] || {};
+    const safeId = p.id.replace(/'/g,"\\'");
+    let dbHtml = '';
+    if (p.dbConfig && sel) dbHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)" onclick="event.stopPropagation()"><div style="font-size:10px;color:var(--muted);margin-bottom:3px">${p.dbConfig.userLabel}</div><input type="password" placeholder="Leave blank = default" value="${(cfg.pass||'').replace(/"/g,'&quot;')}" style="font-size:11px;padding:3px 7px;background:var(--sur);border:1px solid var(--border);border-radius:4px;color:var(--text);width:100%" oninput="WingetCfg.setPass('${safeId}',this.value)"></div>`;
+    return `<div class="opt ${sel?'sel':''}" onclick="WingetCfg.togglePkg('${safeId}',this)"><div class="chk">${sel?'✓':''}</div><div style="flex:1;min-width:0"><div class="opt-name">${p.name}</div><div class="opt-sub">${p.id}</div>${dbHtml}</div></div>`;
+  }).join('')}</div>
+</div>
+
+<div class="card">
+  <h2>&#9881; Windows Services</h2>
+  <p class="sub">View and manage service startup types on the VM.</p>
   <div class="brow" style="margin-bottom:12px">
     <button class="btn btn-o" id="vmt-services-btn" onclick="VMTools.loadServices()">&#8635; Load Services</button>
   </div>
@@ -1406,13 +1758,18 @@ const panels = {
 </div>
 
 <div class="card">
-  <h2>Installed Applications</h2>
+  <h2>&#128230; Installed Applications</h2>
   <p class="sub">Lists installed software from the VM registry.</p>
   <div class="brow" style="margin-bottom:12px">
     <button class="btn btn-o" id="vmt-installed-btn" onclick="VMTools.loadInstalled()">&#8635; Load Apps</button>
     <input type="text" id="vmt-installed-filter" placeholder="Filter by name&hellip;" style="max-width:220px" oninput="VMTools.loadInstalled()">
   </div>
   <div id="vmt-installed-out" style="color:var(--muted);font-size:13px"></div>
+</div>
+
+<div class="brow" style="margin-top:8px">
+  <button class="btn btn-o" onclick="App.showPanel('local')">&#8592; Back</button>
+  <button class="btn btn-p" onclick="App.showPanel('tools')">Continue &#8594;</button>
 </div>`;
   },
 
@@ -2831,6 +3188,7 @@ async function init() {
   renderSidebar();
   App.showPanel('features');
   initTheme();
+  Notes.loadBadge();
 }
 
 async function reloadVMs() {
@@ -2841,6 +3199,18 @@ async function reloadVMs() {
 // ── Notes ─────────────────────────────────────────────────────────────────────
 const Notes = {
   _timer: null,
+  _countTodo(text) { return (text.match(/- \[ \]/g) || []).length; },
+  _updateBadge(text) {
+    const badge = document.getElementById('notes-badge');
+    if (!badge) return;
+    const n = this._countTodo(text);
+    if (n > 0) { badge.textContent = n; badge.style.display = ''; }
+    else badge.style.display = 'none';
+  },
+  async loadBadge() {
+    const r = await fetch('/api/notes').then(r=>r.json()).catch(()=>({content:''}));
+    this._updateBadge(r.content || '');
+  },
   async open() {
     const modal = document.getElementById('notesModal');
     const ta    = document.getElementById('notesText');
@@ -2848,9 +3218,11 @@ const Notes = {
     if (!modal || !ta) return;
     const r = await fetch('/api/notes').then(r=>r.json()).catch(()=>({content:''}));
     ta.value = r.content || '';
+    this._updateBadge(ta.value);
     if (saved) saved.style.display = 'none';
     modal.classList.add('open');
     ta.focus();
+    ta.oninput = () => this._updateBadge(ta.value);
   },
   close() { document.getElementById('notesModal')?.classList.remove('open'); },
   async save() {
@@ -2862,6 +3234,7 @@ const Notes = {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({content: ta.value}),
     }).catch(()=>{});
+    this._updateBadge(ta.value);
     if (saved) { saved.style.display = ''; setTimeout(() => { saved.style.display = 'none'; }, 2000); }
   },
 };
