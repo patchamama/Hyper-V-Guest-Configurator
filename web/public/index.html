@@ -1406,6 +1406,261 @@ const DB = {
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   },
+
+  // ── AI-Prompt & Smart Queries ────────────────────────────────────────────────
+  _aiSchema: null,
+  _aiPromptText: '',
+  _smartSchema: null,
+
+  async generateAIPrompt() {
+    if (!this.conn) { alert('Connect to a database first.'); return; }
+    const modal   = document.getElementById('db-ai-modal');
+    const loading = document.getElementById('db-ai-loading');
+    const area    = document.getElementById('db-ai-prompt-text');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    loading.style.display = 'block';
+    area.style.display = 'none';
+    document.getElementById('db-ai-copy-status').textContent = '';
+
+    const r = await fetch('/api/db/schema-full', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(this.conn)
+    }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }));
+
+    if (!r.ok) {
+      loading.textContent = '✗ ' + r.error;
+      loading.style.color = 'var(--red)';
+      return;
+    }
+    this._aiSchema = r;
+    this._aiPromptText = this._buildPrompt(r);
+    loading.style.display = 'none';
+    area.value = this._aiPromptText;
+    area.style.display = 'block';
+  },
+
+  closeAIModal() {
+    const m = document.getElementById('db-ai-modal');
+    if (m) m.style.display = 'none';
+  },
+
+  async copyAIPrompt() {
+    if (!this._aiPromptText) return;
+    await navigator.clipboard.writeText(this._aiPromptText).catch(() => {});
+    const s = document.getElementById('db-ai-copy-status');
+    if (s) { s.textContent = '✓ Copied!'; setTimeout(() => { s.textContent = ''; }, 2500); }
+  },
+
+  downloadAIPrompt() {
+    if (!this._aiPromptText) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([this._aiPromptText], { type: 'text/plain;charset=utf-8' }));
+    a.download = `${this._aiSchema?.database || 'db'}_ai_prompt.txt`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  },
+
+  downloadSchemaJson() {
+    if (!this._aiSchema) return;
+    const json = JSON.stringify(this._buildSchemaJson(this._aiSchema), null, 2);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    a.download = `${this._aiSchema.database || 'db'}_schema_starter.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  },
+
+  loadSmartSchema() {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = '.json';
+    input.onchange = e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        try {
+          const schema = JSON.parse(ev.target.result);
+          if (!schema.entities && !schema.smartTemplates) throw new Error('Invalid schema format');
+          this._smartSchema = schema;
+          this._renderSmartSection();
+        } catch (err) { alert('Invalid schema JSON: ' + err.message); }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  },
+
+  _renderSmartSection() {
+    const sec = document.getElementById('db-smart-section');
+    if (!sec || !this._smartSchema) return;
+    const tpls = this._smartSchema.smartTemplates || [];
+    const rels = this._smartSchema.relationships || [];
+    const entities = Object.keys(this._smartSchema.entities || {});
+    let html = `<div style="border-top:1px solid var(--border);padding-top:14px;margin-top:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+        <strong style="font-size:13px">&#129302; Smart Queries</strong>
+        <span style="font-size:11px;color:var(--muted)">${entities.length} entities &middot; ${rels.length} relationships &middot; ${tpls.length} templates</span>
+        <button class="hbtn" style="font-size:11px;padding:2px 8px;margin-left:auto" onclick="DB._smartSchema=null;document.getElementById('db-smart-section').innerHTML=''">&#x2715; Unload</button>
+      </div>`;
+    if (tpls.length) {
+      html += `<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px">
+        <div class="fg" style="margin-bottom:0;flex:1;min-width:200px">
+          <label class="fl">Template</label>
+          <select id="db-smart-tpl" style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 10px;width:100%">
+            ${tpls.map(t => `<option value="${t.id}" title="${t.description || ''}">${t.label}${t.category ? ' ['+t.category+']' : ''}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-g" style="padding:6px 14px;font-size:12px" onclick="DB._runSmartTemplate()">&#9654; Run</button>
+      </div>`;
+    }
+    if (rels.length) {
+      html += `<details style="margin-top:6px"><summary style="font-size:11px;color:var(--muted);cursor:pointer">&#9658; Relationships (${rels.length})</summary>
+        <div style="margin-top:8px;font-size:11px;font-family:var(--mono);line-height:2;background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;overflow:auto;max-height:160px">
+          ${rels.map(r => `<div><span style="color:var(--accent)">${r.from?.table}.${r.from?.column}</span> &#8594; <span style="color:var(--green)">${r.to?.table}.${r.to?.column}</span> <span style="color:var(--muted)">${r.type || ''} ${r.confidence==='inferred'?'(inferred)':''}</span></div>`).join('')}
+        </div></details>`;
+    }
+    html += `</div>`;
+    sec.innerHTML = html;
+  },
+
+  _runSmartTemplate() {
+    const sel = document.getElementById('db-smart-tpl');
+    if (!sel || !this._smartSchema) return;
+    const tpl = (this._smartSchema.smartTemplates || []).find(t => t.id === sel.value);
+    if (!tpl?.sql) return;
+    const editor = document.getElementById('db-sql-editor');
+    if (editor) { editor.value = tpl.sql; editor.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+    this.runQuery();
+  },
+
+  _buildPrompt(schema) {
+    const { dbType, host, port, database, tables, foreignKeys } = schema;
+    const dbLabel = { postgresql: 'PostgreSQL', mysql: 'MySQL', mssql: 'SQL Server (MSSQL)' }[dbType] || dbType;
+    const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const totalCols = tables.reduce((s, t) => s + t.columns.length, 0);
+    const totalRows = tables.reduce((s, t) => s + (t.rowCount || 0), 0);
+
+    const mcpPkg = { postgresql: 'mcp-server-postgres', mysql: 'mcp-server-mysql', mssql: 'mcp-server-mssql' }[dbType] || 'mcp-server-db';
+    const connStr = dbType === 'postgresql'
+      ? `postgresql://USER:PASSWORD@${host}:${port}/${database}`
+      : dbType === 'mysql'
+        ? `mysql://USER:PASSWORD@${host}:${port}/${database}`
+        : `Server=${host},${port};Database=${database};User Id=USER;Password=PASSWORD;`;
+
+    let prompt = `# Database Schema Analysis & Smart Query Configuration\n`;
+    prompt += `Generated: ${now}\n\n`;
+    prompt += `You are an expert database analyst. Your task is to:\n`;
+    prompt += `1. Analyze the complete schema below and identify ALL table relationships\n`;
+    prompt += `2. Produce a "Smart Queries JSON" configuration file (format specified below)\n`;
+    prompt += `3. Generate a Mermaid ER diagram\n`;
+    prompt += `4. Provide a text report summarizing the data model\n\n`;
+    prompt += `---\n\n`;
+
+    prompt += `## Connection Details\n\n`;
+    prompt += `| Parameter | Value |\n|-----------|-------|\n`;
+    prompt += `| Database type | ${dbLabel} |\n`;
+    prompt += `| Host | ${host} |\n`;
+    prompt += `| Port | ${port} |\n`;
+    prompt += `| Database | ${database} |\n`;
+    prompt += `| Tables | ${tables.length} |\n`;
+    prompt += `| Total columns | ${totalCols} |\n`;
+    prompt += `| Estimated total rows | ${totalRows.toLocaleString()} |\n\n`;
+
+    prompt += `## MCP Server Setup (optional)\n\n`;
+    prompt += `To connect an MCP-compatible AI tool (e.g. Claude Desktop) directly to this database:\n\n`;
+    prompt += `\`\`\`bash\nnpm install -g ${mcpPkg}\n\`\`\`\n\n`;
+    prompt += `Claude Desktop config (\`claude_desktop_config.json\`):\n\`\`\`json\n`;
+    prompt += JSON.stringify({ mcpServers: { [database]: { command: 'npx', args: [mcpPkg, connStr.replace('USER', this.conn?.user || 'USER').replace('PASSWORD', '***')] } } }, null, 2);
+    prompt += `\n\`\`\`\n\n---\n\n`;
+
+    prompt += `## Database Schema (${tables.length} tables)\n\n`;
+    for (const tbl of tables) {
+      const rowStr = tbl.rowCount > 0 ? ` — ~${tbl.rowCount.toLocaleString()} rows` : '';
+      prompt += `### ${tbl.name}${rowStr}\n\n`;
+      prompt += `| # | Column | Type | Nullable | PK | Default |\n`;
+      prompt += `|---|--------|------|----------|----|---------|\n`;
+      tbl.columns.forEach((col, i) => {
+        prompt += `| ${i+1} | \`${col.name}\` | ${col.type} | ${col.nullable ? 'YES' : 'NO'} | ${col.isPk ? '✓ PK' : ''} | ${col.default ?? ''} |\n`;
+      });
+      prompt += `\n`;
+    }
+
+    prompt += `---\n\n## Declared Foreign Keys (${foreignKeys.length})\n\n`;
+    if (foreignKeys.length) {
+      prompt += `| From table | From column | → | To table | To column | Constraint |\n`;
+      prompt += `|------------|-------------|---|----------|-----------|------------|\n`;
+      foreignKeys.forEach(fk => {
+        prompt += `| \`${fk.fromTable}\` | \`${fk.fromColumn}\` | → | \`${fk.toTable}\` | \`${fk.toColumn}\` | ${fk.constraintName} |\n`;
+      });
+    } else {
+      prompt += `No explicit foreign keys declared. Infer relationships from column naming patterns (e.g. \`user_id\` likely references \`users.id\`).\n`;
+    }
+
+    prompt += `\n---\n\n## Your Tasks\n\n`;
+
+    prompt += `### Task 1 — Relationship Analysis\n\n`;
+    prompt += `Identify ALL relationships between tables:\n`;
+    prompt += `- Explicit FK constraints (listed above)\n`;
+    prompt += `- Inferred from column naming: \`<table>_id\` → \`<table>.id\`, \`<table>_code\` → \`<table>.code\`, etc.\n`;
+    prompt += `- Junction/pivot tables (tables with exactly 2 FK-like columns suggesting many-to-many)\n`;
+    prompt += `- Self-referential relationships (e.g. \`parent_id\` in the same table)\n\n`;
+
+    prompt += `### Task 2 — Smart Queries JSON\n\n`;
+    prompt += `Output a valid JSON file with **exactly** this structure. This file will be loaded directly into the database admin tool:\n\n`;
+    prompt += `\`\`\`json\n`;
+    prompt += JSON.stringify(this._buildSchemaJson(schema), null, 2);
+    prompt += `\n\`\`\`\n\n`;
+    prompt += `**Instructions for filling the JSON:**\n`;
+    prompt += `- \`entities[table].displayField\`: the column most useful for display (name, title, email, code, description)\n`;
+    prompt += `- \`entities[table].description\`: 1-sentence description of what this table represents in the business domain\n`;
+    prompt += `- \`entities[table].columns[col].label\`: human-readable label for the column\n`;
+    prompt += `- \`entities[table].columns[col].searchable\`: true if this column is useful for text search\n`;
+    prompt += `- \`entities[table].relations\`: all relationships this entity has (hasMany, belongsTo, hasOne, manyToMany)\n`;
+    prompt += `- \`smartTemplates\`: 3-5 useful queries per entity showing joins, aggregations, and lookups\n`;
+    prompt += `- \`relationships[].confidence\`: "explicit" if FK-declared, "inferred" if guessed from naming\n`;
+    prompt += `- \`diagram.mermaid\`: a valid Mermaid ER diagram string\n\n`;
+
+    prompt += `### Task 3 — Schema Report\n\n`;
+    prompt += `Write a concise (< 400 words) natural-language description of the data model:\n`;
+    prompt += `- What domain/application this database appears to serve\n`;
+    prompt += `- Key entities and their roles\n`;
+    prompt += `- Main data flows (e.g. "a User places Orders, each Order has OrderItems linked to Products")\n`;
+    prompt += `- Any notable patterns (audit tables, lookup/reference tables, soft deletes, multi-tenancy, etc.)\n\n`;
+
+    prompt += `### Task 4 — Mermaid ER Diagram\n\n`;
+    prompt += `Generate a \`erDiagram\` block showing all entities and their relationships.\n`;
+    prompt += `Use standard Mermaid ER notation: \`||--o{\`, \`}o--||\`, \`||--||\`, etc.\n\n`;
+
+    return prompt;
+  },
+
+  _buildSchemaJson(schema) {
+    const { dbType, host, port, database, tables, foreignKeys } = schema;
+    const entities = {};
+    for (const tbl of tables) {
+      const pkCol = tbl.columns.find(c => c.isPk);
+      const displayCandidates = ['name', 'title', 'email', 'code', 'description', 'label', 'full_name', 'username'];
+      const displayField = tbl.columns.find(c => displayCandidates.some(d => c.name.toLowerCase().includes(d)))?.name || pkCol?.name || tbl.columns[0]?.name || 'id';
+      const cols = {};
+      tbl.columns.forEach(c => { cols[c.name] = { type: c.type, label: c.name.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase()), pk: c.isPk, nullable: c.nullable, searchable: !c.isPk && ['varchar','text','char','nvarchar','character varying'].some(t => c.type.startsWith(t)) }; });
+      entities[tbl.name] = { table: tbl.name, pk: pkCol?.name || 'id', displayField, description: '', columns: cols, relations: {} };
+    }
+    // Add declared FK relations
+    foreignKeys.forEach(fk => {
+      if (entities[fk.fromTable]) entities[fk.fromTable].relations[fk.toTable] = { type: 'belongsTo', foreignKey: fk.fromColumn, localKey: fk.toColumn, label: '' };
+      if (entities[fk.toTable]) entities[fk.toTable].relations[fk.fromTable] = { type: 'hasMany', foreignKey: fk.fromColumn, localKey: fk.toColumn, label: '' };
+    });
+    return {
+      version: '1.0',
+      generatedAt: new Date().toISOString(),
+      connection: { type: dbType, host, port: Number(port), database },
+      entities,
+      relationships: foreignKeys.map(fk => ({ from: { table: fk.fromTable, column: fk.fromColumn }, to: { table: fk.toTable, column: fk.toColumn }, type: 'MANY_TO_ONE', confidence: 'explicit', label: '' })),
+      smartTemplates: tables.slice(0, 3).map(t => ({ id: `list-${t.name}`, label: `List ${t.name}`, description: `All rows from ${t.name}`, category: 'Overview', sql: `SELECT * FROM ${t.name} LIMIT 100`, params: [] })),
+      diagram: { mermaid: '' },
+    };
+  },
 };
 
 // ── VM Tools ──────────────────────────────────────────────────────────────────
@@ -2662,6 +2917,8 @@ const panels = {
       <button class="btn btn-o" onclick="DB.exportCsv()">&#8595; Export .csv</button>
       <input type="text" id="db-search-input" placeholder="Search all tables&hellip;" style="flex:1;max-width:220px" onkeydown="if(event.key==='Enter')DB.search()">
       <button class="btn btn-o" onclick="DB.search()">&#128269; Search</button>
+      <button class="btn btn-ai" onclick="DB.generateAIPrompt()" title="Generate AI prompt for full schema analysis, relationships and Smart Queries JSON">&#129302; AI&#8209;Prompt</button>
+      <button class="btn btn-o" onclick="DB.loadSmartSchema()" title="Load AI-generated schema JSON to enable Smart Query templates">&#128193; Load&nbsp;Schema</button>
     </div>
     <!-- Search progress -->
     <div id="db-search-progress" style="display:none;margin-top:10px">
@@ -2688,6 +2945,32 @@ const panels = {
       </div>
     </details>
     <div id="db-query-out" style="margin-top:14px"></div>
+    <div id="db-smart-section"></div>
+  </div>
+</div>
+
+<!-- AI-Prompt modal ─────────────────────────────────────────────────────────-->
+<div id="db-ai-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9990;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--sur);border:1px solid var(--border);border-radius:12px;width:100%;max-width:880px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.5)">
+    <!-- Header -->
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div>
+        <span style="font-size:15px;font-weight:600">&#129302; AI Database Analysis Prompt</span>
+        <span style="font-size:11px;color:var(--muted);margin-left:10px">Copy and paste into any AI model (Claude, GPT, Gemini&hellip;)</span>
+      </div>
+      <button onclick="DB.closeAIModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1;padding:0 4px" title="Close">&times;</button>
+    </div>
+    <!-- Toolbar -->
+    <div style="padding:10px 18px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0">
+      <button class="btn btn-p" style="font-size:12px;padding:5px 14px" onclick="DB.copyAIPrompt()">&#128203; Copy prompt</button>
+      <button class="btn btn-o" style="font-size:12px;padding:5px 14px" onclick="DB.downloadAIPrompt()">&#8595; Download&nbsp;.txt</button>
+      <button class="btn btn-o" style="font-size:12px;padding:5px 14px" onclick="DB.downloadSchemaJson()">&#8595; Schema&nbsp;starter&nbsp;.json</button>
+      <span id="db-ai-copy-status" style="font-size:12px;color:var(--green);margin-left:4px"></span>
+      <span style="margin-left:auto;font-size:11px;color:var(--muted)">After the AI fills the JSON, use <strong>Load Schema</strong> in DB Admin to enable Smart Queries</span>
+    </div>
+    <!-- Content -->
+    <div id="db-ai-loading" style="padding:48px;text-align:center;color:var(--muted);font-size:13px">&#9696; Fetching schema&hellip;</div>
+    <textarea id="db-ai-prompt-text" style="display:none;flex:1;background:var(--sur2);border:none;color:var(--text);font-family:var(--mono);font-size:11.5px;padding:16px 18px;resize:none;outline:none;line-height:1.75;overflow:auto;min-height:400px"></textarea>
   </div>
 </div>`;
   },

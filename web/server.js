@@ -438,6 +438,153 @@ app.post('/api/db/columns', async (req, res) => {
   } catch(e) { res.json({ ok:false, error: dbErrMsg(e) }); }
 });
 
+// ── Full schema introspection (columns + PKs + foreign keys + row counts) ──────
+app.post('/api/db/schema-full', async (req, res) => {
+  const { type, host, port, database, user, password, sslMode } = req.body;
+  try {
+    const db = await dbOpen(type, host, port, database, user, password, sslMode || 'auto');
+    let rawCols = [], foreignKeys = [], rowCounts = {};
+
+    if (type === 'postgresql') {
+      const cR = await db.query(`
+        SELECT c.table_name, c.column_name, c.data_type, c.is_nullable,
+               c.column_default, c.character_maximum_length, c.ordinal_position,
+               COALESCE(pk.is_pk, false) AS is_primary_key
+        FROM information_schema.columns c
+        LEFT JOIN (
+          SELECT kcu.table_name, kcu.column_name, true AS is_pk
+          FROM information_schema.table_constraints tc
+          JOIN information_schema.key_column_usage kcu
+            ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+          WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = 'public'
+        ) pk ON pk.table_name = c.table_name AND pk.column_name = c.column_name
+        WHERE c.table_schema = 'public'
+          AND EXISTS (SELECT 1 FROM information_schema.tables t
+                      WHERE t.table_schema='public' AND t.table_type='BASE TABLE' AND t.table_name=c.table_name)
+        ORDER BY c.table_name, c.ordinal_position`);
+      rawCols = cR.rows;
+
+      const fkR = await db.query(`
+        SELECT tc.table_name AS from_table, kcu.column_name AS from_column,
+               ccu.table_name AS to_table, ccu.column_name AS to_column, tc.constraint_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+        JOIN information_schema.constraint_column_usage ccu
+          ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+        WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public'
+        ORDER BY tc.table_name, kcu.column_name`);
+      foreignKeys = fkR.rows;
+
+      const rcR = await db.query(`
+        SELECT c.relname AS table_name, GREATEST(c.reltuples::bigint, 0) AS row_count
+        FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid
+        WHERE n.nspname = 'public' AND c.relkind = 'r'`);
+      rcR.rows.forEach(r => { rowCounts[r.table_name] = Number(r.row_count); });
+
+    } else if (type === 'mssql') {
+      const cR = await db.query(`
+        SELECT c.TABLE_NAME AS table_name, c.COLUMN_NAME AS column_name,
+               c.DATA_TYPE AS data_type, c.IS_NULLABLE AS is_nullable,
+               c.COLUMN_DEFAULT AS column_default, c.CHARACTER_MAXIMUM_LENGTH AS character_maximum_length,
+               c.ORDINAL_POSITION AS ordinal_position,
+               CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS is_primary_key
+        FROM INFORMATION_SCHEMA.COLUMNS c
+        JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_NAME=t.TABLE_NAME AND c.TABLE_SCHEMA=t.TABLE_SCHEMA
+        LEFT JOIN (
+          SELECT ku.COLUMN_NAME, ku.TABLE_NAME
+          FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+          JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
+            ON tc.CONSTRAINT_NAME=ku.CONSTRAINT_NAME AND tc.TABLE_SCHEMA=ku.TABLE_SCHEMA
+          WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND tc.TABLE_SCHEMA='dbo'
+        ) pk ON pk.TABLE_NAME=c.TABLE_NAME AND pk.COLUMN_NAME=c.COLUMN_NAME
+        WHERE t.TABLE_TYPE='BASE TABLE' AND t.TABLE_SCHEMA='dbo'
+        ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION`);
+      rawCols = cR.rows;
+
+      const fkR = await db.query(`
+        SELECT tp.name AS from_table, cp.name AS from_column,
+               tr.name AS to_table, cr.name AS to_column, fk.name AS constraint_name
+        FROM sys.foreign_keys fk
+        JOIN sys.foreign_key_columns fkc ON fk.object_id=fkc.constraint_object_id
+        JOIN sys.tables tp ON fkc.parent_object_id=tp.object_id
+        JOIN sys.columns cp ON fkc.parent_object_id=cp.object_id AND fkc.parent_column_id=cp.column_id
+        JOIN sys.tables tr ON fkc.referenced_object_id=tr.object_id
+        JOIN sys.columns cr ON fkc.referenced_object_id=cr.object_id AND fkc.referenced_column_id=cr.column_id
+        ORDER BY tp.name, cp.name`);
+      foreignKeys = fkR.rows;
+
+      const rcR = await db.query(`
+        SELECT t.TABLE_NAME AS table_name, SUM(p.rows) AS row_count
+        FROM INFORMATION_SCHEMA.TABLES t
+        JOIN sys.tables st ON t.TABLE_NAME=st.name
+        JOIN sys.partitions p ON st.object_id=p.object_id
+        WHERE p.index_id IN (0,1) AND t.TABLE_TYPE='BASE TABLE' AND t.TABLE_SCHEMA='dbo'
+        GROUP BY t.TABLE_NAME`);
+      rcR.rows.forEach(r => { rowCounts[r.table_name] = Number(r.row_count); });
+
+    } else { // mysql
+      const [cRows] = await db.query(`
+        SELECT TABLE_NAME AS table_name, COLUMN_NAME AS column_name, DATA_TYPE AS data_type,
+               IS_NULLABLE AS is_nullable, COLUMN_DEFAULT AS column_default,
+               CHARACTER_MAXIMUM_LENGTH AS character_maximum_length, ORDINAL_POSITION AS ordinal_position,
+               CASE WHEN COLUMN_KEY='PRI' THEN 1 ELSE 0 END AS is_primary_key
+        FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE()
+        ORDER BY TABLE_NAME, ORDINAL_POSITION`);
+      rawCols = cRows;
+
+      const [fkRows] = await db.query(`
+        SELECT TABLE_NAME AS from_table, COLUMN_NAME AS from_column,
+               REFERENCED_TABLE_NAME AS to_table, REFERENCED_COLUMN_NAME AS to_column,
+               CONSTRAINT_NAME AS constraint_name
+        FROM information_schema.KEY_COLUMN_USAGE
+        WHERE TABLE_SCHEMA=DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL
+        ORDER BY TABLE_NAME, COLUMN_NAME`);
+      foreignKeys = fkRows;
+
+      const [rcRows] = await db.query(`
+        SELECT TABLE_NAME AS table_name, TABLE_ROWS AS row_count
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE'`);
+      rcRows.forEach(r => { rowCounts[r.table_name] = Number(r.row_count); });
+    }
+
+    await db.close();
+
+    // Group columns by table
+    const tableMap = {};
+    rawCols.forEach(col => {
+      const tn = col.table_name;
+      if (!tableMap[tn]) tableMap[tn] = [];
+      const isPk = col.is_primary_key === true || col.is_primary_key === 1 || String(col.is_primary_key) === 'true';
+      const maxLen = col.character_maximum_length;
+      tableMap[tn].push({
+        name:     col.column_name,
+        type:     col.data_type + (maxLen ? `(${maxLen})` : ''),
+        nullable: String(col.is_nullable).toUpperCase() === 'YES',
+        isPk,
+        default:  col.column_default ?? null,
+      });
+    });
+
+    const tables = Object.keys(tableMap).sort().map(name => ({
+      name,
+      rowCount: rowCounts[name] ?? 0,
+      columns:  tableMap[name],
+    }));
+
+    res.json({
+      ok: true, dbType: type, host, port, database,
+      tables,
+      foreignKeys: foreignKeys.map(fk => ({
+        fromTable: fk.from_table, fromColumn: fk.from_column,
+        toTable: fk.to_table, toColumn: fk.to_column,
+        constraintName: fk.constraint_name,
+      })),
+    });
+  } catch (e) { res.json({ ok: false, error: dbErrMsg(e) }); }
+});
+
 app.post('/api/db/query', async (req, res) => {
   const { type, host, port, database, user, password, sql, sslMode } = req.body;
   if (!sql?.trim()) return res.json({ ok:false, error:'No SQL provided' });
