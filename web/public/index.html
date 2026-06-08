@@ -217,6 +217,7 @@ tr:hover td{background:rgba(var(--accent-rgb),.06)}
 .comm-result-title{font-size:13px;font-weight:600;color:var(--accent);margin-bottom:4px}
 .comm-result-meta{font-size:11px;color:var(--muted);margin-bottom:6px}
 .comm-result-excerpt{font-size:12px;color:var(--text);line-height:1.5;opacity:.85}
+/* Section accordion */
 .comm-section-list{display:flex;flex-direction:column;gap:6px}
 .comm-section-item{background:var(--sur2);border:1px solid var(--border);border-radius:8px;overflow:hidden}
 .comm-section-hdr{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;user-select:none;transition:background .12s}
@@ -225,25 +226,121 @@ tr:hover td{background:rgba(var(--accent-rgb),.06)}
 .comm-section-hdr.open .arrow{transform:rotate(90deg)}
 .comm-section-title{font-size:13px;font-weight:600;flex:1}
 .comm-section-count{font-size:11px;color:var(--muted);background:var(--sur);border:1px solid var(--border);border-radius:10px;padding:1px 8px}
-.comm-art-list{display:flex;flex-direction:column;gap:2px;padding:0 8px 8px}
-.comm-art-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:5px;cursor:pointer;transition:background .12s}
-.comm-art-row:hover{background:rgba(var(--accent-rgb),.08)}
-.comm-art-title{font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.comm-art-date{font-size:11px;color:var(--muted);white-space:nowrap}
+/* Thread list inside section */
+.comm-thread-list{display:flex;flex-direction:column}
+.comm-thread{border-top:1px solid var(--border)}
+.comm-thread-hdr{display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:pointer;user-select:none;transition:background .12s}
+.comm-thread-hdr:hover{background:rgba(var(--accent-rgb),.06)}
+.comm-thread-hdr.open{background:rgba(var(--accent-rgb),.04)}
+.cta{font-size:9px;color:var(--muted);flex-shrink:0;width:10px;transition:transform .15s;display:inline-block}
+.cta.open{transform:rotate(90deg)}
+.comm-type{font-size:9px;font-weight:800;padding:1px 5px;border-radius:3px;flex-shrink:0;letter-spacing:.02em}
+.ct-q{background:rgba(var(--accent-rgb),.15);color:var(--accent)}
+.ct-a,.ct-g{background:rgba(63,185,80,.15);color:var(--green)}
+.ct-other{background:var(--sur);color:var(--muted);border:1px solid var(--border)}
+.comm-thread-title{font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.comm-thread-tail{display:flex;align-items:center;gap:5px;flex-shrink:0;margin-left:4px}
+.comm-thread-date{font-size:10px;color:var(--muted);white-space:nowrap}
+.comm-rc{font-size:10px;padding:1px 6px;border-radius:10px;background:var(--sur);border:1px solid var(--border);color:var(--muted);white-space:nowrap;flex-shrink:0}
+.comm-rc.has{color:var(--accent);border-color:rgba(var(--accent-rgb),.3);background:rgba(var(--accent-rgb),.07)}
+.comm-rc.solved{color:var(--green);border-color:rgba(63,185,80,.3);background:rgba(63,185,80,.07)}
+/* Thread body (inline expanded content) */
+.comm-thread-body{padding:10px 14px 14px 26px;border-top:1px solid var(--border);animation:fadeIn .12s ease}
+.ctp-loading{color:var(--muted);font-size:12px;padding:6px 0}
+.ctp-main{font-size:13px;line-height:1.75;padding-bottom:12px}
+.ctp-main p{margin:0 0 8px}.ctp-main p:last-child{margin-bottom:0}
+.ctp-main h1,.ctp-main h2,.ctp-main h3,.ctp-main h4{margin:12px 0 5px;color:var(--text);font-weight:600}
+.ctp-main h1{font-size:16px}.ctp-main h2{font-size:14px}.ctp-main h3,.ctp-main h4{font-size:13px}
+.ctp-main code{background:var(--bg);border:1px solid var(--border);padding:1px 5px;border-radius:3px;font-family:var(--mono);font-size:11px}
+.ctp-main pre{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;overflow-x:auto;font-size:11px;font-family:var(--mono);line-height:1.5;margin:8px 0}
+.ctp-main pre code{background:none;border:none;padding:0}
+.ctp-main a{color:var(--accent)}.ctp-main img{max-width:100%;border-radius:4px;margin:4px 0}
+.ctp-main blockquote{border-left:3px solid var(--border);padding-left:10px;color:var(--muted);margin:8px 0}
+.ctp-main ul,.ctp-main ol{padding-left:20px;margin:6px 0}
+.ctp-main li{margin-bottom:3px}
+/* Replies */
+.ctp-replies{margin-top:10px;border-top:1px solid var(--border);padding-top:10px}
+.ctp-replies-hdr{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.ctp-reply{background:var(--sur);border:1px solid var(--border);border-radius:6px;padding:9px 12px;margin-bottom:6px;border-left:2px solid var(--border)}
+.ctp-reply.accepted{border-left-color:var(--green)}
+.ctp-reply-hdr{display:flex;align-items:center;gap:7px;margin-bottom:6px;flex-wrap:wrap}
+.ctp-reply-author{font-size:12px;font-weight:600}
+.ctp-reply-date{font-size:11px;color:var(--muted)}
+.ctp-accepted{font-size:10px;color:var(--green);background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.25);border-radius:3px;padding:1px 6px}
+.ctp-reply-body{font-size:12px;line-height:1.65}
+.ctp-reply-body p{margin:0 0 5px}.ctp-reply-body p:last-child{margin-bottom:0}
+.ctp-reply-body pre{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:8px;font-size:11px;overflow-x:auto;margin:5px 0}
+.ctp-reply-body code{background:var(--bg);border:1px solid var(--border);padding:1px 4px;border-radius:3px;font-size:11px;font-family:var(--mono)}
+.ctp-reply-body a{color:var(--accent)}
+/* Log */
 .comm-log{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-family:var(--mono);font-size:11px;line-height:1.7;max-height:200px;overflow-y:auto;margin-top:8px}
 .comm-log-line{white-space:pre-wrap;word-break:break-all}
-.comm-log-line.warn{color:var(--yellow)}
-.comm-log-line.error{color:var(--red)}
-.comm-log-line.ok{color:var(--green)}
-.comm-article-view{background:var(--sur2);border:1px solid var(--border);border-radius:8px;padding:18px 20px;margin-top:10px;font-size:13px;line-height:1.7;max-height:70vh;overflow-y:auto}
-.comm-article-view h1,.comm-article-view h2,.comm-article-view h3{margin:12px 0 6px;color:var(--text)}
-.comm-article-view h1{font-size:18px}.comm-article-view h2{font-size:15px}.comm-article-view h3{font-size:13px}
-.comm-article-view code{background:var(--sur);padding:2px 5px;border-radius:3px;font-family:var(--mono);font-size:11px}
-.comm-article-view pre{background:var(--sur);border:1px solid var(--border);border-radius:6px;padding:10px 12px;overflow-x:auto;margin:8px 0}
+.comm-log-line.warn{color:var(--yellow)}.comm-log-line.error{color:var(--red)}.comm-log-line.ok{color:var(--green)}
 .comm-article-view pre code{background:none;padding:0}
 .comm-article-view a{color:var(--accent)}
 .comm-article-view img{max-width:100%;border-radius:4px;margin:6px 0}
 .comm-article-view blockquote{border-left:3px solid var(--border);margin:8px 0;padding-left:12px;color:var(--muted)}
+.comm-tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;background:rgba(var(--accent-rgb),.1);border:1px solid rgba(var(--accent-rgb),.25);color:var(--accent);font-size:11px;cursor:pointer;transition:all .15s;user-select:none;white-space:nowrap}
+.comm-tag:hover{background:rgba(var(--accent-rgb),.25);border-color:var(--accent)}
+.comm-author-link{color:var(--accent);cursor:pointer;font-weight:600;background:none;border:none;padding:0;font-family:inherit;font-size:inherit}
+.comm-author-link:hover{text-decoration:underline}
+.comm-meta-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0 10px;border-bottom:1px solid var(--border);margin-bottom:10px;font-size:12px;color:var(--muted)}
+.comm-meta-bar .comm-tag{font-size:10px}
+.comm-tags-cloud{display:flex;flex-wrap:wrap;gap:5px;padding:8px 0;margin-bottom:4px}
+.comm-section-tags{display:flex;flex-wrap:wrap;gap:4px;padding:4px 14px 8px}
+.comm-section-stat-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:2px 14px 8px;font-size:11px;color:var(--muted)}
+.comm-solved-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;color:var(--green);background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.25);border-radius:3px;padding:1px 6px}
+.comm-unsolved-badge{display:inline-flex;align-items:center;font-size:10px;color:var(--muted);background:var(--sur2);border:1px solid var(--border);border-radius:3px;padding:1px 6px}
+.comm-search-prog-wrap{margin-bottom:10px}
+.comm-tab-bar{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px}
+.comm-tab{background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;padding:8px 18px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s;font-family:var(--font)}
+.comm-tab:hover{color:var(--text)}
+.comm-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.comm-pagination{display:flex;align-items:center;gap:6px;margin-top:16px;justify-content:center;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--border)}
+.comm-page-btn{background:var(--sur2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:4px 11px;font-size:12px;cursor:pointer;transition:all .15s;font-family:var(--font)}
+.comm-page-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.comm-page-btn.active{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:600}
+.comm-page-btn:disabled{opacity:.35;cursor:not-allowed}
+.comm-view-thread-btn{display:inline-flex;align-items:center;gap:5px;background:rgba(var(--accent-rgb),.07);border:1px solid rgba(var(--accent-rgb),.25);color:var(--accent);border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;font-family:var(--font);transition:all .15s;margin-top:6px}
+.comm-view-thread-btn:hover{background:rgba(var(--accent-rgb),.18);border-color:var(--accent)}
+.comm-view-thread-btn.open{background:rgba(var(--accent-rgb),.18)}
+
+/* ── Status LEDs ── */
+.status-led{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:12px;background:var(--sur2);border:1px solid var(--border);font-size:11px;font-weight:600;color:var(--muted);user-select:none;transition:border-color .2s}
+.status-led.clickable{cursor:pointer}
+.status-led.clickable:hover{border-color:var(--accent);color:var(--text)}
+.status-led.active{color:var(--text)}
+.led-dot{width:8px;height:8px;border-radius:50%;background:var(--red);flex-shrink:0;transition:background .3s,box-shadow .3s}
+.led-dot.on{background:var(--green);box-shadow:0 0 0 0 rgba(63,185,80,.5);animation:led-pulse 2.5s infinite}
+@keyframes led-pulse{0%{box-shadow:0 0 0 0 rgba(63,185,80,.5)}60%{box-shadow:0 0 0 5px rgba(63,185,80,0)}100%{box-shadow:0 0 0 0 rgba(63,185,80,0)}}
+
+/* ── LLM Config panel (slides under header) ── */
+#llm-config-panel{position:fixed;top:48px;right:0;width:420px;max-width:100vw;background:var(--sur);border-left:1px solid var(--border);border-bottom:1px solid var(--border);box-shadow:-4px 4px 20px rgba(0,0,0,.25);z-index:200;overflow-y:auto;max-height:calc(100vh - 48px);transition:transform .2s;transform:translateX(100%)}
+#llm-config-panel.open{transform:translateX(0)}
+#llm-config-panel .lcp-hdr{display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--border);gap:10px}
+#llm-config-panel .lcp-hdr h3{font-size:14px;font-weight:600;margin:0;flex:1}
+#llm-config-panel .lcp-body{padding:16px 18px;display:flex;flex-direction:column;gap:14px}
+.lcp-row{display:flex;flex-direction:column;gap:5px}
+.lcp-row label{font-size:12px;font-weight:500;color:var(--muted)}
+.lcp-row input,.lcp-row select,.lcp-row textarea{background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;padding:7px 10px;width:100%;outline:none;font-family:var(--font)}
+.lcp-row textarea{resize:vertical;min-height:80px;font-size:12px;line-height:1.5}
+.lcp-row input:focus,.lcp-row select:focus,.lcp-row textarea:focus{border-color:var(--accent)}
+.lcp-hint{font-size:11px;color:var(--muted);line-height:1.4}
+.lcp-saved{font-size:11px;color:var(--green);display:none}
+
+/* ── AI answer panel ── */
+.comm-ai-panel{background:var(--sur2);border:1px solid rgba(var(--accent-rgb),.3);border-radius:8px;padding:14px;margin-top:12px;position:relative}
+.comm-ai-header{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.comm-ai-header h4{font-size:13px;font-weight:600;margin:0;flex:1}
+.comm-ai-model{font-size:10px;color:var(--muted);background:var(--sur);border:1px solid var(--border);border-radius:10px;padding:1px 8px}
+.comm-ai-body{font-size:13px;line-height:1.75;white-space:pre-wrap;color:var(--text)}
+.comm-ai-body strong{font-weight:600}
+.comm-ai-sources{margin-top:10px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px}
+.comm-ai-cursor{display:inline-block;width:2px;height:14px;background:var(--accent);animation:blink .7s step-end infinite;vertical-align:text-bottom;margin-left:1px}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.btn-ai{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:opacity .15s;font-family:var(--font)}
+.btn-ai:hover{opacity:.85}
+.btn-ai:disabled{opacity:.4;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -252,18 +349,89 @@ tr:hover td{background:rgba(var(--accent-rgb),.06)}
   <div class="dot" id="wsDot"></div>
   <h1>⚙ Hyper-V Guest Configurator</h1>
   <span id="header-target" style="font-size:11px;background:var(--sur2);border:1px solid var(--border);border-radius:4px;padding:3px 10px;color:var(--muted);display:none"></span>
+  <span id="docker-badge" style="display:none;font-size:10px;background:#1e3a5f;color:#60a5fa;border:1px solid #1d4ed8;border-radius:4px;padding:2px 8px;margin-left:4px">🐳 Docker · Local Mode</span>
   <span id="vmUrlBadge" style="display:none;font-size:11px;color:var(--muted);margin-left:8px">
     VM: <a id="vmUrlLink" href="#" style="color:var(--accent);text-decoration:none" target="_blank"></a>
     &nbsp;·&nbsp;
     <a id="filesUrlLink" href="#" style="color:var(--muted);text-decoration:none;font-size:10px" target="_blank">files</a>
   </span>
-  <div class="ml" style="display:flex;gap:8px">
+  <div class="ml" style="display:flex;gap:8px;align-items:center">
+    <!-- Status LEDs -->
+    <div class="status-led" id="es-led" title="Elasticsearch">
+      <span class="led-dot" id="es-dot"></span>
+      <span>ES</span>
+    </div>
+    <div class="status-led clickable" id="llm-led" onclick="LLM.togglePanel()" title="LLM / Ollama — click to configure">
+      <span class="led-dot" id="llm-dot"></span>
+      <span id="llm-led-label">LLM</span>
+    </div>
     <button class="hbtn" onclick="Notes.open()" id="notes-btn">📝 Notes<span id="notes-badge" style="display:none;margin-left:5px;background:var(--accent);color:#fff;border-radius:9px;font-size:10px;padding:1px 6px;vertical-align:middle;font-weight:700"></span></button>
     <button class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode">🌙</button>
     <button class="hbtn" onclick="App.resetState()">↺ Reset</button>
     <button class="hbtn" onclick="App.showPanel('execute')" style="color:var(--green);border-color:var(--green)">▶ Execute</button>
   </div>
 </header>
+
+<!-- LLM Config slide-in panel -->
+<div id="llm-config-panel">
+  <div class="lcp-hdr">
+    <span class="led-dot" id="llm-panel-dot"></span>
+    <h3>LLM / AI Assistant</h3>
+    <span id="llm-panel-status" style="font-size:11px;color:var(--muted)"></span>
+    <button class="hbtn" onclick="LLM.togglePanel()" style="font-size:11px;padding:3px 10px">&#10005;</button>
+  </div>
+  <div class="lcp-body">
+    <div class="lcp-row">
+      <label>Provider</label>
+      <select id="llm-provider" onchange="LLM.onProviderChange()">
+        <option value="ollama">Ollama (local)</option>
+      </select>
+    </div>
+    <div class="lcp-row" id="llm-ollama-host-row">
+      <label>Ollama Host</label>
+      <input type="text" id="llm-ollama-host" value="http://localhost:11434" placeholder="http://localhost:11434" oninput="LLM._dirty()">
+      <span class="lcp-hint">URL where Ollama is running. Default: http://localhost:11434</span>
+    </div>
+    <div class="lcp-row" id="llm-model-row">
+      <label>Model</label>
+      <div style="display:flex;gap:6px">
+        <select id="llm-model-select" style="flex:1" onchange="LLM.onModelSelect(this.value)">
+          <option value="">— select or type below —</option>
+        </select>
+        <button class="hbtn" onclick="LLM.refreshModels()" style="font-size:11px;padding:3px 10px" title="Refresh model list from Ollama">&#8635;</button>
+      </div>
+      <input type="text" id="llm-model-input" placeholder="e.g. llama3.1:8b" oninput="LLM._dirty()">
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px;color:var(--text)">RAG Prompts</div>
+      <div class="lcp-row">
+        <label>Context mode</label>
+        <select id="llm-context-mode" onchange="LLM._dirty()">
+          <option value="excerpts">Excerpts only (fast — uses search snippets)</option>
+          <option value="full">Full articles (slower — loads complete content)</option>
+        </select>
+        <span class="lcp-hint">How much article content to send to the LLM</span>
+      </div>
+      <div class="lcp-row" style="margin-top:8px">
+        <label>Max results to include</label>
+        <input type="number" id="llm-max-results" value="8" min="1" max="20" style="width:70px" oninput="LLM._dirty()">
+      </div>
+      <div class="lcp-row" style="margin-top:8px">
+        <label>System prompt</label>
+        <textarea id="llm-system-prompt" rows="4" oninput="LLM._dirty()"></textarea>
+      </div>
+      <div class="lcp-row" style="margin-top:8px">
+        <label>User prompt template <span style="font-weight:400;opacity:.7">(use {query} and {context})</span></label>
+        <textarea id="llm-user-template" rows="5" oninput="LLM._dirty()"></textarea>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding-top:4px">
+      <button class="btn btn-p" onclick="LLM.saveConfig()" style="font-size:12px">&#10003; Save</button>
+      <button class="hbtn" onclick="LLM.resetDefaults()" style="font-size:11px">Reset defaults</button>
+      <span class="lcp-saved" id="llm-saved">&#10003; Saved</span>
+    </div>
+  </div>
+</div>
 
 <div class="body">
   <nav class="sidebar" id="sidebar"></nav>
@@ -385,6 +553,7 @@ const isLocalMachine = () => S.vmName === '__local__';
 let vms = [], downloads = [], softwares = [], winget = [], models = [], tools = [];
 let scriptDir = 'C:\\ollama-ssl\\installator';
 let hostInfo  = null;
+let dockerMode = false;
 
 // ── Catalogues & helpers ──────────────────────────────────────────────────────
 const FEATURE_OPTS = [
@@ -419,6 +588,8 @@ const NAV = [
   { id: 'vmexposure',  label: 'Exposure',        sec: 'Status / Tools' },
   { id: 'community',   label: 'Community',       sec: null             },
   { id: 'dbadmin',     label: 'DB Admin',        sec: null             },
+  { id: 'filesearch',  label: 'File Search',    sec: null             },
+  { id: 'logsview',    label: 'Logs',           sec: null             },
   { id: 'help',        label: 'Help',           sec: 'Help'      },
 ];
 
@@ -431,6 +602,7 @@ function renderSidebar() {
   let lastSec = '', html = '', num = 0;
   NAV.forEach(n => {
     if (isLocalMachine() && _localHide.has(n.id)) return; // hidden for This Machine
+    if (dockerMode && (n.id === 'vm' || n.id === 'community')) return; // hidden in Docker mode
     num++;
     if (n.sec && n.sec !== lastSec) { html += `<div class="sec-label">${n.sec}</div>`; lastSec = n.sec; }
     const done = isDone(n.id);
@@ -1187,8 +1359,22 @@ const DB = {
     let badges = '';
     if (metaTable) badges += `<span style="background:rgba(210,153,34,.18);color:var(--yellow);font-size:10px;padding:1px 6px;border-radius:3px;margin-left:6px">table name</span>`;
     if (metaCols.length) badges += `<span style="background:rgba(210,153,34,.18);color:var(--yellow);font-size:10px;padding:1px 6px;border-radius:3px;margin-left:4px">col: ${metaCols.join(', ')}</span>`;
-    const hdr = columns.length ? `<tr>${columns.map(c => `<th ${th}>${c}</th>`).join('')}</tr>` : '';
-    const rws = rows.map(row => `<tr>${columns.map(c => `<td ${td}>${row[c] ?? ''}</td>`).join('')}</tr>`).join('');
+    const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const hlCell = v => {
+      const s = String(v ?? '');
+      if (!lq) return esc(s);
+      const sl = s.toLowerCase();
+      let out = '', pos = 0;
+      while (true) {
+        const idx = sl.indexOf(lq, pos);
+        if (idx === -1) { out += esc(s.slice(pos)); break; }
+        out += esc(s.slice(pos, idx)) + `<mark style="background:#facc15;color:#000;border-radius:2px;padding:0 1px">${esc(s.slice(idx, idx + lq.length))}</mark>`;
+        pos = idx + lq.length;
+      }
+      return out;
+    };
+    const hdr = columns.length ? `<tr>${columns.map(c => `<th ${th}>${esc(c)}</th>`).join('')}</tr>` : '';
+    const rws = rows.map(row => `<tr>${columns.map(c => `<td ${td}>${hlCell(row[c])}</td>`).join('')}</tr>`).join('');
     const div = document.createElement('div');
     div.style.marginBottom = '12px';
     const safeTable = table.replace(/'/g, "\\'");
@@ -2205,12 +2391,62 @@ const panels = {
     <div class="fg" style="margin-bottom:0"><label class="fl">Password</label>
       <input type="password" id="comm-pass" placeholder="••••••••" autocomplete="current-password"></div>
   </div>
+
+  <details id="comm-timing-details" style="margin-bottom:12px">
+    <summary style="font-size:12px;color:var(--muted);cursor:pointer;user-select:none;padding:6px 0;list-style:none;display:flex;align-items:center;gap:6px">
+      <span id="comm-timing-arrow" style="font-size:10px;transition:transform .2s">&#9658;</span>
+      <span>&#8987; Request delays</span>
+      <span id="comm-timing-summary" style="font-opacity:.7;margin-left:4px"></span>
+    </summary>
+    <div style="margin-top:8px;padding:12px 14px;background:var(--sur2);border:1px solid var(--border);border-radius:8px">
+      <p style="font-size:11px;color:var(--muted);margin-bottom:10px">Pause between server requests. Lower values speed up scraping but may trigger rate-limiting errors.</p>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end">
+        <div>
+          <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:3px">Between articles (s)</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input type="number" id="comm-delay-articles" value="0.5" min="0" max="30" step="0.1"
+              style="width:70px;background:var(--sur);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px;padding:5px 8px;outline:none;text-align:center"
+              onchange="Community.saveDelays()" oninput="Community._updateTimingSummary()">
+            <span style="font-size:11px;color:var(--muted)">s</span>
+          </div>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:3px">Between pages (s)</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input type="number" id="comm-delay-pages" value="2" min="0" max="30" step="0.1"
+              style="width:70px;background:var(--sur);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px;padding:5px 8px;outline:none;text-align:center"
+              onchange="Community.saveDelays()" oninput="Community._updateTimingSummary()">
+            <span style="font-size:11px;color:var(--muted)">s</span>
+          </div>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:3px">Between sections (s)</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input type="number" id="comm-delay-sections" value="3" min="0" max="30" step="0.1"
+              style="width:70px;background:var(--sur);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px;padding:5px 8px;outline:none;text-align:center"
+              onchange="Community.saveDelays()" oninput="Community._updateTimingSummary()">
+            <span style="font-size:11px;color:var(--muted)">s</span>
+          </div>
+        </div>
+        <span id="comm-delay-saved" style="font-size:11px;color:var(--green);display:none;align-self:flex-end;padding-bottom:6px">✓ Saved</span>
+      </div>
+    </div>
+  </details>
+
   <div class="brow" style="margin-top:10px;flex-wrap:wrap">
     <button class="btn btn-g" id="comm-dl-btn" onclick="Community.startScrape(false)">&#9654; Login &amp; Download All</button>
     <button class="btn btn-o" id="comm-upd-btn" onclick="Community.startScrape(true)" style="display:none">&#8635; Update (new articles only)</button>
     <button class="btn btn-r" id="comm-stop-btn" onclick="Community.stopScrape()" style="display:none">&#9632; Stop</button>
     <button class="btn btn-g" id="comm-manual-login-continue-btn" onclick="Community.continueScrapeAfterLogin()" style="display:none">▶ Continue After Login</button>
+    <button class="btn btn-o" id="comm-build-db-btn" onclick="Community.buildDb()" title="Build SQLite full-text index for fast search, tags and author filtering">&#9776; Build Local Index</button>
     <span id="comm-scrape-stat" style="font-size:12px;color:var(--muted)"></span>
+  </div>
+  <div id="comm-builddb-prog-wrap" style="display:none;margin-top:8px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+      <span id="comm-builddb-label" style="font-size:11px;color:var(--muted)">Building index…</span>
+      <span id="comm-builddb-count" style="font-size:11px;color:var(--muted)"></span>
+    </div>
+    <div class="pbar-wrap"><div class="pbar" id="comm-builddb-pbar" style="width:0%;transition:width .3s"></div></div>
   </div>
   <div id="comm-progress-wrap" style="display:none;margin-top:10px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
@@ -2220,6 +2456,17 @@ const panels = {
     <div class="pbar-wrap"><div class="pbar" id="comm-pbar" style="width:0%"></div></div>
   </div>
   <div id="comm-log" class="comm-log" style="display:none"></div>
+
+  <!-- Danger zone -->
+  <div id="comm-purge-section" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-r" onclick="Community.purgeAll()" style="font-size:12px;padding:5px 14px"
+        title="Permanently delete all scraped articles, SQLite index and Elasticsearch index">
+        &#128465; Delete all scraped content
+      </button>
+      <span id="comm-purge-stat" style="font-size:11px;color:var(--muted)"></span>
+    </div>
+  </div>
 </div>
 
 <div id="comm-es-card" class="card" style="display:none">
@@ -2232,36 +2479,74 @@ const panels = {
   <div id="comm-index-log" class="comm-log" style="display:none"></div>
 </div>
 
-<div id="comm-search-card" class="card" style="display:none">
-  <h2>Search Articles</h2>
-  <div class="comm-search">
-    <input type="text" id="comm-q" placeholder="Search articles… (case-insensitive)" onkeydown="if(event.key==='Enter')Community.search()">
-    <button class="btn btn-p" onclick="Community.search()">&#128269; Search</button>
-  </div>
-  <div class="comm-mode-row">
-    <span style="font-size:12px;color:var(--muted)">Mode:</span>
-    <label class="comm-mode-radio"><input type="radio" name="comm-mode" value="text" checked> Text (case-insensitive)</label>
-    <label class="comm-mode-radio"><input type="radio" name="comm-mode" value="semantic"> Semantic (mE5)</label>
-    <label class="comm-mode-radio"><input type="radio" name="comm-mode" value="hybrid"> Hybrid</label>
-    <select id="comm-section-filter" style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:4px 8px;outline:none" onchange="Community.search()">
-      <option value="">All sections</option>
-    </select>
-  </div>
-  <div id="comm-results" class="comm-result-list"></div>
-</div>
+<div id="comm-main-tab-card" class="card" style="display:none">
 
-<div id="comm-sections-card" class="card" style="display:none">
-  <h2>Sections (Bereiche)</h2>
-  <p class="sub" id="comm-sections-sub">Loading…</p>
-  <div id="comm-section-list" class="comm-section-list"></div>
-</div>
-
-<div id="comm-article-card" class="card" style="display:none">
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-    <button class="btn btn-o" style="padding:5px 12px;font-size:12px" onclick="Community.closeArticle()">&#8592; Back</button>
-    <h2 id="comm-article-title" style="margin-bottom:0;flex:1;font-size:15px"></h2>
+  <!-- ── Tab bar ── -->
+  <div class="comm-tab-bar">
+    <button class="comm-tab active" id="comm-tab-btn-results"  onclick="Community.showTab('results')">&#128269; Results <span id="comm-results-tab-count" style="font-size:10px;opacity:.7"></span></button>
+    <button class="comm-tab"        id="comm-tab-btn-explorer" onclick="Community.showTab('explorer')">&#128193; Explorer</button>
   </div>
-  <div id="comm-article-body" class="comm-article-view"></div>
+
+  <!-- ── Results tab ── -->
+  <div id="comm-tab-results">
+    <div class="comm-search" style="margin-bottom:10px">
+      <input type="text" id="comm-q" placeholder="Search articles… (case-insensitive)" onkeydown="if(event.key==='Enter')Community.search()">
+      <button class="btn btn-p" onclick="Community.search()">&#128269; Search</button>
+    </div>
+    <div class="comm-mode-row">
+      <span style="font-size:12px;color:var(--muted)">Mode:</span>
+      <label class="comm-mode-radio" title="SQLite FTS5 index — ALL words required (AND), ranked by relevance. Fastest."><input type="radio" name="comm-mode" value="fts5" checked> Full-Text (local)</label>
+      <label class="comm-mode-radio" title="Scans article files — ALL words required (AND). Slower, no index needed."><input type="radio" name="comm-mode" value="text"> File scan</label>
+      <label class="comm-mode-radio" title="Semantic search — embeds the full phrase and finds articles by meaning (mE5-small model). Requires Elasticsearch."><input type="radio" name="comm-mode" value="semantic"> Semantic (mE5)</label>
+      <label class="comm-mode-radio" title="Combined: text match + semantic similarity."><input type="radio" name="comm-mode" value="hybrid"> Hybrid</label>
+      <select id="comm-section-filter" style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:4px 8px;outline:none" onchange="Community.search()">
+        <option value="">All sections</option>
+      </select>
+      <button class="hbtn" id="comm-author-filter-btn" style="display:none;font-size:11px;padding:3px 10px" onclick="Community.clearAuthorFilter()">&#10005; &#128100; <span id="comm-author-filter-label"></span></button>
+      <button class="hbtn" id="comm-tag-filter-btn"    style="display:none;font-size:11px;padding:3px 10px" onclick="Community.clearTagFilter()">&#10005; # <span id="comm-tag-filter-label"></span></button>
+    </div>
+    <div id="comm-tags-cloud" class="comm-tags-cloud" style="display:none"></div>
+    <div id="comm-search-prog-wrap" class="comm-search-prog-wrap" style="display:none">
+      <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+        <span id="comm-search-prog-label" style="font-size:11px;color:var(--muted)"></span>
+        <span id="comm-search-prog-count" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+      <div class="pbar-wrap"><div class="pbar" id="comm-search-pbar" style="width:0%;transition:width .15s"></div></div>
+    </div>
+    <div id="comm-results" class="comm-result-list"></div>
+    <div id="comm-pagination" class="comm-pagination" style="display:none"></div>
+
+    <!-- AI Answer panel -->
+    <div id="comm-ai-wrap" style="display:none">
+      <div style="display:flex;align-items:center;gap:8px;margin-top:14px;margin-bottom:6px">
+        <button class="btn-ai" id="comm-ask-ai-btn" onclick="Community.askAI()">&#10024; Ask AI</button>
+        <div style="display:flex;gap:6px;margin-left:auto">
+          <label class="comm-mode-radio" title="Use excerpts from search results (fast)"><input type="radio" name="ai-ctx" value="excerpts" checked> Excerpts</label>
+          <label class="comm-mode-radio" title="Load full article content (slower, more context)"><input type="radio" name="ai-ctx" value="full"> Full articles</label>
+        </div>
+      </div>
+      <div id="comm-ai-panel" class="comm-ai-panel" style="display:none">
+        <div class="comm-ai-header">
+          <span style="font-size:16px">&#10024;</span>
+          <h4>AI Answer</h4>
+          <span class="comm-ai-model" id="comm-ai-model-badge"></span>
+          <button class="hbtn" onclick="Community.closeAI()" style="font-size:10px;padding:2px 8px;margin-left:auto">&#10005;</button>
+        </div>
+        <div class="comm-ai-body" id="comm-ai-body"></div>
+        <div class="comm-ai-sources" id="comm-ai-sources"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Explorer tab ── -->
+  <div id="comm-tab-explorer" style="display:none">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+      <p class="sub" id="comm-sections-sub" style="margin-bottom:0;flex:1">Loading…</p>
+      <button class="hbtn" style="font-size:11px;padding:3px 10px" onclick="Community.toggleSectionView()" id="comm-view-toggle-btn" title="Switch between thread and list view">&#8801; Thread View</button>
+    </div>
+    <div id="comm-section-list" class="comm-section-list"></div>
+  </div>
+
 </div>`;
   },
 
@@ -2898,6 +3183,22 @@ const panels = {
 </div>`;
   },
 
+  filesearch() {
+    return `<div class="card" style="text-align:center;padding:40px 16px">
+      <div style="font-size:32px;margin-bottom:14px">🔍</div>
+      <h2 style="margin-bottom:8px">File Search</h2>
+      <p class="sub">Not still implemented</p>
+    </div>`;
+  },
+
+  logsview() {
+    return `<div class="card" style="text-align:center;padding:40px 16px">
+      <div style="font-size:32px;margin-bottom:14px">📄</div>
+      <h2 style="margin-bottom:8px">Logs Viewer</h2>
+      <p class="sub">Not still implemented</p>
+    </div>`;
+  },
+
 };
 
 // ── Community Knowledge Base ──────────────────────────────────────────────────
@@ -2914,19 +3215,21 @@ const Community = {
 
   async refresh() {
     try {
-      const [cfg, status] = await Promise.all([
+      const [cfg, status, dbStats] = await Promise.all([
         fetch('/api/community/config').then(r => r.json()).catch(() => null),
         fetch('/api/community/status').then(r => r.json()).catch(() => null),
+        fetch('/api/community/db-stats').then(r => r.json()).catch(() => ({ built: false, total: 0 })),
       ]);
-      this._cfg    = cfg;
-      this._status = status;
-      this._render(cfg, status);
+      this._cfg     = cfg;
+      this._status  = status;
+      this._dbStats = dbStats;
+      this._render(cfg, status, dbStats);
     } catch (e) {
       console.warn('[community] refresh error', e);
     }
   },
 
-  _render(cfg, status) {
+  _render(cfg, status, dbStats) {
     if (!cfg || !status) return;
 
     // Status badge
@@ -2954,6 +3257,7 @@ const Community = {
 
     if (cfg.enabled) {
       show('comm-login-card');
+      this._loadDelays(cfg);
       if (cfg.elasticsearch?.enabled) show('comm-es-card');
       else hide('comm-es-card');
 
@@ -2969,28 +3273,43 @@ const Community = {
         esStatEl.textContent = status.elasticsearch === 'ok' ? '● Connected' :
           status.elasticsearch === 'unreachable' ? '● Unreachable' : '○ Disabled';
       }
+      // Update ES header LED
+      const esDot = document.getElementById('es-dot');
+      if (esDot) esDot.className = 'led-dot' + (status.elasticsearch === 'ok' ? ' on' : '');
 
       // Update btn visibility
       const updBtn = document.getElementById('comm-upd-btn');
       if (updBtn) updBtn.style.display = status.articleCount > 0 ? '' : 'none';
 
+      // DB build button label
+      const buildBtn = document.getElementById('comm-build-db-btn');
+      if (buildBtn && dbStats) {
+        buildBtn.textContent = dbStats.built
+          ? `&#9776; Rebuild Index (${dbStats.total} art.)`
+          : '&#9776; Build Local Index';
+        buildBtn.innerHTML = dbStats.built
+          ? `&#9776; Rebuild Index <span style="font-size:10px;opacity:.8">(${dbStats.total})</span>`
+          : '&#9776; Build Local Index';
+      }
+
       if (status.articleCount > 0) {
-        show('comm-search-card');
-        show('comm-sections-card');
+        show('comm-main-tab-card');
         const sub = document.getElementById('comm-sections-sub');
-        if (sub) sub.textContent = `${status.articleCount} articles in ${status.sectionCount} section(s). Last update: ${status.lastUpdate ? new Date(status.lastUpdate).toLocaleString() : 'Never'}`;
+        if (sub) {
+          const dbInfo = dbStats?.built ? ` · Index: ${dbStats.total} art.` : ' · <em style="color:var(--yellow)">No local index — click "Build Local Index" for full-text search</em>';
+          sub.innerHTML = `${status.articleCount} articles in ${status.sectionCount} section(s). Last update: ${status.lastUpdate ? new Date(status.lastUpdate).toLocaleString() : 'Never'}${dbInfo}`;
+        }
         this.loadSections();
+        if (dbStats?.built) this.loadTags();
       } else {
-        hide('comm-search-card');
-        hide('comm-sections-card');
+        hide('comm-main-tab-card');
       }
     } else {
       hide('comm-login-card');
       hide('comm-es-card');
-      hide('comm-search-card');
-      hide('comm-sections-card');
+      hide('comm-main-tab-card');
     }
-    hide('comm-article-card');
+    // (article-card removed — articles expand inline)
   },
 
   async toggleEnabled() {
@@ -3002,6 +3321,347 @@ const Community = {
       });
       await this.refresh();
     } catch (e) { alert('Failed to update config: ' + e.message); }
+  },
+
+  _updateTimingSummary() {
+    const a = parseFloat(document.getElementById('comm-delay-articles')?.value || '0.5');
+    const p = parseFloat(document.getElementById('comm-delay-pages')?.value    || '2');
+    const s = parseFloat(document.getElementById('comm-delay-sections')?.value || '3');
+    const el = document.getElementById('comm-timing-summary');
+    if (el) el.textContent = `— art. ${a}s · page ${p}s · sec. ${s}s`;
+    const arrow = document.getElementById('comm-timing-arrow');
+    const details = document.getElementById('comm-timing-details');
+    if (arrow && details) arrow.style.transform = details.open ? 'rotate(90deg)' : '';
+  },
+
+  async saveDelays() {
+    const toMs = id => Math.round((parseFloat(document.getElementById(id)?.value || '0') || 0) * 1000);
+    const delayBetweenArticles = toMs('comm-delay-articles');
+    const delayBetweenPages    = toMs('comm-delay-pages');
+    const delayBetweenSections = toMs('comm-delay-sections');
+    try {
+      await fetch('/api/community/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ output: { delayBetweenArticles, delayBetweenPages, delayBetweenSections } }),
+      });
+      const saved = document.getElementById('comm-delay-saved');
+      if (saved) {
+        saved.style.display = 'inline';
+        clearTimeout(this._delaySavedTimer);
+        this._delaySavedTimer = setTimeout(() => { saved.style.display = 'none'; }, 2000);
+      }
+      this._updateTimingSummary();
+    } catch (e) { console.warn('[community] saveDelays error', e); }
+  },
+
+  _loadDelays(cfg) {
+    const out = cfg?.output || {};
+    const set = (id, ms, def) => {
+      const el = document.getElementById(id);
+      if (el) el.value = ((ms != null ? ms : def) / 1000).toFixed(1).replace(/\.0$/, '');
+    };
+    set('comm-delay-articles', out.delayBetweenArticles, 500);
+    set('comm-delay-pages',    out.delayBetweenPages,    2000);
+    set('comm-delay-sections', out.delayBetweenSections, 3000);
+    this._updateTimingSummary();
+    // Sync arrow state on open/close — attach listener once only
+    const details = document.getElementById('comm-timing-details');
+    if (details && !details._arrowListenerAttached) {
+      details.addEventListener('toggle', () => this._updateTimingSummary());
+      details._arrowListenerAttached = true;
+    }
+  },
+
+  async purgeAll() {
+    const stat = document.getElementById('comm-purge-stat');
+    // Two-step confirmation for a destructive action
+    const confirmed = window.confirm(
+      'DELETE ALL SCRAPED CONTENT?\n\n' +
+      'This will permanently delete:\n' +
+      '  • All downloaded articles and images\n' +
+      '  • The SQLite full-text index (community.db)\n' +
+      '  • The Elasticsearch index (if configured)\n\n' +
+      'This cannot be undone. Continue?'
+    );
+    if (!confirmed) return;
+
+    const confirmed2 = window.confirm('Are you sure? All scraped data will be lost permanently.');
+    if (!confirmed2) return;
+
+    if (stat) stat.textContent = 'Deleting…';
+    try {
+      const r = await fetch('/api/community/purge', { method: 'POST' }).then(r => r.json());
+      if (!r.ok) {
+        if (stat) stat.textContent = 'Error: ' + (r.error || 'Unknown error');
+        return;
+      }
+      const rep = r.report || {};
+      const parts = [
+        `${rep.sections || 0} sections`,
+        `${rep.articles || 0} articles`,
+        `${rep.images || 0} images deleted`,
+        rep.sqliteDeleted ? 'SQLite cleared' : null,
+        rep.esDeleted     ? 'ES index cleared' : null,
+      ].filter(Boolean);
+      if (stat) stat.textContent = parts.join(' · ');
+      if (rep.errors?.length) console.warn('[purge] errors:', rep.errors);
+      // Refresh to update status
+      await this.refresh();
+    } catch (e) {
+      if (stat) stat.textContent = 'Error: ' + e.message;
+    }
+  },
+
+  async buildDb() {
+    const btn    = document.getElementById('comm-build-db-btn');
+    const wrap   = document.getElementById('comm-builddb-prog-wrap');
+    const lbl    = document.getElementById('comm-builddb-label');
+    const cnt    = document.getElementById('comm-builddb-count');
+    const pbar   = document.getElementById('comm-builddb-pbar');
+    if (btn)  btn.disabled = true;
+    if (wrap) { wrap.style.display = ''; }
+    if (lbl)  lbl.textContent = 'Building…';
+    if (pbar) pbar.style.width = '0%';
+
+    try {
+      const resp = await fetch('/api/community/build-db', { method: 'POST' });
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '', total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n'); buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const m = JSON.parse(line.slice(6));
+            if (m.type === 'start') { total = m.total; if (lbl) lbl.textContent = `Indexing ${m.sections} section(s)…`; }
+            if (m.type === 'progress') {
+              if (lbl) lbl.textContent = `Section: ${m.section}`;
+              if (cnt) cnt.textContent = `${m.done}/${m.total}`;
+              if (pbar && m.total) pbar.style.width = `${Math.round(m.done / m.total * 100)}%`;
+            }
+            if (m.type === 'done') {
+              if (pbar) pbar.style.width = '100%';
+              if (lbl) lbl.textContent = `Done — ${m.indexed} articles indexed`;
+              if (cnt) cnt.textContent = '';
+            }
+            if (m.type === 'error') { if (lbl) { lbl.textContent = 'Error: ' + m.msg; lbl.style.color = 'var(--red)'; } }
+          } catch {}
+        }
+      }
+    } catch (e) {
+      if (lbl) lbl.textContent = 'Error: ' + e.message;
+    }
+    if (btn) btn.disabled = false;
+    await this.refresh();
+    setTimeout(() => { if (wrap) wrap.style.display = 'none'; }, 3000);
+  },
+
+  async loadTags(section = null) {
+    const cloudEl = document.getElementById('comm-tags-cloud');
+    if (!cloudEl) return;
+    try {
+      const params = section ? `?section=${encodeURIComponent(section)}` : '';
+      const tags = await fetch(`/api/community/tags${params}`).then(r => r.json());
+      if (!tags.length) { cloudEl.style.display = 'none'; return; }
+      const top = tags.slice(0, 30);
+      cloudEl.style.display = '';
+      cloudEl.innerHTML = '<span style="font-size:11px;color:var(--muted);margin-right:4px">Tags:</span>' +
+        top.map(t => `<span class="comm-tag" onclick="Community.filterByTag(${this._qa(t.tag)})" title="${t.count} articles">${this._escHtml(t.tag)}<span style="opacity:.6;font-size:9px;margin-left:4px">${t.count}</span></span>`).join('');
+    } catch { cloudEl.style.display = 'none'; }
+  },
+
+  _currentAuthorFilter: null,
+
+  filterByTag(tag) {
+    const q = document.getElementById('comm-q');
+    if (q) q.value = '';
+    this._currentAuthorFilter = null;
+    const authBtn = document.getElementById('comm-author-filter-btn');
+    if (authBtn) authBtn.style.display = 'none';
+    // Show tag filter chip
+    const tagBtn = document.getElementById('comm-tag-filter-btn');
+    const tagLbl = document.getElementById('comm-tag-filter-label');
+    if (tagBtn) tagBtn.style.display = '';
+    if (tagLbl) tagLbl.textContent = tag;
+    this._activeTagFilter = tag;
+    this._searchTag = tag;
+    this.search(); // showTab('results') is called inside search()
+    document.getElementById('comm-main-tab-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
+
+  clearTagFilter() {
+    this._activeTagFilter = null;
+    this._searchTag = null;
+    const tagBtn = document.getElementById('comm-tag-filter-btn');
+    if (tagBtn) tagBtn.style.display = 'none';
+    const resEl = document.getElementById('comm-results');
+    if (resEl) resEl.innerHTML = '';
+    const progWrap = document.getElementById('comm-search-prog-wrap');
+    if (progWrap) progWrap.style.display = 'none';
+  },
+
+  filterByAuthor(author) {
+    // Clear tag filter
+    this._activeTagFilter = null;
+    const tagBtn = document.getElementById('comm-tag-filter-btn');
+    if (tagBtn) tagBtn.style.display = 'none';
+    // Set author filter
+    this._currentAuthorFilter = author;
+    const authBtn = document.getElementById('comm-author-filter-btn');
+    const authLbl = document.getElementById('comm-author-filter-label');
+    if (authBtn) authBtn.style.display = '';
+    if (authLbl) authLbl.textContent = author;
+    const q = document.getElementById('comm-q');
+    if (q) q.value = '';
+    this._searchTag = null;
+    this.search(); // showTab('results') is called inside search()
+    document.getElementById('comm-main-tab-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
+
+  clearAuthorFilter() {
+    this._currentAuthorFilter = null;
+    const authBtn = document.getElementById('comm-author-filter-btn');
+    if (authBtn) authBtn.style.display = 'none';
+    const resEl = document.getElementById('comm-results');
+    if (resEl) resEl.innerHTML = '';
+    const progWrap = document.getElementById('comm-search-prog-wrap');
+    if (progWrap) progWrap.style.display = 'none';
+  },
+
+  _clearActiveFilters() {
+    this._currentAuthorFilter = null;
+    this._activeTagFilter = null;
+    const authBtn = document.getElementById('comm-author-filter-btn');
+    if (authBtn) authBtn.style.display = 'none';
+    const tagBtn = document.getElementById('comm-tag-filter-btn');
+    if (tagBtn) tagBtn.style.display = 'none';
+  },
+
+  _sectionViewMode: 'thread', // 'thread' or 'list'
+
+  showTab(name) {
+    const tabs    = ['results', 'explorer'];
+    const content = { results: 'comm-tab-results', explorer: 'comm-tab-explorer' };
+    const btns    = { results: 'comm-tab-btn-results', explorer: 'comm-tab-btn-explorer' };
+    tabs.forEach(t => {
+      const el = document.getElementById(content[t]);
+      const btn = document.getElementById(btns[t]);
+      if (el)  el.style.display  = t === name ? '' : 'none';
+      if (btn) btn.classList.toggle('active', t === name);
+    });
+    this._activeTab = name;
+  },
+
+  toggleSectionView() {
+    this._sectionViewMode = this._sectionViewMode === 'thread' ? 'list' : 'thread';
+    const btn = document.getElementById('comm-view-toggle-btn');
+    if (btn) btn.textContent = this._sectionViewMode === 'thread' ? '☰ List View' : '☰ Thread View';
+    this.loadSections();
+  },
+
+  // ── Pagination ────────────────────────────────────────────────────────────────
+
+  _PAGE_SIZE: 20,
+  _allResults: [],
+  _searchPage: 1,
+  _currentQuery: '',
+
+  _appendResultToPage(r, idx, q, resEl) {
+    if (!resEl) return;
+    const id      = `sr_${idx}`;
+    const isFts   = r.score !== undefined || (document.querySelector('input[name="comm-mode"]:checked')?.value === 'fts5');
+    const safeDir = (r.dir||'').replace(/'/g,"\\'");
+    const sec     = r.section || '';
+    const solvedBadge  = r.solved    ? '<span class="comm-solved-badge">&#10003; Solved</span>' : '';
+    const repliesBadge = r.replies > 0 ? `<span class="comm-rc has">${r.replies} repl.</span>` : '';
+    const tagsHtml     = (r.tags||[]).slice(0,5).map(t =>
+      `<span class="comm-tag" onclick="event.stopPropagation();Community.filterByTag(${this._qa(t)})">${this._escHtml(t)}</span>`).join('');
+    const excerptHtml  = r.excerpt
+      ? `<div class="comm-result-excerpt">${isFts ? this._ftsExcerpt(r.excerpt, q) : this._highlightTerms(this._escHtml(r.excerpt), q)}</div>`
+      : '';
+    const div = document.createElement('div');
+    div.className = 'comm-result';
+    div.dataset.resultIdx = String(idx);
+    div.innerHTML = `
+      <div style="padding:12px 14px">
+        <div class="comm-result-title">${this._highlightTerms(this._escHtml(r.title||'(untitled)'), q)}</div>
+        <div class="comm-result-meta" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px">
+          <span>&#128193; ${this._escHtml(sec||'—')}</span>
+          <span>${r.date||''}</span>
+          ${r.author ? `<button class="comm-author-link" onclick="Community.filterByAuthor(${this._qa(r.author)})">&#128100; ${this._escHtml(r.author)}</button>` : ''}
+          ${solvedBadge}${repliesBadge}
+        </div>
+        ${tagsHtml ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${tagsHtml}</div>` : ''}
+        ${excerptHtml}
+        <button class="comm-view-thread-btn" id="cthdr-${id}"
+          onclick="Community.toggleThread(${this._qa(sec)},${this._qa(r.dir||'')},${this._qa(id)},this)">
+          <span id="cta-${id}">&#9656;</span> View thread
+        </button>
+      </div>
+      <div class="comm-thread-body" id="ctbody-${id}" style="display:none;padding:0 14px 14px"></div>`;
+    return div;
+  },
+
+  _renderPagination() {
+    const pagEl = document.getElementById('comm-pagination');
+    const resEl = document.getElementById('comm-results');
+    const total = this._allResults.length;
+    const pages = Math.ceil(total / this._PAGE_SIZE);
+    const countEl = document.getElementById('comm-results-tab-count');
+    if (countEl) countEl.textContent = total > 0 ? `(${total})` : '';
+    if (!pagEl) return;
+    if (pages <= 1) { pagEl.style.display = 'none'; this._showPage(1, resEl); return; }
+    pagEl.style.display = '';
+    this._showPage(this._searchPage, resEl);
+    this._renderPageButtons(pagEl, pages);
+  },
+
+  _renderPageButtons(pagEl, pages) {
+    const cur = this._searchPage;
+    let html = `<button class="comm-page-btn" onclick="Community._goPage(${cur-1})" ${cur===1?'disabled':''}>&#8592; Prev</button>`;
+    // Show at most 7 page buttons with ellipsis
+    const range = new Set([1, pages, cur-1, cur, cur+1].filter(n => n >= 1 && n <= pages));
+    const sorted = [...range].sort((a,b) => a-b);
+    let prev = 0;
+    for (const n of sorted) {
+      if (prev && n - prev > 1) html += `<span style="color:var(--muted);padding:0 4px">…</span>`;
+      html += `<button class="comm-page-btn${n===cur?' active':''}" onclick="Community._goPage(${n})">${n}</button>`;
+      prev = n;
+    }
+    html += `<button class="comm-page-btn" onclick="Community._goPage(${cur+1})" ${cur===pages?'disabled':''}>Next &#8594;</button>`;
+    html += `<span style="font-size:11px;color:var(--muted);margin-left:4px">${cur} / ${pages} pages · ${this._allResults.length} results</span>`;
+    pagEl.innerHTML = html;
+  },
+
+  _goPage(n) {
+    const pages = Math.ceil(this._allResults.length / this._PAGE_SIZE);
+    if (n < 1 || n > pages) return;
+    this._searchPage = n;
+    const resEl = document.getElementById('comm-results');
+    this._showPage(n, resEl);
+    const pagEl = document.getElementById('comm-pagination');
+    if (pagEl) this._renderPageButtons(pagEl, pages);
+    document.getElementById('comm-main-tab-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
+
+  _showPage(page, resEl) {
+    if (!resEl) return;
+    resEl.innerHTML = '';
+    const start = (page - 1) * this._PAGE_SIZE;
+    const end   = Math.min(start + this._PAGE_SIZE, this._allResults.length);
+    const q = this._currentQuery;
+    for (let i = start; i < end; i++) {
+      const div = this._appendResultToPage(this._allResults[i], i, q, resEl);
+      if (div) resEl.appendChild(div);
+    }
+    if (this._allResults.length === 0) {
+      resEl.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0">No results found.</div>';
+    }
   },
 
   async startScrape(updateOnly) {
@@ -3176,79 +3836,405 @@ const Community = {
   },
 
   async loadSections() {
-    const listEl = document.getElementById('comm-section-list');
+    const listEl   = document.getElementById('comm-section-list');
     const filterEl = document.getElementById('comm-section-filter');
     if (!listEl) return;
 
-    const data = await fetch('/api/community/sections').then(r => r.json()).catch(() => ({ sections: [] }));
-    this._sections = data.sections || [];
+    const [data, secStats] = await Promise.all([
+      fetch('/api/community/sections').then(r => r.json()).catch(() => ({ sections: [] })),
+      this._dbStats?.built ? fetch('/api/community/section-stats').then(r => r.json()).catch(() => []) : Promise.resolve([]),
+    ]);
+    this._sections  = data.sections || [];
+    this._secStats  = secStats || [];
 
-    // Populate section filter dropdown
+    // Build stats map keyed by section name
+    const statsBySection = {};
+    for (const s of this._secStats) statsBySection[s.section] = s;
+
     if (filterEl) {
-      const current = filterEl.value;
+      const cur = filterEl.value;
       filterEl.innerHTML = '<option value="">All sections</option>' +
         this._sections.map(s => `<option value="${s.slug}">${s.slug.replace(/-/g,' ')} (${s.count})</option>`).join('');
-      filterEl.value = current;
+      filterEl.value = cur;
     }
 
-    listEl.innerHTML = this._sections.map((s, i) => `
-      <div class="comm-section-item">
-        <div class="comm-section-hdr" id="comm-shdr-${i}" onclick="Community.toggleSection(${i})">
+    listEl.innerHTML = this._sections.map((s, si) => {
+      const stat = statsBySection[s.slug] || null;
+      const statsHtml = stat ? (() => {
+        const solvedPct = stat.total > 0 ? Math.round(stat.solved / stat.total * 100) : 0;
+        const topTagsHtml = (stat.top_tags || []).map(t =>
+          `<span class="comm-tag" style="font-size:10px" onclick="Community.filterByTag(${this._qa(t)})">${this._escHtml(t)}</span>`
+        ).join('');
+        return `<div class="comm-section-stat-row">
+          <span title="Resolved threads">✓ ${stat.solved}/${stat.total} resolved (${solvedPct}%)</span>
+          <span title="Average replies">&#128172; ${stat.avg_replies} avg replies</span>
+        </div>
+        ${topTagsHtml ? `<div class="comm-section-tags">${topTagsHtml}</div>` : ''}`;
+      })() : '';
+
+      const threads = (s.articles || []).map((a, ai) => {
+        const id = `${s.slug}_${ai}`;
+        const type = (a.type || '').toLowerCase();
+        const typeBadge = type === 'question' ? '<span class="comm-type ct-q">Q</span>'
+          : type === 'article' ? '<span class="comm-type ct-a">A</span>'
+          : type === 'guide'   ? '<span class="comm-type ct-g">G</span>'
+          : '<span class="comm-type ct-other">·</span>';
+        const rcBadge = a.replies > 0 ? `<span class="comm-rc has">${a.replies} repl.</span>` : '';
+        const solved = a.solved ? '<span class="comm-rc solved">✓ Solved</span>' : '';
+        const safeTitle = (a.title||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+        const safeDir   = (a.dir||'').replace(/'/g,"\\'");
+        const tagsHtml = (a.tags||[]).slice(0,4).map(t =>
+          `<span class="comm-tag" style="font-size:9px" onclick="event.stopPropagation();Community.filterByTag(${this._qa(t)})">${this._escHtml(t)}</span>`
+        ).join('');
+        return `<div class="comm-thread" id="cthread-${id}">
+          <div class="comm-thread-hdr" id="cthdr-${id}" onclick="Community.toggleThread('${s.slug}','${safeDir}','${id}')">
+            <span class="cta" id="cta-${id}">&#9658;</span>
+            ${typeBadge}
+            <span class="comm-thread-title" title="${safeTitle}">${a.title||'(untitled)'}</span>
+            <div class="comm-thread-tail">
+              ${tagsHtml}
+              <span class="comm-thread-date">${a.date||''}</span>
+              ${solved}${rcBadge}
+            </div>
+          </div>
+          <div class="comm-thread-body" id="ctbody-${id}" style="display:none"></div>
+        </div>`;
+      }).join('');
+
+      return `<div class="comm-section-item">
+        <div class="comm-section-hdr" id="comm-shdr-${si}" onclick="Community.toggleSection(${si})">
           <span class="arrow">&#9658;</span>
           <span class="comm-section-title">&#128193; ${s.slug.replace(/-/g,' ')}</span>
           <span class="comm-section-count">${s.count}</span>
+          ${stat ? `<span style="font-size:10px;color:var(--muted);margin-left:4px">${Math.round((stat.solved||0)/Math.max(stat.total,1)*100)}% resolved</span>` : ''}
         </div>
-        <div id="comm-sart-${i}" style="display:none">
-          <div class="comm-art-list">
-            ${(s.articles || []).map(a => `
-              <div class="comm-art-row" onclick="Community.openArticle('${s.slug}','${a.dir || ''}','${(a.title||'').replace(/'/g,"\\'")}')">
-                <span style="font-size:13px">&#128196;</span>
-                <span class="comm-art-title" title="${(a.title||'').replace(/"/g,'&quot;')}">${a.title || '(untitled)'}</span>
-                <span class="comm-art-date">${a.date || ''}</span>
-              </div>`).join('')}
-          </div>
+        <div id="comm-sart-${si}" style="display:none">
+          ${statsHtml}
+          <div class="comm-thread-list">${threads}</div>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   },
 
   toggleSection(i) {
     const hdr  = document.getElementById(`comm-shdr-${i}`);
-    const arts = document.getElementById(`comm-sart-${i}`);
-    if (!hdr || !arts) return;
-    const open = arts.style.display !== 'none';
-    arts.style.display = open ? 'none' : '';
+    const body = document.getElementById(`comm-sart-${i}`);
+    if (!hdr || !body) return;
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
     hdr.classList.toggle('open', !open);
   },
 
-  async search() {
-    const q     = document.getElementById('comm-q')?.value?.trim() || '';
-    const mode  = document.querySelector('input[name="comm-mode"]:checked')?.value || 'text';
-    const section = document.getElementById('comm-section-filter')?.value || '';
-    const resEl = document.getElementById('comm-results');
-    if (!resEl) return;
-    if (!q) { resEl.innerHTML = ''; return; }
+  async toggleThread(section, dir, id, btnEl) {
+    const bodyEl = document.getElementById(`ctbody-${id}`);
+    const hdrEl  = document.getElementById(`cthdr-${id}`);   // may be the View-thread btn
+    const arrow  = document.getElementById(`cta-${id}`);
+    if (!bodyEl) return;
 
-    resEl.innerHTML = '<div style="color:var(--muted);font-size:12px">Searching…</div>';
-    const params = new URLSearchParams({ q, mode });
+    const isOpen = bodyEl.style.display !== 'none';
+    if (isOpen) {
+      bodyEl.style.display = 'none';
+      if (arrow) arrow.innerHTML = '&#9656;';
+      if (hdrEl) hdrEl.classList.remove('open');
+      return;
+    }
+
+    // Expand
+    bodyEl.style.display = '';
+    if (arrow) arrow.innerHTML = '&#9660;';
+    if (hdrEl) hdrEl.classList.add('open');
+
+    if (bodyEl.dataset.loaded) return; // already loaded
+
+    bodyEl.innerHTML = '<div class="ctp-loading">Loading…</div>';
+    try {
+      const data = await fetch(`/api/community/article?section=${encodeURIComponent(section)}&dir=${encodeURIComponent(dir)}`)
+                         .then(r => r.json());
+      if (data.error) { bodyEl.innerHTML = `<div style="color:var(--red);padding:6px 0">${data.error}</div>`; return; }
+      const rawMd = data.content || '';
+      const meta  = this._parseFrontmatter(rawMd);
+      const { main, replies } = this._parseThread(rawMd);
+      bodyEl.innerHTML = this._renderThread(main, replies, section, dir, meta);
+      bodyEl.dataset.loaded = '1';
+    } catch (e) {
+      bodyEl.innerHTML = `<div style="color:var(--red);padding:6px 0">Load error: ${e.message}</div>`;
+    }
+  },
+
+  _parseFrontmatter(md) {
+    const m = md.match(/^---\n([\s\S]*?)\n---/);
+    if (!m) return null;
+    const yaml = m[1];
+    const get = key => { const r = yaml.match(new RegExp(`^${key}:\\s*(.+)$`, 'm')); return r ? r[1].trim() : null; };
+    const title   = get('title')?.replace(/^["']|["']$/g,'');
+    const date    = get('date');
+    const author  = get('author');
+    const replies = parseInt(get('replies') || '0', 10);
+    const solved  = /^solved:\s*true/im.test(yaml);
+    // Parse tags: tags: [a, b, c] or tags:\n  - a\n  - b
+    // Tags may contain Â¶ (double-encoded ¶) used as separator
+    const normTag = t => t.replace(/Â¶/g,'¶').split('¶').map(s=>s.trim()).filter(s=>s.length>0&&s.length<80);
+    let tags = [];
+    const inlineTags = yaml.match(/^tags:\s*\[([^\]]*)\]/m);
+    if (inlineTags) {
+      const raw = inlineTags[1].split(',').map(t => t.trim().replace(/^["']|["']$/g,'')).filter(Boolean);
+      tags = raw.flatMap(normTag);
+    } else {
+      const listTags = yaml.match(/^tags:\s*\n((?:\s*-\s*.+\n?)*)/m);
+      if (listTags) tags = (listTags[1].match(/- (.+)/g)?.map(t => t.slice(2).trim()) || []).flatMap(normTag);
+    }
+    return { title, date, author, replies, solved, tags };
+  },
+
+  // ── Thread parsing & rendering ─────────────────────────────────────────────
+
+  _parseThread(md) {
+    // Strip YAML frontmatter
+    let body = md.replace(/^---[\s\S]*?---\n?/, '').trim();
+    // Strip H1 (already shown as thread header)
+    body = body.replace(/^#\s+[^\n]*\n?/, '').trim();
+
+    const marker = '\n\n---\n\n## Antworten / Replies (';
+    const rIdx = body.indexOf(marker);
+    if (rIdx === -1) return { main: body, replies: [], total: 0 };
+
+    const main  = body.slice(0, rIdx).trim();
+    const block = body.slice(rIdx + marker.length);
+    const total = parseInt(block.match(/^(\d+)/)?.[1] || '0', 10);
+
+    // Split replies by "---\n\n### " separator
+    const replies = [];
+    const parts = block.replace(/^\d+\)\n\n/, '').split(/\n---\n\n/);
+    for (const part of parts) {
+      const m = part.trim().match(/^###\s+(.+?)\s+—\s+(\d{4}-\d{2}-\d{2})\n\n([\s\S]*)/);
+      if (!m) continue;
+      const authorRaw = m[1].trim();
+      const accepted  = authorRaw.includes(' ✓');
+      replies.push({ author: authorRaw.replace(' ✓','').trim(), date: m[2], content: m[3].trim(), accepted });
+    }
+    return { main, replies, total };
+  },
+
+  _renderThread(main, replies, section, dir, meta) {
+    const mainHtml = this._markdownToHtml(main, section, dir);
+    let metaBar = '';
+    if (meta) {
+      const solvedBadge = meta.solved
+        ? '<span class="comm-solved-badge">✓ Solved</span>'
+        : '<span class="comm-unsolved-badge">Open</span>';
+      const repliesInfo = meta.replies > 0
+        ? `<span>&#128172; ${meta.replies} ${meta.replies === 1 ? 'reply' : 'replies'}</span>` : '';
+      const authorBtn = meta.author
+        ? `<button class="comm-author-link" onclick="Community.filterByAuthor(${this._qa(meta.author)})">&#128100; ${this._escHtml(meta.author)}</button>` : '';
+      const dateSpan = meta.date ? `<span>&#128197; ${meta.date}</span>` : '';
+      const tagsHtml = (meta.tags || []).map(t =>
+        `<span class="comm-tag" onclick="Community.filterByTag(${this._qa(t)})">${this._escHtml(t)}</span>`
+      ).join('');
+      metaBar = `<div class="comm-meta-bar">
+        ${authorBtn}${dateSpan}${solvedBadge}${repliesInfo}
+        ${tagsHtml}
+      </div>`;
+    }
+    let html = `${metaBar}<div class="ctp-main">${mainHtml}</div>`;
+
+    if (replies.length) {
+      html += `<div class="ctp-replies">
+        <div class="ctp-replies-hdr">
+          <span>${replies.length} ${replies.length === 1 ? 'Antwort' : 'Antworten'}</span>
+        </div>`;
+      for (const r of replies) {
+        const accepted = r.accepted ? '<span class="ctp-accepted">✓ Accepted</span>' : '';
+        html += `<div class="ctp-reply${r.accepted ? ' accepted' : ''}">
+          <div class="ctp-reply-hdr">
+            <span class="ctp-reply-author">${this._escHtml(r.author)}</span>
+            ${accepted}
+            <span class="ctp-reply-date">${r.date}</span>
+          </div>
+          <div class="ctp-reply-body">${this._markdownToHtml(r.content, section, dir)}</div>
+        </div>`;
+      }
+      html += `</div>`;
+    }
+    return html;
+  },
+
+  async search() {
+    const q       = document.getElementById('comm-q')?.value?.trim() || '';
+    const mode    = document.querySelector('input[name="comm-mode"]:checked')?.value || 'fts5';
+    const section = document.getElementById('comm-section-filter')?.value || '';
+    const resEl   = document.getElementById('comm-results');
+    const pagEl   = document.getElementById('comm-pagination');
+    const progWrap= document.getElementById('comm-search-prog-wrap');
+    const progLbl = document.getElementById('comm-search-prog-label');
+    const progCnt = document.getElementById('comm-search-prog-count');
+    const pbar    = document.getElementById('comm-search-pbar');
+    if (!resEl) return;
+
+    const tag    = this._searchTag || null;
+    const author = this._currentAuthorFilter || null;
+    this._searchTag = null; // reset after use
+
+    if (!q && !tag && !author) {
+      resEl.innerHTML = '';
+      if (progWrap) progWrap.style.display = 'none';
+      if (pagEl) pagEl.style.display = 'none';
+      const countEl = document.getElementById('comm-results-tab-count');
+      if (countEl) countEl.textContent = '';
+      return;
+    }
+
+    // Reset pagination state
+    this._allResults = [];
+    this._searchPage = 1;
+    this._currentQuery = q || tag || author || '';
+    if (pagEl) pagEl.style.display = 'none';
+
+    // Switch to Results tab and start streaming
+    this.showTab('results');
+    if (progWrap) { progWrap.style.display = ''; }
+    if (pbar) pbar.style.width = '0%';
+    if (progLbl) progLbl.textContent = 'Searching…';
+    if (progCnt) progCnt.textContent = '';
+    resEl.innerHTML = '';
+
+    const endpoint   = (mode === 'fts5' || tag || author) ? 'search-db' : 'search';
+    const params     = new URLSearchParams();
+    if (q)       params.set('q', q);
+    if (mode !== 'fts5') params.set('mode', mode);
     if (section) params.set('section', section);
+    if (tag)     params.set('tag', tag);
+    if (author)  params.set('author', author);
+
+    const handleResults = results => {
+      for (const r of results) {
+        this._allResults.push(r);
+        // Only render live if within first page
+        if (this._allResults.length <= this._PAGE_SIZE) {
+          const div = this._appendResultToPage(r, this._allResults.length - 1, q, resEl);
+          if (div) resEl.appendChild(div);
+        }
+        if (progCnt) progCnt.textContent = `${this._allResults.length} found`;
+      }
+    };
+
+    const handleDone = total => {
+      if (pbar) pbar.style.width = '100%';
+      const found = this._allResults.length;
+      if (progLbl) progLbl.textContent = found === 0 ? 'No results found.' : `Found ${found} result(s)`;
+      if (found === 0) resEl.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0">No results found.</div>';
+      setTimeout(() => { if (progWrap) progWrap.style.display = 'none'; }, 2000);
+      this._renderPagination();
+    };
 
     try {
-      const data = await fetch(`/api/community/search?${params}`).then(r => r.json());
-      const results = data.results || [];
-      if (!results.length) { resEl.innerHTML = '<div style="color:var(--muted);font-size:12px">No results found.</div>'; return; }
-
-      resEl.innerHTML = results.map(r => `
-        <div class="comm-result" onclick="Community.openArticle('${this._sectionFromPath(r.filePath, r.section)}','${r.dir || ''}','${(r.title||'').replace(/'/g,"\\'")}')">
-          <div class="comm-result-title">${r.title || '(untitled)'}</div>
-          <div class="comm-result-meta">
-            &#128193; ${r.section || '—'} &nbsp;·&nbsp; ${r.date || ''} ${r.author ? '&nbsp;·&nbsp; ' + r.author : ''}
-            ${(r.tags||[]).map(t=>`<span style="margin-left:4px;font-size:10px;background:rgba(var(--accent-rgb),.1);padding:1px 5px;border-radius:3px">${t}</span>`).join('')}
-          </div>
-          ${r.excerpt ? `<div class="comm-result-excerpt">${this._escHtml(r.excerpt)}</div>` : ''}
-        </div>`).join('');
+      const resp = await fetch(`/api/community/${endpoint}?${params}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n'); buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const m = JSON.parse(line.slice(6));
+            if (m.type === 'start')    { if (progLbl) progLbl.textContent = m.msg || `Scanning ${m.total||''}…`; }
+            if (m.type === 'progress') {
+              if (pbar && m.total) pbar.style.width = `${Math.round(m.idx / m.total * 100)}%`;
+              if (progLbl) progLbl.textContent = `Scanning: ${m.section}`;
+            }
+            if (m.type === 'log')      { if (progLbl) progLbl.textContent = m.msg; }
+            if (m.type === 'results')  { handleResults(m.results || []); }
+            if (m.type === 'done')     { handleDone(m.total); }
+            if (m.type === 'error') {
+              if (progLbl) { progLbl.textContent = 'Error: ' + m.msg; progLbl.style.color = 'var(--red)'; }
+              resEl.innerHTML = `<div style="color:var(--red);font-size:12px;padding:8px 0">${this._escHtml(m.msg)}</div>`;
+            }
+          } catch {}
+        }
+      }
     } catch (e) {
+      if (progWrap) progWrap.style.display = 'none';
       resEl.innerHTML = `<div style="color:var(--red);font-size:12px">Search error: ${e.message}</div>`;
     }
+  },
+
+  async askAI() {
+    const btn     = document.getElementById('comm-ask-ai-btn');
+    const panel   = document.getElementById('comm-ai-panel');
+    const body    = document.getElementById('comm-ai-body');
+    const sources = document.getElementById('comm-ai-sources');
+    const modelBadge = document.getElementById('comm-ai-model-badge');
+    const ctxMode = document.querySelector('input[name="ai-ctx"]:checked')?.value || 'excerpts';
+    const q = document.getElementById('comm-q')?.value?.trim() || LLM._cfg?.lastQuery || '';
+
+    if (!this._allResults?.length) { alert('Run a search first to provide context for the AI.'); return; }
+
+    if (btn) btn.disabled = true;
+    if (panel) panel.style.display = '';
+    if (body) { body.innerHTML = '<span class="comm-ai-cursor"></span>'; }
+    if (sources) sources.innerHTML = '';
+    if (modelBadge) modelBadge.textContent = LLM._cfg?.ollama?.model || '';
+
+    // Scroll to AI panel
+    panel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    let fullText = '';
+    try {
+      const payload = {
+        query: q,
+        results: this._allResults.slice(0, LLM._cfg?.maxResults || 8),
+        contextMode: ctxMode,
+      };
+      const resp = await fetch('/api/llm/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n'); buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const m = JSON.parse(line.slice(6));
+            if (m.type === 'start') {
+              if (modelBadge) modelBadge.textContent = m.model || '';
+              if (sources) sources.textContent = `Using ${m.articles} article(s) as context · mode: ${ctxMode}`;
+            }
+            if (m.type === 'token') {
+              fullText += m.text;
+              if (body) body.innerHTML = this._escHtml(fullText) + '<span class="comm-ai-cursor"></span>';
+            }
+            if (m.type === 'done') {
+              if (body) body.innerHTML = this._escHtml(fullText);
+            }
+            if (m.type === 'error') {
+              if (body) body.innerHTML = `<span style="color:var(--red)">${this._escHtml(m.msg)}</span>`;
+            }
+          } catch {}
+        }
+      }
+    } catch (e) {
+      if (body) body.innerHTML = `<span style="color:var(--red)">Error: ${this._escHtml(e.message)}</span>`;
+    }
+    if (btn) btn.disabled = false;
+  },
+
+  closeAI() {
+    const panel = document.getElementById('comm-ai-panel');
+    const body  = document.getElementById('comm-ai-body');
+    if (panel) panel.style.display = 'none';
+    if (body) body.innerHTML = '';
   },
 
   _sectionFromPath(filePath, section) {
@@ -3263,46 +4249,36 @@ const Community = {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   },
 
-  async openArticle(section, dir, title) {
-    if (!section || !dir) return;
-    const card    = document.getElementById('comm-article-card');
-    const titleEl = document.getElementById('comm-article-title');
-    const bodyEl  = document.getElementById('comm-article-body');
-    if (!card || !bodyEl) return;
+  // Produce a JS string literal safe for use inside an HTML onclick="..." attribute
+  _qa(v) { return "'" + String(v).replace(/\\/g,'\\\\').replace(/'/g,"\\'") + "'"; },
 
-    if (titleEl) titleEl.textContent = title || '…';
-    bodyEl.innerHTML = '<div style="color:var(--muted)">Loading…</div>';
-
-    // Show article card, hide search/sections
-    card.style.display = '';
-    ['comm-search-card','comm-sections-card'].forEach(id => {
-      const el = document.getElementById(id); if (el) el.style.display = 'none';
-    });
-
-    try {
-      const data = await fetch(`/api/community/article?section=${encodeURIComponent(section)}&dir=${encodeURIComponent(dir)}`).then(r => r.json());
-      if (data.error) { bodyEl.innerHTML = `<div style="color:var(--red)">${data.error}</div>`; return; }
-      bodyEl.innerHTML = this._markdownToHtml(data.content || '', section, dir);
-    } catch (e) {
-      bodyEl.innerHTML = `<div style="color:var(--red)">Load error: ${e.message}</div>`;
-    }
+  // Convert FTS5 snippet **term** markers to yellow highlights (used for DB search excerpts)
+  _ftsExcerpt(excerpt, query) {
+    // FTS5 snippet() wraps matches in ** ... ** — convert to <mark>
+    const esc = this._escHtml(excerpt);
+    const withMark = esc.replace(/\*\*(.+?)\*\*/g,
+      (_, m) => `<mark style="background:#ffe066;color:#1a1a1a;border-radius:2px;padding:0 1px">${m}</mark>`);
+    // Fallback: if no ** markers, highlight by query terms
+    return withMark.includes('<mark') ? withMark : this._highlightTerms(withMark, query);
   },
 
-  closeArticle() {
-    const card = document.getElementById('comm-article-card');
-    if (card) card.style.display = 'none';
-    const status = this._status;
-    if (status?.articleCount > 0) {
-      ['comm-search-card','comm-sections-card'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.style.display = '';
-      });
+  // Highlight search terms in already-escaped HTML with yellow background
+  _highlightTerms(escapedHtml, query) {
+    if (!query || !query.trim()) return escapedHtml;
+    const terms = query.trim().split(/\s+/).filter(t => t.length > 1)
+      .sort((a, b) => b.length - a.length); // longest first to avoid nested matches
+    let html = escapedHtml;
+    for (const term of terms) {
+      const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      html = html.replace(new RegExp(esc, 'gi'),
+        m => `<mark style="background:#ffe066;color:#1a1a1a;border-radius:2px;padding:0 1px">${m}</mark>`);
     }
+    return html;
   },
 
-  // Minimal Markdown→HTML renderer for article preview
+  // Markdown → HTML renderer (shared for main post and replies)
   _markdownToHtml(md, section, artDir) {
-    // Strip YAML frontmatter
-    md = md.replace(/^---[\s\S]*?---\n?/, '');
+    if (!md) return '';
     const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     let html = esc(md);
     // Headers
@@ -3312,36 +4288,171 @@ const Community = {
                .replace(/^#{3}\s+(.*)$/gm, (_,t)=>`<h3>${t}</h3>`)
                .replace(/^#{2}\s+(.*)$/gm, (_,t)=>`<h2>${t}</h2>`)
                .replace(/^#{1}\s+(.*)$/gm, (_,t)=>`<h1>${t}</h1>`);
-    // Code blocks
-    html = html.replace(/```[\s\S]*?```/g, m => {
-      const code = m.slice(3, m.length - 3).replace(/^[^\n]*\n/, '');
-      return `<pre><code>${code}</code></pre>`;
-    });
+    // Code blocks (fenced)
+    html = html.replace(/```[^\n]*\n([\s\S]*?)```/g, (_,c) => `<pre><code>${c}</code></pre>`);
     // Inline code
-    html = html.replace(/`([^`]+)`/g, (_,c)=>`<code>${c}</code>`);
-    // Bold/italic
-    html = html.replace(/\*\*([^*]+)\*\*/g, (_,c)=>`<strong>${c}</strong>`)
-               .replace(/__([^_]+)__/g, (_,c)=>`<strong>${c}</strong>`)
-               .replace(/\*([^*]+)\*/g, (_,c)=>`<em>${c}</em>`)
-               .replace(/_([^_]+)_/g, (_,c)=>`<em>${c}</em>`);
-    // Images — rewrite local paths to /api/community/image
+    html = html.replace(/`([^`\n]+)`/g, (_,c) => `<code>${c}</code>`);
+    // Bold / italic
+    html = html.replace(/\*\*([^*\n]+)\*\*/g, (_,c) => `<strong>${c}</strong>`)
+               .replace(/__([^_\n]+)__/g, (_,c) => `<strong>${c}</strong>`)
+               .replace(/\*([^*\n]+)\*/g, (_,c) => `<em>${c}</em>`)
+               .replace(/_([^_\n]+)_/g, (_,c) => `<em>${c}</em>`);
+    // Local images → authenticated API endpoint
     html = html.replace(/!\[([^\]]*)\]\(images\/([^)]+)\)/g, (_,alt,file) =>
       `<img src="/api/community/image?section=${encodeURIComponent(section)}&dir=${encodeURIComponent(artDir)}&file=${encodeURIComponent(file)}" alt="${alt}">`);
     // External images
-    html = html.replace(/!\[([^\]]*)\]\((https?:[^)]+)\)/g, (_,alt,src)=>`<img src="${src}" alt="${alt}">`);
+    html = html.replace(/!\[([^\]]*)\]\((https?:[^)]+)\)/g, (_,alt,src) => `<img src="${src}" alt="${alt}">`);
     // Links
-    html = html.replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, (_,t,href)=>`<a href="${href}" target="_blank">${t}</a>`);
-    // Lists
-    html = html.replace(/^- (.+)$/gm, (_,c)=>`<li>${c}</li>`);
-    html = html.replace(/(<li>[\s\S]*?<\/li>(\n|$))+/g, m => `<ul>${m}</ul>`);
+    html = html.replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, (_,t,href) => `<a href="${href}" target="_blank">${t}</a>`);
+    // Ordered lists
+    html = html.replace(/^\d+\.\s+(.+)$/gm, (_,c) => `<li>${c}</li>`);
+    // Unordered lists
+    html = html.replace(/^[-*]\s+(.+)$/gm, (_,c) => `<li>${c}</li>`);
+    // Wrap consecutive <li> in <ul>
+    html = html.replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`);
+    // Blockquote
+    html = html.replace(/^&gt;\s?(.*)$/gm, (_,c) => `<blockquote>${c}</blockquote>`);
+    // Horizontal rule (skip --- separators that are already handled)
+    html = html.replace(/^---+$/gm, '<hr>');
     // Paragraphs
     html = html.replace(/\n{2,}/g, '</p><p>');
     html = `<p>${html}</p>`;
-    html = html.replace(/<p>(<h[1-6]>)/g, '$1').replace(/(<\/h[1-6]>)<\/p>/g, '$1');
-    html = html.replace(/<p>(<ul>)/g, '$1').replace(/(<\/ul>)<\/p>/g, '$1');
-    html = html.replace(/<p>(<pre>)/g, '$1').replace(/(<\/pre>)<\/p>/g, '$1');
+    // Unwrap block elements from <p>
+    ['h1','h2','h3','h4','h5','h6','ul','ol','pre','blockquote','hr'].forEach(t => {
+      html = html.replace(new RegExp(`<p>(<${t}[\\s>])`, 'g'), '$1')
+                 .replace(new RegExp(`(</${t}>)<\\/p>`, 'g'), '$1');
+    });
     html = html.replace(/<p>\s*<\/p>/g, '');
     return html;
+  },
+};
+
+// ── LLM / AI Assistant ────────────────────────────────────────────────────────
+const LLM = {
+  _cfg: null,
+  _open: false,
+  _isDirty: false,
+  _statusInterval: null,
+
+  async init() {
+    await this.loadConfig();
+    await this.updateStatus();
+    // Poll status every 30s
+    this._statusInterval = setInterval(() => this.updateStatus(), 30000);
+  },
+
+  async loadConfig() {
+    try {
+      this._cfg = await fetch('/api/llm/config').then(r => r.json());
+      this._populateForm(this._cfg);
+    } catch {}
+  },
+
+  async updateStatus() {
+    try {
+      const s = await fetch('/api/llm/status').then(r => r.json());
+      const dot   = document.getElementById('llm-dot');
+      const pDot  = document.getElementById('llm-panel-dot');
+      const label = document.getElementById('llm-led-label');
+      const pStat = document.getElementById('llm-panel-status');
+      const active = s.active && !!s.model;
+
+      if (dot)   { dot.className   = 'led-dot' + (active ? ' on' : ''); }
+      if (pDot)  { pDot.className  = 'led-dot' + (active ? ' on' : ''); }
+      if (label) { label.textContent = s.model ? `LLM · ${s.model.split(':')[0]}` : 'LLM'; }
+      if (pStat) {
+        pStat.textContent = s.active
+          ? `Ollama connected · ${s.models?.length || 0} models`
+          : 'Ollama not reachable';
+        pStat.style.color = s.active ? 'var(--green)' : 'var(--red)';
+      }
+
+      // Populate model dropdown if Ollama is reachable
+      const sel = document.getElementById('llm-model-select');
+      if (sel && s.models?.length) {
+        const cur = document.getElementById('llm-model-input')?.value || '';
+        sel.innerHTML = '<option value="">— select model —</option>' +
+          s.models.map(m => `<option value="${m}" ${m===cur?'selected':''}>${m}</option>`).join('');
+      }
+
+      // Show/hide AI button in community panel
+      const aiWrap = document.getElementById('comm-ai-wrap');
+      if (aiWrap) aiWrap.style.display = active ? '' : 'none';
+    } catch {}
+  },
+
+  async refreshModels() {
+    const btn = document.querySelector('#llm-model-row button');
+    if (btn) btn.disabled = true;
+    await this.updateStatus();
+    if (btn) btn.disabled = false;
+  },
+
+  onProviderChange() { this._dirty(); },
+
+  onModelSelect(val) {
+    const inp = document.getElementById('llm-model-input');
+    if (inp && val) inp.value = val;
+    this._dirty();
+  },
+
+  _dirty() { this._isDirty = true; },
+
+  _populateForm(cfg) {
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+    set('llm-provider',    cfg.provider || 'ollama');
+    set('llm-ollama-host', cfg.ollama?.host || 'http://localhost:11434');
+    set('llm-model-input', cfg.ollama?.model || '');
+    set('llm-context-mode', cfg.contextMode || 'excerpts');
+    set('llm-max-results', cfg.maxResults || 8);
+    set('llm-system-prompt', cfg.systemPrompt || '');
+    set('llm-user-template', cfg.userPromptTemplate || '');
+    // Sync radio
+    const ctxSel = document.querySelector(`#llm-context-mode option[value="${cfg.contextMode||'excerpts'}"]`);
+    if (ctxSel) ctxSel.selected = true;
+  },
+
+  togglePanel() {
+    this._open = !this._open;
+    const panel = document.getElementById('llm-config-panel');
+    if (panel) panel.classList.toggle('open', this._open);
+    if (this._open) this.updateStatus();
+  },
+
+  async saveConfig() {
+    const get = id => document.getElementById(id)?.value || '';
+    const cfg = {
+      provider:           get('llm-provider'),
+      ollama: {
+        host:  get('llm-ollama-host') || 'http://localhost:11434',
+        model: get('llm-model-input') || '',
+      },
+      contextMode:        get('llm-context-mode'),
+      maxResults:         parseInt(get('llm-max-results') || '8', 10),
+      maxContextLength:   6000,
+      systemPrompt:       get('llm-system-prompt'),
+      userPromptTemplate: get('llm-user-template'),
+    };
+    try {
+      await fetch('/api/llm/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg) });
+      this._cfg = cfg;
+      this._isDirty = false;
+      const saved = document.getElementById('llm-saved');
+      if (saved) { saved.style.display = 'inline'; setTimeout(() => saved.style.display = 'none', 2000); }
+      await this.updateStatus();
+    } catch (e) { alert('Save failed: ' + e.message); }
+  },
+
+  resetDefaults() {
+    this._populateForm({
+      provider: 'ollama',
+      ollama: { host: 'http://localhost:11434', model: '' },
+      systemPrompt: 'You are a helpful expert on ELO DMS. Answer questions based exclusively on the provided community articles. Be concise and cite the relevant article titles.',
+      userPromptTemplate: 'Question: {query}\n\nRelevant community articles:\n{context}\n\nAnswer:',
+      contextMode: 'excerpts',
+      maxResults: 8,
+    });
+    this._dirty();
   },
 };
 
@@ -4389,6 +5500,12 @@ async function init() {
     fetch('/api/config').then(r=>r.json()).then(d=>{ if(d.scriptDir) scriptDir=d.scriptDir; }).catch(()=>{}),
     fetch('/api/host-info').then(r=>r.json()).then(d=>{
       hostInfo = d;
+      if (d.dockerMode) {
+        dockerMode = true;
+        S.vmName = '__local__';
+        const db = document.getElementById('docker-badge');
+        if (db) db.style.display = '';
+      }
       if (d.ip && d.ip !== '127.0.0.1') {
         const badge = document.getElementById('vmUrlBadge');
         const wLink = document.getElementById('vmUrlLink');
@@ -4423,6 +5540,8 @@ async function init() {
       if (st.Tools?.length)        S.tools        = st.Tools;
     }),
   ]);
+  // In Docker/Linux mode, always force local machine regardless of saved state
+  if (dockerMode) S.vmName = '__local__';
   if (!S.vmName) {
     const running = vms.find(v => v.State === 'Running');
     if (running) S.vmName = running.Name;
@@ -4433,8 +5552,8 @@ async function init() {
     S.vmPass = savedCreds.pass || '';
   }
   if (S.vmName && S.vmUser && S.vmPass) openVMBrowser();
-  // Show target badge in header if already saved
-  if (S.vmName) {
+  // Show target badge in header if already saved; in Docker mode hide it (docker-badge shows instead)
+  if (S.vmName && !dockerMode) {
     const badge = document.getElementById('header-target');
     if (badge) {
       badge.textContent = S.vmName === '__local__' ? '🏠 This Machine' : '🖥 ' + S.vmName;
@@ -4444,9 +5563,10 @@ async function init() {
   }
   WS.connect();
   renderSidebar();
-  App.showPanel('vm');
+  App.showPanel(dockerMode ? 'vmexposure' : 'vm');
   initTheme();
   Notes.loadBadge();
+  LLM.init();
 }
 
 async function reloadVMs() {

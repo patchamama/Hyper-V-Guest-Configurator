@@ -11,9 +11,48 @@ Two tools are included:
 | `hyperv-configurator.ps1` | Interactive CLI (arrow-key menus) | Automation, scripting, advanced users |
 | `hyperv-web-configurator.ps1` | Browser GUI at `http://127.0.0.1:3000` | Visual configuration, beginners |
 
+The web configurator also runs in **Docker / Local Machine mode** — a containerized
+version for production servers that provides DB management, LLM queries, File Search,
+and Logs Viewer without requiring Hyper-V.
+
 ---
 
-## Requirements
+## Quick Install — Docker / Local Machine Mode
+
+> No Node.js, no npm, no dependencies. Just Docker.
+
+### One-liner (Windows CMD — run as Administrator)
+
+```cmd
+curl -L -o install_local.bat "https://raw.githubusercontent.com/patchamama/Hyper-V-Guest-Configurator/main/install_local.bat" && install_local.bat
+```
+
+### One-liner (PowerShell — run as Administrator)
+
+```powershell
+irm "https://raw.githubusercontent.com/patchamama/Hyper-V-Guest-Configurator/main/install_local.bat" -OutFile install_local.bat; .\install_local.bat
+```
+
+The script will:
+1. Check if Docker Desktop is installed — offer to install it via `winget` if not
+2. Pull the pre-built image from `ghcr.io` (fast, ~30 seconds)
+3. Fall back to cloning the repo and building locally if no pre-built image is available
+4. Create `C:\ollama-configurator\` with config files and data directories
+5. Start the container and open the browser at `http://localhost:3000`
+
+### Uninstall
+
+```cmd
+cd C:\ollama-configurator
+uninstall.bat
+```
+
+Stops the container, removes the image, optionally removes data and Docker Desktop.
+Leaves no orphaned dependencies.
+
+---
+
+## Requirements — Hyper-V Mode
 
 **Host machine** (running Hyper-V):
 - Windows 10 Pro/Enterprise, Windows 11, or Windows Server 2016+
@@ -32,7 +71,15 @@ Two tools are included:
 
 ---
 
-## Quick Start
+## Requirements — Docker / Local Machine Mode
+
+- Windows 10 (1803+), Windows 11, or any Linux server
+- Docker Desktop (Windows) or Docker Engine (Linux)
+- 1 GB free disk space
+
+---
+
+## Quick Start — Hyper-V Mode
 
 ### Web Configurator (recommended)
 
@@ -55,9 +102,38 @@ cd C:\ollama-ssl\installator
 
 ---
 
-## Feature Modes
+## Operating Modes
 
-Both tools support the same feature set, selected at startup:
+### Hyper-V Mode
+
+Selected when you pick a Hyper-V virtual machine as the target. All features
+are available: VM management, WSL2/AI stack deployment, file transfers, port
+exposure, winget package installation, and Remote Desktop setup.
+
+### Docker / Local Machine Mode
+
+Activated automatically when the app detects it is running inside a Docker
+container or on a non-Windows host. The browser UI shows a **🐳 Docker · Local Mode**
+badge and hides Hyper-V-specific features.
+
+**Available in Docker mode:**
+
+| Feature | Status |
+|---------|--------|
+| Database admin (PostgreSQL, MySQL, SQL Server) | ✅ Full |
+| LLM / RAG queries (via Ollama) | ✅ Full |
+| Community Knowledge Base | ✅ Full (when data is present) |
+| Port exposure & network tools | ✅ Full |
+| File Search | 🔜 Coming soon |
+| Logs Viewer | 🔜 Coming soon |
+| VM management (Hyper-V) | ❌ Requires Windows host |
+| PSSession / winget features | ❌ Requires Windows host |
+
+---
+
+## Feature Modes — Hyper-V Only
+
+Both CLI and Web tools support the same installation workflows for guest VMs:
 
 | Mode | What gets configured |
 |------|----------------------|
@@ -66,6 +142,27 @@ Both tools support the same feature set, selected at startup:
 | WSL Preparation | Enables WSL features only (no WSL install) — prepares for manual WSL install |
 | WSL Prep + Software | Combination of the above two |
 | Full Stack + Software | Everything |
+
+---
+
+## Docker Deployment (for developers)
+
+To publish a new pre-built image to GitHub Container Registry so users can install
+via the one-liner above:
+
+```powershell
+# Edit docker_deploy.ps1 — set GitHubUser and RepoName at the top
+.\docker_deploy.ps1
+```
+
+The script will:
+1. Build the Docker image
+2. Prompt for a version tag (optional)
+3. Log in to `ghcr.io` using a GitHub PAT (`write:packages` scope)
+4. Push the image as `ghcr.io/patchamama/Hyper-V-Guest-Configurator:latest`
+
+**After pushing**, make the package public in GitHub:
+`github.com/patchamama/Hyper-V-Guest-Configurator → Packages → Container → Package settings → Change visibility → Public`
 
 ---
 
@@ -78,9 +175,20 @@ Supports ELO CDN links with expiring tokens.
 
 ```
 # Format: Display Name | URL
-ELO Server Setup | https://cdn2.elo.com/Serversetup_Windows/.../file.zip?token=...&expire=...
+ELO Server Setup | https://cdn2.elo.com/...?token=...&expire=...
 # Bare URLs also work:
 https://example.com/tool.zip
+```
+
+### `llm-config.json`
+
+LLM provider and model configuration for the RAG/LLM panel.
+
+```json
+{
+  "provider": "ollama",
+  "ollama": { "host": "http://localhost:11434", "model": "deepseek-r1:1.5b" }
+}
 ```
 
 ### `ollama-models.json`
@@ -104,7 +212,6 @@ Drop installer files in named subfolders. They appear automatically in both tool
 softwares\
   ELO\
     serversetup2-25.00.zip
-    ELO_Java_Client_Windows_25.zip
   Apps\
     Firefox Installer.exe
     7z2409-x64.exe
@@ -112,26 +219,19 @@ softwares\
 
 ---
 
-## File Transfer Methods
+## File Transfer Methods (Hyper-V mode)
 
 When copying local files from the host to the VM, two methods are available.
 Both tools default to **HTTP Download** and fall back automatically.
 
 ### HTTP Download *(default — recommended)*
 
-The host starts a temporary `HttpListener` server on a random port (52000–53000).
+The host starts a temporary `HttpListener` on a random port (52000–53000).
 The VM downloads files directly via the Hyper-V virtual switch.
 
 - **Speed**: ~500 MB/s to 1 GB/s (memory-mapped virtual network)
 - **Requires**: Internal or Default switch (not Private)
-- **Firewall**: A temporary inbound rule (`HVCopy-<port>` / `HVWebCopy-<port>`) is added and removed automatically
-- **Browser**: The VM's default browser opens automatically with a directory listing of `softwares\` so you can verify files before and after the copy
-- **Fallback**: If the host IP cannot be detected (Private switch), PSSession Copy is used instead
-
-To browse shared files manually during the copy step, open the URL printed in the log:
-```
-http://192.168.xxx.xxx:52xxx/
-```
+- **Firewall**: Temporary inbound rule added and removed automatically
 
 ### PSSession Copy *(fallback)*
 
@@ -139,14 +239,13 @@ Files are serialized in 8 MB chunks over PowerShell remoting.
 
 - **Speed**: ~50–100 MB/s
 - **Always available** — no switch or firewall requirements
-- Selected automatically when HTTP is unavailable, or manually in the web UI
 
 ---
 
 ## ELO Token Refresh
 
 ELO CDN download URLs include a `token=...&expire=...` parameter that expires
-after a few hours. When tokens expire, downloads fail with a `WebException`.
+after a few hours.
 
 ### Web UI
 
@@ -158,32 +257,22 @@ after a few hours. When tokens expire, downloads fail with a `WebException`.
 
 ### CLI
 
-The script detects expiry automatically:
-
 ```
 [!] Expired tokens detected for: serversetup2-25.00.zip
 Launching token refresher...
-Log in at partner.elo.com, click each download, then press ENTER in this window.
 ```
 
-Alternatively run manually:
-
-```powershell
-node refresh-elo-tokens.js
-```
+Or manually: `node refresh-elo-tokens.js`
 
 ---
 
 ## Checkpoint / Resume
 
-Both tools save progress to `C:\ollama-ssl\deploy-state.json` after each step.
+Both tools save progress to `deploy-state.json` after each step.
 On restart after interruption:
 
 - **CLI**: Detects the saved state and asks whether to resume or start over.
 - **Web**: Shows completed steps as ✅. Click **↺ Reset** to clear state.
-
-Progress saved includes: VM name, selected features, models, local files, URLs,
-winget packages, install mode, transfer method, and completed steps.
 
 ---
 
@@ -196,15 +285,11 @@ HOST ─────────────────────────
 
 GUEST VM ──────────────────────────────────────────────────
   Step 1  Enable Nested Virtualization (Set-VMProcessor)
-  Step 2  Enable WSL Windows Features (VirtualMachinePlatform + WSL)
+  Step 2  Enable WSL Windows Features
   Step 3  Install WSL2 kernel MSI + set default version
   Step 4  Install Docker Desktop via Chocolatey
   Step 5  Start Docker Desktop (manual step — accept ToS)
   Step 6  Deploy Ollama + Caddy via Docker Compose
-
-  C:\ollama-ssl\docker-compose.yml  →  ollama:11434, caddy:443
-  C:\ollama-ssl\Caddyfile           →  HTTPS reverse proxy to Ollama
-  SSL certificate                   →  Caddy local CA, trusted on VM
 ```
 
 ---
@@ -216,31 +301,14 @@ hyperv-web-configurator.ps1    Launcher — checks Node.js, installs deps,
                                 starts server, opens browser
         │
         ▼
-web/server.js                  Express + WebSocket server (port 3000, localhost)
-        │                      REST: /api/vms /api/state /api/downloads etc.
+web/server.js                  Express + WebSocket server (port 3000)
+        │                      REST: /api/vms /api/db /api/community etc.
         │                      WS:   streams PowerShell output live
         ▼
-web/public/index.html          Single-page app — sidebar config steps,
-                                execution panel with per-step progress bars,
-                                light/dark theme (ELO brand colors)
+web/public/index.html          Single-page app
+                                Sidebar nav · Execution panel · DB Admin
+                                Community KB · LLM panel · Exposure
 ```
-
-The server spawns PowerShell processes and streams output to the browser
-via WebSocket. Each "Run" button generates and executes a PS script for
-that step — no PS scripts are stored on disk, they are generated at runtime.
-
----
-
-## Manual Steps (Help Panel)
-
-The web UI **Help** section contains copy-paste PowerShell commands for running
-each step manually inside the VM if automation is unavailable:
-
-- **Enable Guest Services** — run on HOST
-- **Enable Nested Virtualization** — run on HOST (VM must be off)
-- **Enable WSL Features** — run INSIDE VM (needs reboot after)
-- **Install WSL2 Kernel** — run INSIDE VM (after WSL features + reboot)
-- **Browse Shared Files** — URL format and how the HTTP file server works
 
 ---
 
@@ -248,20 +316,25 @@ each step manually inside the VM if automation is unavailable:
 
 ```
 installator\
-  hyperv-configurator.ps1       CLI tool
-  hyperv-web-configurator.ps1   Web UI launcher
+  hyperv-configurator.ps1       CLI tool (Hyper-V mode)
+  hyperv-web-configurator.ps1   Web UI launcher (Hyper-V mode)
+  install_local.bat             One-click Docker / Local Mode install
+  uninstall.bat                 Removes container, image, data, optional Docker
+  docker_deploy.ps1             Build & push image to ghcr.io
+  Dockerfile                    Docker image definition (Node 22 + pwsh)
+  docker-compose.yml            Docker Compose config
+  .dockerignore                 Files excluded from the image
   web\
     server.js                   Node.js Express/WS server
     public\
       index.html                Browser single-page app
   refresh-elo-tokens.js         Playwright-based ELO token refresher
-  downloads.txt                 URL catalogue (edit this)
-  ollama-models.json            Ollama model catalogue (edit this)
+  downloads.txt                 URL catalogue
+  llm-config.json               LLM / Ollama settings
+  ollama-models.json            Ollama model catalogue
   softwares\                    Place installer files here
-  how-to.en.txt                 Getting started guide (English)
-  how-to.es.txt                 Getting started guide (Spanish)
-  how-to.de.txt                 Getting started guide (German)
-  package.json                  Node.js dependencies (express, ws, playwright)
+  community\                    Community KB data (SQLite + articles)
+  package.json                  Node.js dependencies
 ```
 
 ---
@@ -276,8 +349,9 @@ installator\
 | ELO download WebException | Token expired | Refresh tokens (see above) |
 | Playwright browser fails | Node.js missing | Install from https://nodejs.org |
 | `PSSessionStateBroken` | DISM restart in VM | Script recovers automatically; may need VM reboot |
-| Firewall rule left behind | Script crashed | `Get-NetFirewallRule -DisplayName "HVCopy-*" \| Remove-NetFirewallRule` |
-| Port 3000 already in use | Old server running | Script kills the old process automatically |
+| Docker container won't start | Docker daemon not running | Start Docker Desktop |
+| Port 3000 in use | Old server running | Change `APP_PORT` in `install_local.bat` or stop the old process |
+| `ghcr.io` pull fails | Image not published yet | Run `docker_deploy.ps1` first, or build from source |
 
 ---
 

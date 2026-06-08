@@ -9,8 +9,9 @@ const os   = require('os');
 
 const PORT        = 3000;
 const SCRIPT_DIR  = path.join(__dirname, '..');
-const STATE_FILE    = 'C:\\ollama-ssl\\deploy-state.json';
-const EXPOSURE_FILE = 'C:\\ollama-ssl\\vm-exposure.json';
+const STATE_FILE    = path.join(SCRIPT_DIR, 'deploy-state.json');
+const EXPOSURE_FILE = path.join(SCRIPT_DIR, 'vm-exposure.json');
+const PS_EXE = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
 
 function toWinPath(p) {
   const m = p.match(/^\/mnt\/([a-z])\/(.*)/i);
@@ -759,7 +760,7 @@ app.post('/api/vm/expose', (req, res) => {
   );
 
   fs.writeFileSync(tmpScript, lines.join('\r\n'), 'utf8');
-  const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', tmpScript]);
+  const ps = spawn(PS_EXE,['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', tmpScript]);
   res.on('close', () => { try { ps.kill(); } catch {} });
   ps.stdout.on('data', d => {
     for (const line of cleanOutput(d.toString('utf8')).split('\n').filter(l => l.trim())) {
@@ -839,7 +840,7 @@ app.post('/api/db/pghba-restore', async (req, res) => {
   try {
     const result = await new Promise((resolve, reject) => {
       const cmd = `$cred = New-Object PSCredential('${esc(vmUser)}', (ConvertTo-SecureString '${esc(vmPass)}' -AsPlainText -Force)); Invoke-Command -VMName '${esc(vmName)}' -Credential $cred -FilePath '${tmpScript}'`;
-      const proc = spawn('powershell', ['-NonInteractive', '-Command', cmd], { timeout: 35000 });
+      const proc = spawn(PS_EXE,['-NonInteractive', '-Command', cmd], { timeout: 35000 });
       let out = '', err = '';
       proc.stdout.on('data', d => out += d);
       proc.stderr.on('data', d => err += d);
@@ -872,6 +873,10 @@ app.post('/api/db/fix-pghba', async (req, res) => {
   // Build the PowerShell script as a temp file — avoids quoting issues with inline ScriptBlock
   const tmpScript = path.join(os.tmpdir(), `fix_pghba_${Date.now()}.ps1`);
   const newLines = `\r\n# Added by ollama-ssl-installator\r\n${cidrLines}\r\n`;
+  // PowerShell uses backtick escapes in double-quoted strings, not backslash.
+  // JSON.stringify would produce \r\n which PS treats as literal chars — convert to `r`n instead.
+  const psNewLines = '"' + newLines
+    .replace(/`/g, '``').replace(/"/g, '`"').replace(/\r/g, '`r').replace(/\n/g, '`n') + '"';
   const psScript = [
     `$ErrorActionPreference = 'Stop'`,
     `$dataDir = '${(pgDataDir || '').replace(/'/g, "''")}'`,
@@ -891,7 +896,7 @@ app.post('/api/db/fix-pghba', async (req, res) => {
     `Write-Output "ORIGINAL_B64:$originalB64"`,
     `if ($text -notmatch [regex]::Escape($marker)) {`,
     `    $enc = New-Object System.Text.UTF8Encoding($false)`,
-    `    [System.IO.File]::WriteAllText($hbaPath, $text + ${JSON.stringify(newLines)}, $enc)`,
+    `    [System.IO.File]::WriteAllText($hbaPath, $text + ${psNewLines}, $enc)`,
     `    if (Test-Path $pgCtl) { & $pgCtl reload -D $dataDir | Out-Null }`,
     `    Write-Output 'UPDATED'`,
     `} else { Write-Output 'ALREADY_DONE' }`,
@@ -904,7 +909,7 @@ app.post('/api/db/fix-pghba', async (req, res) => {
         `$cred = New-Object PSCredential('${vmUser.replace(/'/g,"''")}', (ConvertTo-SecureString '${vmPass.replace(/'/g,"''")}' -AsPlainText -Force))`,
         `Invoke-Command -VMName '${vmName.replace(/'/g,"''")}' -Credential $cred -FilePath '${tmpScript}'`,
       ].join('; ');
-      const proc = spawn('powershell', ['-NonInteractive', '-Command', cmd], { timeout: 35000 });
+      const proc = spawn(PS_EXE,['-NonInteractive', '-Command', cmd], { timeout: 35000 });
       let out = '', err = '';
       proc.stdout.on('data', d => out += d);
       proc.stderr.on('data', d => err += d);
@@ -1012,7 +1017,7 @@ app.post('/api/vm-tools/install', (req, res) => {
   res.setHeader('Content-Type','text/event-stream; charset=utf-8');
   res.setHeader('Cache-Control','no-cache');
   res.flushHeaders();
-  const ps = spawn('powershell',['-NoProfile','-NonInteractive','-Command',psCmd]);
+  const ps = spawn(PS_EXE,['-NoProfile','-NonInteractive','-Command',psCmd]);
   const send = d => { const lines = d.toString().replace(/\r/g,'').split('\n').filter(Boolean); lines.forEach(l=>res.write(`data: ${l}\n\n`)); };
   ps.stdout.on('data',send);
   ps.stderr.on('data',d=>send('[ERR] '+d));
@@ -1193,11 +1198,14 @@ app.get('/api/tools', (req, res) => {
 
 app.get('/api/host-info', (req, res) => {
   const ip = getHostIP();
+  const isDocker = fs.existsSync('/.dockerenv');
   res.json({
     ip,
-    port:     PORT,
-    webUrl:   `http://${ip}:${PORT}`,
-    filesUrl: `http://${ip}:${PORT}/files/`,
+    port:       PORT,
+    webUrl:     `http://${ip}:${PORT}`,
+    filesUrl:   `http://${ip}:${PORT}/files/`,
+    platform:   process.platform,
+    dockerMode: isDocker || process.platform !== 'win32',
   });
 });
 
@@ -1349,7 +1357,7 @@ wss.on('connection', ws => {
 });
 
 function execute(script, ws) {
-  const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', PS_UTF8 + script]);
+  const ps = spawn(PS_EXE,['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', PS_UTF8 + script]);
   activeProc = ps;
   ps.stdout.on('data', d => ws.send(JSON.stringify({ type: 'out', text: cleanOutput(d.toString('utf8')) })));
   ps.stderr.on('data', d => ws.send(JSON.stringify({ type: 'err', text: cleanOutput(d.toString('utf8')) })));
@@ -1359,12 +1367,470 @@ function execute(script, ws) {
 
 function runPS(cmd, cb) {
   let out = '', err = '';
-  const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', PS_UTF8 + cmd]);
+  const ps = spawn(PS_EXE,['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', PS_UTF8 + cmd]);
   ps.stdout.on('data', d => out += d.toString('utf8'));
   ps.stderr.on('data', d => err += d.toString('utf8'));
   ps.on('close', () => cb(out.trim(), err.trim() || null));
   ps.on('error', e => cb('', e.message));
 }
+
+// ── Community Knowledge Base ──────────────────────────────────────────────────
+
+const COMMUNITY_CONFIG_FILE = path.join(SCRIPT_DIR, 'community-config.json');
+const COMMUNITY_DIR         = path.join(SCRIPT_DIR, 'community');
+
+function loadCommunityConfig() {
+  try {
+    if (fs.existsSync(COMMUNITY_CONFIG_FILE))
+      return JSON.parse(fs.readFileSync(COMMUNITY_CONFIG_FILE, 'utf8'));
+  } catch (e) { console.warn('[community] config load error:', e.message); }
+  return { enabled: false, elasticsearch: { enabled: false } };
+}
+
+// GET /api/community/config — returns config without passwords
+app.get('/api/community/config', (req, res) => {
+  const cfg  = loadCommunityConfig();
+  const safe = JSON.parse(JSON.stringify(cfg));
+  if (safe.elasticsearch) { delete safe.elasticsearch.username; delete safe.elasticsearch.password; }
+  res.json(safe);
+});
+
+// POST /api/community/config — update config fields
+app.post('/api/community/config', (req, res) => {
+  try {
+    const current = loadCommunityConfig();
+    const body = req.body || {};
+    const updated = { ...current, ...body };
+    // Deep-merge nested objects so partial updates don't wipe sub-keys
+    ['elasticsearch', 'output', 'auth', 'board'].forEach(k => {
+      if (body[k]) updated[k] = { ...(current[k] || {}), ...body[k] };
+    });
+    fs.writeFileSync(COMMUNITY_CONFIG_FILE, JSON.stringify(updated, null, 2), 'utf8');
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
+});
+
+// GET /api/community/status
+app.get('/api/community/status', async (req, res) => {
+  const cfg       = loadCommunityConfig();
+  const indexFile = path.join(COMMUNITY_DIR, 'index.json');
+  let indexData   = null;
+  if (fs.existsSync(indexFile)) { try { indexData = JSON.parse(fs.readFileSync(indexFile, 'utf8')); } catch {} }
+
+  let esStatus = 'disabled';
+  if (cfg.elasticsearch?.enabled) {
+    try {
+      const { Client } = require('@elastic/elasticsearch');
+      const c = new Client({ node: cfg.elasticsearch.host, requestTimeout: 3000 });
+      await c.ping();
+      esStatus = 'ok';
+    } catch { esStatus = 'unreachable'; }
+  }
+
+  let articleCount = indexData
+    ? Object.values(indexData.sections || {}).reduce((s, x) => s + (x.count || 0), 0) : 0;
+  let sectionCount = indexData ? Object.keys(indexData.sections || {}).length : 0;
+  let lastUpdate   = indexData?.updated || null;
+
+  // Fall back to SQLite DB when index.json is absent
+  if (!indexData) {
+    try {
+      const dbStats = communityDb.getDbStats();
+      if (dbStats.built) {
+        articleCount = dbStats.total;
+        const secs = communityDb.getSectionStats();
+        sectionCount = secs.length;
+      }
+    } catch {}
+  }
+
+  res.json({
+    enabled:      cfg.enabled ?? false,
+    name:         cfg.name || 'Community',
+    articleCount,
+    sectionCount,
+    lastUpdate,
+    elasticsearch: esStatus,
+    scraping:     !!communityScraperInst,
+  });
+});
+
+// POST /api/community/scrape — start full scrape (SSE stream)
+let communityScraperInst = null;
+
+app.post('/api/community/scrape', async (req, res) => {
+  const cfg = loadCommunityConfig();
+  if (!cfg.enabled) return res.status(403).json({ error: 'Community feature is not enabled. Enable it first.' });
+  if (communityScraperInst) return res.status(409).json({ error: 'Scraping already in progress' });
+
+  const { username, password } = req.body || {};
+  if (!username || !password) return res.status(400).json({ error: 'username and password are required' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const send = d => { try { res.write(`data: ${JSON.stringify(d)}\n\n`); } catch {} };
+
+  try {
+    const { CommunityScraper } = require('./community-scraper');
+    communityScraperInst = new CommunityScraper(cfg);
+    communityScraperInst.on('progress', send);
+    communityScraperInst.on('error', e => send({ type: 'error', msg: e.message }));
+
+    const ok = await communityScraperInst.login(username, password);
+    if (!ok) { send({ type: 'error', msg: 'Login failed — check credentials and selectors' }); res.end(); communityScraperInst = null; return; }
+
+    await communityScraperInst.scrapeAll();
+  } catch (e) {
+    send({ type: 'error', msg: e.message });
+  } finally {
+    communityScraperInst = null;
+    try { res.end(); } catch {}
+  }
+});
+
+// POST /api/community/scrape/stop
+app.post('/api/community/scrape/stop', (req, res) => {
+  if (communityScraperInst) { communityScraperInst.stop().catch(() => {}); communityScraperInst = null; }
+  res.json({ ok: true });
+});
+
+// POST /api/community/purge — delete all scraped content, SQLite DB and ES index
+app.post('/api/community/purge', async (req, res) => {
+  if (communityScraperInst) return res.status(409).json({ error: 'Scraping in progress — stop it first' });
+
+  const report = { sections: 0, articles: 0, images: 0, sqliteDeleted: false, esDeleted: false, errors: [] };
+
+  // 1. Close SQLite and delete DB files
+  try {
+    communityDb.closeDb();
+    for (const ext of ['', '-shm', '-wal']) {
+      const p = path.join(COMMUNITY_DIR, `community.db${ext}`);
+      if (fs.existsSync(p)) { fs.unlinkSync(p); }
+    }
+    report.sqliteDeleted = true;
+  } catch (e) { report.errors.push(`SQLite: ${e.message}`); }
+
+  // 2. Delete section directories (scraped content)
+  try {
+    const entries = fs.existsSync(COMMUNITY_DIR)
+      ? fs.readdirSync(COMMUNITY_DIR, { withFileTypes: true }).filter(d => d.isDirectory())
+      : [];
+    for (const entry of entries) {
+      try {
+        const secPath = path.join(COMMUNITY_DIR, entry.name);
+        const artDirs = fs.readdirSync(secPath, { withFileTypes: true }).filter(d => d.isDirectory());
+        report.articles += artDirs.length;
+        // Count images
+        for (const art of artDirs) {
+          const imgDir = path.join(secPath, art.name, 'images');
+          if (fs.existsSync(imgDir)) {
+            report.images += fs.readdirSync(imgDir).length;
+          }
+        }
+        fs.rmSync(secPath, { recursive: true, force: true });
+        report.sections++;
+      } catch (e) { report.errors.push(`Section ${entry.name}: ${e.message}`); }
+    }
+    // Also delete index.json if present
+    const idxFile = path.join(COMMUNITY_DIR, 'index.json');
+    if (fs.existsSync(idxFile)) fs.unlinkSync(idxFile);
+  } catch (e) { report.errors.push(`Sections: ${e.message}`); }
+
+  // 3. Delete Elasticsearch index (if configured)
+  const cfg = loadCommunityConfig();
+  if (cfg.elasticsearch?.enabled && cfg.elasticsearch?.host) {
+    try {
+      const { Client } = require('@elastic/elasticsearch');
+      const client = new Client({ node: cfg.elasticsearch.host, requestTimeout: 5000 });
+      const exists = await client.indices.exists({ index: cfg.elasticsearch.index }).catch(() => false);
+      if (exists) {
+        await client.indices.delete({ index: cfg.elasticsearch.index });
+        report.esDeleted = true;
+      }
+    } catch (e) { report.errors.push(`Elasticsearch: ${e.message}`); }
+  }
+
+  res.json({ ok: true, report });
+});
+
+// POST /api/community/index — (re)index articles in Elasticsearch (SSE stream)
+app.post('/api/community/index', async (req, res) => {
+  const cfg = loadCommunityConfig();
+  if (!cfg.elasticsearch?.enabled) return res.status(400).json({ error: 'Elasticsearch is not enabled in config' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const send = d => { try { res.write(`data: ${JSON.stringify(d)}\n\n`); } catch {} };
+
+  try {
+    const { loadCommunityArticles, indexArticles } = require('./community-indexer');
+    send({ type: 'log', msg: 'Loading local articles…' });
+    const articles = loadCommunityArticles(COMMUNITY_DIR);
+    send({ type: 'log', msg: `Found ${articles.length} article(s) — generating embeddings (first run downloads mE5-small model ~66 MB)…` });
+    await indexArticles(articles, cfg.elasticsearch, p => send({ type: 'progress', ...p }));
+    send({ type: 'done', count: articles.length });
+  } catch (e) {
+    send({ type: 'error', msg: e.message });
+  }
+  try { res.end(); } catch {}
+});
+
+// GET /api/community/sections
+app.get('/api/community/sections', (req, res) => {
+  const normTags = tags => (tags||[]).flatMap(t =>
+    typeof t === 'string' ? t.replace(/Â¶/g,'¶').split('¶').map(s=>s.trim()).filter(s=>s.length>0&&s.length<80) : []
+  );
+
+  const indexFile = path.join(COMMUNITY_DIR, 'index.json');
+  if (fs.existsSync(indexFile)) {
+    try {
+      const idx = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
+      const sections = Object.entries(idx.sections || {}).map(([slug, data]) => ({
+        slug,
+        count: data.count || 0,
+        articles: (data.articles || []).map(a => ({
+          title: a.title, date: a.date, author: a.author, dir: a.dir,
+          tags: normTags(a.tags), replies: a.replies||0, solved: !!a.solved,
+          type: a.type||'',
+        })),
+      }));
+      return res.json({ sections, updated: idx.updated });
+    } catch (e) { return res.status(500).json({ error: dbErrMsg(e) }); }
+  }
+
+  // No index.json — build sections list from SQLite DB
+  try {
+    if (!communityDb.isBuilt()) return res.json({ sections: [], updated: null });
+    const secStats = communityDb.getSectionStats();
+    const sections = secStats.map(s => {
+      const articles = communityDb.search('', { section: s.section, limit: 500 }).map(a => ({
+        title: a.title, date: a.date, author: a.author, dir: a.dir,
+        tags: a.tags || [], replies: a.replies||0, solved: !!a.solved, type: a.type||'',
+      }));
+      return { slug: s.section, count: s.total, articles };
+    });
+    res.json({ sections, updated: null });
+  } catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
+});
+
+// GET /api/community/article?section=X&dir=Y
+// dir can be:  old 3-level → "article-slug"
+//              new 4-level → "thread-slug/YYYY-MM-DD"
+app.get('/api/community/article', (req, res) => {
+  const section = path.basename(req.query.section || '');
+  // Sanitise dir: allow a single slash (thread/post) but block traversal attempts
+  const dir = (req.query.dir || '')
+    .replace(/\.\./g, '')         // no parent traversal
+    .replace(/^\/+|\/+$/g, '')    // strip leading/trailing slashes
+    .replace(/\/+/g, '/')         // collapse double slashes
+    .replace(/[\\]/g, '');        // no backslashes
+  if (!section || !dir) return res.status(400).json({ error: 'section and dir required' });
+
+  const mdPath = path.resolve(path.join(COMMUNITY_DIR, section, dir, 'article.md'));
+  if (!mdPath.startsWith(path.resolve(COMMUNITY_DIR)))
+    return res.status(403).json({ error: 'Forbidden' });
+  if (!fs.existsSync(mdPath)) return res.status(404).json({ error: 'Not found' });
+  try { res.json({ content: fs.readFileSync(mdPath, 'utf8') }); }
+  catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
+});
+
+// GET /api/community/image?section=X&dir=Y&file=Z
+app.get('/api/community/image', (req, res) => {
+  const section = path.basename(req.query.section || '');
+  const dir     = (req.query.dir||'').replace(/\.\./g,'').replace(/^\/+|\/+$/g,'').replace(/\/+/g,'/').replace(/[\\]/g,'');
+  const file    = path.basename(req.query.file    || '');
+  if (!section || !dir || !file) return res.status(400).send('Missing params');
+
+  const imgPath = path.resolve(path.join(COMMUNITY_DIR, section, dir, 'images', file));
+  if (!imgPath.startsWith(path.resolve(COMMUNITY_DIR))) return res.status(403).send('Forbidden');
+  if (!fs.existsSync(imgPath)) return res.status(404).send('Not found');
+  res.sendFile(imgPath);
+});
+
+// GET /api/community/search?q=...&mode=text|semantic|hybrid&section=...  (SSE)
+app.get('/api/community/search', async (req, res) => {
+  const { q = '', mode = 'text', section } = req.query;
+
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.flushHeaders();
+  const send = d => { try { res.write(`data: ${JSON.stringify(d)}\n\n`); } catch {} };
+
+  if (!q.trim()) { send({ type: 'done', total: 0 }); return res.end(); }
+
+  send({ type: 'start', msg: mode === 'semantic' ? 'Generating embedding…' : 'Scanning files…' });
+
+  const cfg = loadCommunityConfig();
+  try {
+    if (cfg.elasticsearch?.enabled && (mode === 'semantic' || mode === 'hybrid')) {
+      send({ type: 'progress', msg: `Running ${mode} search in Elasticsearch…` });
+      const { searchES } = require('./community-indexer');
+      let results = await searchES(q, cfg.elasticsearch, mode);
+      if (section) results = results.filter(r => r.section === section || r.section?.toLowerCase().includes(section.toLowerCase()));
+      if (results.length) send({ type: 'results', results, section: 'all' });
+      send({ type: 'done', total: results.length, mode });
+      return res.end();
+    }
+  } catch (e) {
+    console.warn('[community/search] ES error, falling back to local:', e.message);
+    send({ type: 'log', msg: `Elasticsearch unavailable — falling back to file scan` });
+  }
+
+  // File scan — stream per-section progress
+  const { loadCommunityArticles } = require('./community-indexer');
+  const lq    = q.toLowerCase().trim();
+  const terms = lq.split(/\s+/).filter(t => t.length > 1);
+
+  const sectionDirs = fs.existsSync(COMMUNITY_DIR)
+    ? fs.readdirSync(COMMUNITY_DIR, { withFileTypes: true })
+        .filter(d => d.isDirectory() && !d.name.startsWith('.'))
+        .map(d => d.name)
+    : [];
+
+  send({ type: 'start', total: sectionDirs.length, msg: `Scanning ${sectionDirs.length} sections…` });
+
+  const allResults = [];
+  for (let i = 0; i < sectionDirs.length; i++) {
+    const sec    = sectionDirs[i];
+    const secDir = path.join(COMMUNITY_DIR, sec);
+    if (section && sec !== section) { send({ type: 'progress', idx: i + 1, total: sectionDirs.length, section: sec }); continue; }
+
+    send({ type: 'progress', idx: i + 1, total: sectionDirs.length, section: sec });
+
+    let artDirs;
+    try { artDirs = fs.readdirSync(secDir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name); }
+    catch { continue; }
+
+    const secResults = [];
+    for (const ad of artDirs) {
+      const metaPath = path.join(secDir, ad, 'metadata.json');
+      const mdPath   = path.join(secDir, ad, 'article.md');
+      if (!fs.existsSync(metaPath)) continue;
+      try {
+        const meta    = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+        const rawMd   = fs.existsSync(mdPath) ? fs.readFileSync(mdPath, 'utf8') : '';
+        const content = rawMd.replace(/^---[\s\S]*?---\n?/, '').replace(/^#\s+.*\n?/, '').trim();
+        const titleLc   = (meta.title||'').toLowerCase();
+        const haystack  = `${titleLc} ${(meta.author||'').toLowerCase()} ${(meta.tags||[]).join(' ').toLowerCase()} ${content.toLowerCase()}`;
+        // AND logic: every term must be present
+        if (!terms.every(t => haystack.includes(t))) continue;
+        // Score: weight by how many terms appear in the title vs body
+        const score = terms.reduce((s, t) => s + (titleLc.includes(t) ? 3 : 1), 0);
+        // Excerpt: best window — find position where most terms cluster
+        let excerpt = '';
+        const lc = content.toLowerCase();
+        const positions = terms.map(t => lc.indexOf(t)).filter(p => p >= 0);
+        const center = positions.length ? Math.round(positions.reduce((a,b)=>a+b,0)/positions.length) : -1;
+        if (center >= 0) {
+          const start = Math.max(0, center - 80);
+          excerpt = (start > 0 ? '…' : '') + content.slice(start, center + 220) + (center + 220 < content.length ? '…' : '');
+        } else {
+          excerpt = content.slice(0, 200) + (content.length > 200 ? '…' : '');
+        }
+        const normTags = (meta.tags||[]).flatMap(t => typeof t==='string' ? t.replace(/Â¶/g,'¶').split('¶').map(s=>s.trim()).filter(Boolean) : []);
+        secResults.push({ title: meta.title||'', section: sec, date: meta.date||'', author: meta.author||'',
+          tags: normTags, url: meta.url||'', dir: meta.dir||ad, excerpt, score });
+      } catch { /* skip */ }
+    }
+    secResults.sort((a, b) => b.score - a.score);
+    if (secResults.length) {
+      allResults.push(...secResults);
+      send({ type: 'results', results: secResults.slice(0, 20), section: sec });
+    }
+  }
+
+  send({ type: 'done', total: allResults.length, mode: 'file-scan' });
+  res.end();
+});
+
+// ── Community SQLite Local Index ──────────────────────────────────────────────
+
+const communityDb = require('./community-db');
+
+// POST /api/community/build-db — build/rebuild SQLite FTS index (SSE)
+app.post('/api/community/build-db', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.flushHeaders();
+  const send = d => { try { res.write(`data: ${JSON.stringify(d)}\n\n`); } catch {} };
+  try {
+    send({ type: 'log', msg: 'Building SQLite index…' });
+    const result = communityDb.buildIndex(COMMUNITY_DIR, prog => {
+      if (prog.phase === 'start') send({ type: 'start', total: prog.total, sections: prog.sections });
+      else send({ type: 'progress', done: prog.done, total: prog.total, section: prog.section });
+    });
+    send({ type: 'done', indexed: result.indexed, sections: result.sections });
+  } catch (e) {
+    send({ type: 'error', msg: e.message });
+  }
+  try { res.end(); } catch {}
+});
+
+// GET /api/community/db-stats
+app.get('/api/community/db-stats', (req, res) => {
+  try { res.json(communityDb.getDbStats()); }
+  catch { res.json({ total: 0, solved: 0, built: false }); }
+});
+
+// GET /api/community/tags?section=...
+app.get('/api/community/tags', (req, res) => {
+  try { res.json(communityDb.getTags(req.query.section || null)); }
+  catch { res.json([]); }
+});
+
+// GET /api/community/section-stats
+app.get('/api/community/section-stats', (req, res) => {
+  try { res.json(communityDb.getSectionStats()); }
+  catch { res.json([]); }
+});
+
+// GET /api/community/search-db?q=...&section=...&tag=...&author=...  (SSE streaming)
+app.get('/api/community/search-db', (req, res) => {
+  const { q = '', section: secFilter, tag, author } = req.query;
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.flushHeaders();
+  const send = d => { try { res.write(`data: ${JSON.stringify(d)}\n\n`); } catch {} };
+  try {
+    if (!communityDb.isBuilt()) {
+      send({ type: 'error', msg: 'SQLite index not built yet. Use "Build Local Index" first.' });
+      return res.end();
+    }
+    const opts = { limit: 100 };
+    if (secFilter) opts.section = secFilter;
+    if (tag)       opts.tag     = tag;
+    if (author)    opts.author  = author;
+
+    // Run single search for relevance ordering, then group by section to stream progress
+    const allResults = communityDb.search(q, opts);
+    const bySection = {};
+    for (const r of allResults) {
+      if (!bySection[r.section]) bySection[r.section] = [];
+      bySection[r.section].push(r);
+    }
+    const stats = communityDb.getSectionStats();
+    const allSections = secFilter ? stats.filter(s => s.section === secFilter) : stats;
+
+    send({ type: 'start', total: allSections.length });
+    for (let i = 0; i < allSections.length; i++) {
+      const sec = allSections[i];
+      const results = bySection[sec.section] || [];
+      send({ type: 'progress', section: sec.section, idx: i + 1, total: allSections.length });
+      if (results.length) send({ type: 'results', results, section: sec.section });
+    }
+    send({ type: 'done', total: allResults.length });
+  } catch (e) {
+    send({ type: 'error', msg: e.message });
+  }
+  try { res.end(); } catch {}
+});
 
 // ── Redirect bare softwares paths → /files/ (backwards-compat with PS server) ─
 
@@ -1378,6 +1844,147 @@ app.use((req, res, next) => {
     }
   } catch (_) {}
   next();
+});
+
+// ── LLM / RAG ─────────────────────────────────────────────────────────────────
+
+const LLM_CONFIG_FILE = path.join(SCRIPT_DIR, 'llm-config.json');
+
+function loadLLMConfig() {
+  try { if (fs.existsSync(LLM_CONFIG_FILE)) return JSON.parse(fs.readFileSync(LLM_CONFIG_FILE, 'utf8')); }
+  catch {}
+  return {
+    provider: 'ollama',
+    ollama: { host: 'http://localhost:11434', model: '' },
+    systemPrompt: 'You are a helpful expert on ELO DMS. Answer questions based exclusively on the provided community articles. Be concise and cite the relevant article titles.',
+    userPromptTemplate: 'Question: {query}\n\nRelevant community articles:\n{context}\n\nAnswer:',
+    contextMode: 'excerpts',
+    maxResults: 8,
+    maxContextLength: 6000,
+  };
+}
+
+app.get('/api/llm/config', (req, res) => res.json(loadLLMConfig()));
+
+app.post('/api/llm/config', (req, res) => {
+  try {
+    const cur = loadLLMConfig();
+    const upd = { ...cur, ...req.body };
+    if (req.body.ollama) upd.ollama = { ...cur.ollama, ...req.body.ollama };
+    fs.writeFileSync(LLM_CONFIG_FILE, JSON.stringify(upd, null, 2), 'utf8');
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: dbErrMsg(e) }); }
+});
+
+// GET /api/llm/status — check if Ollama (or configured LLM) is reachable
+app.get('/api/llm/status', async (req, res) => {
+  const cfg  = loadLLMConfig();
+  const out  = { provider: cfg.provider || 'ollama', model: cfg.ollama?.model || '', active: false, models: [] };
+  const host = cfg.ollama?.host || 'http://localhost:11434';
+  try {
+    const parsed = new URL(host + '/api/tags');
+    const mod    = require(parsed.protocol === 'https:' ? 'https' : 'http');
+    await new Promise((resolve) => {
+      const req = mod.get(parsed.href, { timeout: 2000 }, r => {
+        let data = '';
+        r.on('data', d => data += d);
+        r.on('end', () => {
+          try {
+            const j = JSON.parse(data);
+            out.active = true;
+            out.models = (j.models || []).map(m => m.name || m.model || '').filter(Boolean);
+          } catch {}
+          resolve();
+        });
+      });
+      req.on('error', resolve);
+      req.on('timeout', () => { req.destroy(); resolve(); });
+    });
+  } catch {}
+  res.json(out);
+});
+
+// POST /api/llm/ask — RAG query, SSE streaming
+app.post('/api/llm/ask', async (req, res) => {
+  const { query = '', results = [], contextMode } = req.body;
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.flushHeaders();
+  const send = d => { try { res.write(`data: ${JSON.stringify(d)}\n\n`); } catch {} };
+
+  const cfg   = loadLLMConfig();
+  const model = cfg.ollama?.model;
+  if (!model) { send({ type: 'error', msg: 'No model configured — set one in LLM settings.' }); return res.end(); }
+
+  const mode    = contextMode || cfg.contextMode || 'excerpts';
+  const maxLen  = cfg.maxContextLength || 6000;
+  const usedRes = results.slice(0, cfg.maxResults || 8);
+
+  // Build context string
+  let context = '';
+  for (const r of usedRes) {
+    let snippet = '';
+    if (mode === 'full' && r.section && r.dir) {
+      try {
+        const mp = path.join(COMMUNITY_DIR, r.section, r.dir, 'article.md');
+        if (fs.existsSync(mp)) {
+          snippet = fs.readFileSync(mp, 'utf8')
+            .replace(/^---[\s\S]*?---\n?/, '').replace(/^#\s+.*\n?/, '')
+            .replace(/\n---\n\n## Antworten[\s\S]*$/, '').trim().slice(0, 1800);
+        }
+      } catch {}
+    }
+    if (!snippet) snippet = r.excerpt || '';
+    if (!snippet) continue;
+    const entry = `\n\n[${r.title || '?'} — ${r.section || ''}, ${r.date || ''}]\n${snippet}`;
+    if (context.length + entry.length > maxLen) break;
+    context += entry;
+  }
+
+  if (!context.trim()) { send({ type: 'error', msg: 'No context available — run a search first.' }); return res.end(); }
+
+  const systemPrompt = cfg.systemPrompt || 'You are an ELO DMS expert.';
+  const userPrompt   = (cfg.userPromptTemplate || 'Question: {query}\n\nArticles:\n{context}\n\nAnswer:')
+    .replace('{query}', query).replace('{context}', context.trim());
+
+  send({ type: 'start', model, articles: usedRes.length });
+
+  try {
+    const host   = cfg.ollama?.host || 'http://localhost:11434';
+    const parsed = new URL(host + '/api/chat');
+    const body   = JSON.stringify({
+      model,
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+      stream: true,
+    });
+    const mod = require(parsed.protocol === 'https:' ? 'https' : 'http');
+    await new Promise((resolve, reject) => {
+      const r = mod.request({ hostname: parsed.hostname, port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+        path: parsed.pathname, method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+        timeout: 120000,
+      }, ollamaRes => {
+        let buf = '';
+        ollamaRes.on('data', chunk => {
+          buf += chunk.toString();
+          const lines = buf.split('\n'); buf = lines.pop();
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const msg = JSON.parse(line);
+              if (msg.message?.content) send({ type: 'token', text: msg.message.content });
+              if (msg.done) { send({ type: 'done' }); resolve(); }
+            } catch {}
+          }
+        });
+        ollamaRes.on('end', resolve);
+        ollamaRes.on('error', reject);
+      });
+      r.on('error', reject);
+      r.write(body); r.end();
+    });
+  } catch (e) { send({ type: 'error', msg: 'Ollama error: ' + e.message }); }
+  res.end();
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────

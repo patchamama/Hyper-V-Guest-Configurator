@@ -1,0 +1,12 @@
+{
+  "provider": "ollama",
+  "ollama": {
+    "host": "http://localhost:11434",
+    "model": "deepseek-r1:1.5b"
+  },
+  "systemPrompt": "You are a helpful expert on ELO DMS. Answer questions based exclusively on the provided community articles. Be concise and cite the relevant article titles.",
+  "userPromptTemplate": "Question: {query}\n\nRelevant community articles:\n{context}\n\nAnswer:",
+  "contextMode": "excerpts",
+  "maxResults": 8,
+  "maxContextLength": 6000
+}

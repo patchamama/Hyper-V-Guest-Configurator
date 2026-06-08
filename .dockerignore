@@ -1,0 +1,7 @@
+node_modules/
+.git/
+.claude/
+pghba-backups/
+ELO_XC_Installator/
+community - Kopie/
+*.log

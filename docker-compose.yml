@@ -1,0 +1,20 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persistent data — survives container restart/recreate
+      - ./community:/app/community
+      - ./softwares:/app/softwares
+      # Editable config files (edit on host, container reads in real time)
+      - ./llm-config.json:/app/llm-config.json
+      - ./community-config.json:/app/community-config.json
+      - ./winget.json:/app/winget.json
+      - ./tools.json:/app/tools.json
+      - ./port-services.json:/app/port-services.json
+      - ./ollama-models.json:/app/ollama-models.json
+      - ./downloads.txt:/app/downloads.txt
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
