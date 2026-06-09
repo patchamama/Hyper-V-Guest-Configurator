@@ -957,6 +957,11 @@ const DB = {
     };
     // Auto-detect databases on the selected target
     this.detectDatabases();
+    // Auto-load smart schema from localStorage
+    try {
+      const _ss = localStorage.getItem('db-smart-schema');
+      if (_ss) { const _sc = JSON.parse(_ss); if (_sc.entities || _sc.smartTemplates) { this._smartSchema = _sc; setTimeout(() => DB._renderSmartSection(), 100); } }
+    } catch {}
   },
 
   async detectDatabases() {
@@ -1092,7 +1097,9 @@ const DB = {
       const databases = r.databases || [];
       // Show databases immediately with placeholder counts, then fetch real counts in background
       const renderOpts = (counts = {}) => {
-        dbSel.innerHTML = databases.map(d => {
+        const hasCounts = Object.keys(counts).length > 0;
+        const dbs = hasCounts ? [...databases].sort((a, b) => (counts[b] || 0) - (counts[a] || 0)) : databases;
+        dbSel.innerHTML = dbs.map(d => {
           const cnt = counts[d];
           const label = cnt == null ? `${d} (…)` : `${d} (${cnt} tables)`;
           return `<option value="${d}" ${d === actualDb ? 'selected' : ''}>${label}</option>`;
@@ -1233,6 +1240,9 @@ const DB = {
       const opt = Array.from(dbSel.options).find(o => o.value === database);
       if (opt && !opt.textContent.includes('(')) opt.textContent = `${database} (${tableData.length} tables)`;
     }
+    // Load smart template counts now that we have a live connection
+    // (schema may have been loaded from localStorage before conn was available)
+    if (this._smartSchema) setTimeout(() => this._loadSmartCounts(), 0);
   },
 
   async selectTable(table) {
@@ -1411,6 +1421,14 @@ const DB = {
   _aiSchema: null,
   _aiPromptText: '',
   _smartSchema: null,
+  _smartCounts: {},
+  _smartBaseSql: '',
+  _smartListboxFilters: {},
+  _hiddenCols: null,
+  _deepRelSearchAbort: false,
+  _relQBState: {},
+  _relQBGroup: null,
+  _autoLbState: null,
 
   async generateAIPrompt() {
     if (!this.conn) { alert('Connect to a database first.'); return; }
@@ -1483,6 +1501,7 @@ const DB = {
           const schema = JSON.parse(ev.target.result);
           if (!schema.entities && !schema.smartTemplates) throw new Error('Invalid schema format');
           this._smartSchema = schema;
+          try { localStorage.setItem('db-smart-schema', JSON.stringify(schema)); } catch {}
           this._renderSmartSection();
         } catch (err) { alert('Invalid schema JSON: ' + err.message); }
       };
@@ -1491,37 +1510,972 @@ const DB = {
     input.click();
   },
 
+  // ── Normalize relationship objects from any AI-generated format ─────────────
+  _normRel(r) {
+    if (!r) return null;
+    // Already correct: { from: { table, column }, to: { table, column } }
+    if (r.from?.table && r.to?.table) return r;
+    // Flat: { fromTable, fromColumn, toTable, toColumn }
+    if (r.fromTable) return { ...r, from: { table: r.fromTable, column: r.fromColumn || r.fromCol }, to: { table: r.toTable, column: r.toColumn || r.toPk } };
+    // Dot-string: { from: "table.col", to: "table.col" }
+    if (typeof r.from === 'string' && r.from.includes('.')) {
+      const [ft, fc] = r.from.split('.'); const [tt, tc] = (r.to || '').split('.');
+      return { ...r, from: { table: ft, column: fc }, to: { table: tt, column: tc } };
+    }
+    // source/target or child/parent variants
+    const a = r.source || r.child || r.childTable && { table: r.childTable, column: r.childColumn };
+    const b = r.target || r.parent || r.parentTable && { table: r.parentTable, column: r.parentColumn };
+    if (a?.table || b?.table) return { ...r, from: a || {}, to: b || {} };
+    return null;
+  },
+
   _renderSmartSection() {
     const sec = document.getElementById('db-smart-section');
     if (!sec || !this._smartSchema) return;
-    const tpls = this._smartSchema.smartTemplates || [];
-    const rels = this._smartSchema.relationships || [];
-    const entities = Object.keys(this._smartSchema.entities || {});
-    let html = `<div style="border-top:1px solid var(--border);padding-top:14px;margin-top:14px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-        <strong style="font-size:13px">&#129302; Smart Queries</strong>
-        <span style="font-size:11px;color:var(--muted)">${entities.length} entities &middot; ${rels.length} relationships &middot; ${tpls.length} templates</span>
-        <button class="hbtn" style="font-size:11px;padding:2px 8px;margin-left:auto" onclick="DB._smartSchema=null;document.getElementById('db-smart-section').innerHTML=''">&#x2715; Unload</button>
-      </div>`;
+    const tpls  = this._smartSchema.smartTemplates || [];
+    const rels  = (this._smartSchema.relationships || []).map(r => this._normRel(r)).filter(Boolean);
+    const ents  = Object.keys(this._smartSchema.entities || {});
+    const cats  = [...new Set(tpls.map(t => t.category).filter(Boolean))];
+
+    let h = `<div style="border-top:1px solid var(--border);padding-top:14px;margin-top:14px">`;
+    h += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <strong style="font-size:13px">&#129302; Smart Queries</strong>
+      <span style="font-size:11px;color:var(--muted)">${ents.length} entities &middot; ${rels.length} relationships &middot; ${tpls.length} templates</span>
+      <button class="hbtn" style="font-size:11px;padding:2px 8px" onclick="DB._deepRelSearch()" title="Deep scan: verify FK relationships via SQL queries">&#128269; Deep Scan</button>
+      <button class="hbtn" style="font-size:11px;padding:2px 8px;margin-left:auto" onclick="DB._smartSchema=null;localStorage.removeItem('db-smart-schema');document.getElementById('db-smart-section').innerHTML=''">&#x2715; Unload</button>
+    </div>`;
+
     if (tpls.length) {
-      html += `<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px">
-        <div class="fg" style="margin-bottom:0;flex:1;min-width:200px">
+      h += `<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:4px">
+        <div class="fg" style="margin-bottom:0;min-width:130px">
+          <label class="fl">Search</label>
+          <div style="display:flex;gap:3px">
+            <input type="text" id="db-smart-filter" placeholder="Filter templates &amp; SQL…"
+              style="font-size:11px;padding:5px 9px;background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);flex:1;outline:none"
+              oninput="DB._filterSmartTemplates()" onkeydown="if(event.key==='Enter')DB._filterSmartTemplates()">
+            <button class="hbtn" title="Apply filter" onclick="DB._filterSmartTemplates()"
+              style="padding:4px 8px;font-size:13px;border-radius:6px;border:1px solid var(--border);background:var(--sur2)">&#128269;</button>
+          </div>
+        </div>
+        ${cats.length ? `<div class="fg" style="margin-bottom:0;min-width:110px">
+          <label class="fl">Category</label>
+          <select id="db-smart-cat" onchange="DB._filterSmartTemplates()"
+            style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;padding:5px 9px;width:100%;outline:none">
+            <option value="">All</option>
+            ${cats.map(c => `<option value="${c}">${c}</option>`).join('')}
+          </select>
+        </div>` : ''}
+        <div class="fg" style="margin-bottom:0;flex:1;min-width:180px">
           <label class="fl">Template</label>
-          <select id="db-smart-tpl" style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 10px;width:100%">
-            ${tpls.map(t => `<option value="${t.id}" title="${t.description || ''}">${t.label}${t.category ? ' ['+t.category+']' : ''}</option>`).join('')}
+          <select id="db-smart-tpl" onchange="DB._onSmartTplChange()"
+            style="background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 10px;width:100%;outline:none">
+            ${tpls.map(t => `<option value="${t.id}" title="${t.description||''}">${t.label}${t.category?' ['+t.category+']':''}</option>`).join('')}
           </select>
         </div>
         <button class="btn btn-g" style="padding:6px 14px;font-size:12px" onclick="DB._runSmartTemplate()">&#9654; Run</button>
+      </div>
+      <div style="margin-bottom:8px">
+        <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:pointer;user-select:none">
+          <input type="checkbox" id="db-smart-show-empty" onchange="DB._filterSmartTemplates()" style="cursor:pointer">
+          Show empty templates
+        </label>
       </div>`;
+      h += `<div id="db-smart-params" style="display:none;margin-bottom:8px;padding:10px 12px;background:var(--sur2);border:1px solid var(--border);border-radius:8px"></div>`;
+      h += `<div id="db-smart-desc" style="font-size:11px;color:var(--muted);margin-bottom:6px;min-height:16px"></div>`;
     }
+
+    // ── Relationship diagram ────────────────────────────────────────────────
     if (rels.length) {
-      html += `<details style="margin-top:6px"><summary style="font-size:11px;color:var(--muted);cursor:pointer">&#9658; Relationships (${rels.length})</summary>
-        <div style="margin-top:8px;font-size:11px;font-family:var(--mono);line-height:2;background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;overflow:auto;max-height:160px">
-          ${rels.map(r => `<div><span style="color:var(--accent)">${r.from?.table}.${r.from?.column}</span> &#8594; <span style="color:var(--green)">${r.to?.table}.${r.to?.column}</span> <span style="color:var(--muted)">${r.type || ''} ${r.confidence==='inferred'?'(inferred)':''}</span></div>`).join('')}
-        </div></details>`;
+      // Build parent → children map
+      const childOf = {};
+      rels.forEach(r => {
+        const p = r.to?.table; if (!p) return;
+        if (!childOf[p]) childOf[p] = [];
+        childOf[p].push({ child: r.from?.table, fk: r.from?.column, pk: r.to?.column, conf: r.confidence });
+      });
+      // Left panel: HTML tree with clickable table names
+      let treeHtml = '';
+      Object.keys(childOf).sort().forEach(parent => {
+        treeHtml += `<div style="margin-bottom:7px">`;
+        treeHtml += `<div><span style="cursor:pointer;font-weight:600;color:var(--text);text-decoration:underline dotted" onclick="DB._showRelDetailNewGroup('${parent}')" title="Show detail">${parent}</span></div>`;
+        childOf[parent].forEach((c, i) => {
+          const last = i === childOf[parent].length - 1;
+          const mark = c.conf === 'explicit' ? ' <span style="color:var(--green)">&#10003;</span>' : c.conf === 'inferred' ? ' <span style="opacity:.5">?</span>' : '';
+          treeHtml += `<div style="margin-left:12px;color:var(--muted)">${last ? '&#9492;' : '&#9500;'}&#9472;&#8594; <span style="cursor:pointer;color:var(--accent);text-decoration:underline dotted" onclick="DB._showRelDetailNewGroup('${c.child}')">${c.child}</span>.${c.fk} &#8594; .${c.pk}${mark}</div>`;
+        });
+        treeHtml += `</div>`;
+      });
+      // Right panel initial content: full flat list
+      const initFlatList = rels.map(r =>
+        `<div style="margin-bottom:2px"><span style="color:var(--accent);cursor:pointer;text-decoration:underline dotted" onclick="DB._showRelDetail('${r.from?.table}')">${r.from?.table}.<b>${r.from?.column}</b></span>`
+        + ` &#8594; <span style="color:var(--green);cursor:pointer;text-decoration:underline dotted" onclick="DB._showRelDetail('${r.to?.table}')">${r.to?.table}.<b>${r.to?.column}</b></span>`
+        + ` <span style="color:var(--muted);font-size:10px">${r.confidence==='inferred'?'(inferred)':r.confidence==='explicit'?'(explicit)':''}</span></div>`
+      ).join('');
+      // Manual rel editor selects
+      const _entKeys = Object.keys(this._smartSchema.entities || {});
+      const _ss = `background:var(--sur);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;padding:4px 7px;width:100%;outline:none`;
+      const _tblOpts = _entKeys.map(t=>`<option value="${t}">${t}</option>`).join('');
+      // Table reference HTML — clickable fields + FK/PK annotations + IDs for SVG lines
+      const _rels2 = (DB._smartSchema.relationships || []).map(r => DB._normRel(r)).filter(Boolean);
+      const _fkMap = {}, _pkMap = {};
+      _rels2.forEach(r => {
+        _fkMap[`${r.from.table}.${r.from.column}`] = { toTable: r.to.table, toCol: r.to.column };
+        const pk = `${r.to.table}.${r.to.column}`;
+        if (!_pkMap[pk]) _pkMap[pk] = [];
+        _pkMap[pk].push({ fromTable: r.from.table, fromCol: r.from.column });
+      });
+      const _tblRefSafe = s => s.replace(/[^a-zA-Z0-9]/g, '_');
+      const _tblRef = _entKeys.map(tbl => {
+        const _c2 = DB._normCols(DB._smartSchema.entities[tbl]?.columns);
+        const safeT = tbl.replace(/'/g, "\\'");
+        const colsHtml = _c2.map(c => {
+          const fkKey = `${tbl}.${c.name}`, pkKey = `${tbl}.${c.name}`;
+          const isFk  = !!_fkMap[fkKey], isPkRef = !!_pkMap[pkKey];
+          const clr   = c.isPk ? 'var(--accent)' : isFk ? '#ff9f4a' : isPkRef ? 'var(--green)' : 'var(--muted)';
+          const safeC = c.name.replace(/'/g, "\\'");
+          let ann = '';
+          if (isFk)    ann += ` <span style="opacity:.55;font-size:9px;color:#ff9f4a">(FK&#8594;${_fkMap[fkKey].toTable}.${_fkMap[fkKey].toCol})</span>`;
+          if (isPkRef) ann += _pkMap[pkKey].map(r => ` <span style="opacity:.55;font-size:9px;color:var(--green)">(&#8592;${r.fromTable}.${r.fromCol})</span>`).join('');
+          return `<div id="db-trf-${_tblRefSafe(tbl)}__${_tblRefSafe(c.name)}" style="color:${clr};cursor:pointer;padding:1px 2px;border-radius:2px;line-height:1.6" onclick="DB._relDetailFieldClick('${safeT}','${safeC}')" title="Add to Query Builder: ${safeT}.${safeC}">${c.name}${c.isPk?' &#9733;':isFk?' &#8599;':isPkRef?' &#8595;':''} <span style="opacity:.5">[${c.type||'?'}]</span>${ann}</div>`;
+        }).join('');
+        return `<div data-table="${tbl}" style="font-size:10px;font-family:var(--mono);background:var(--sur);border:1px solid var(--border);border-radius:4px;padding:5px 8px;min-width:130px"><div style="font-weight:600;margin-bottom:3px;color:var(--text)">${tbl}</div>${colsHtml}</div>`;
+      }).join('');
+
+      h += `<details style="margin-top:6px">
+        <summary style="font-size:11px;color:var(--muted);cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:4px">
+          &#9658; Relationships (${rels.length}) &nbsp;<span style="font-size:10px">&#10003; explicit / ? inferred</span>
+        </summary>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <div style="font-size:11px;font-family:var(--mono);line-height:1.9;background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;overflow:auto;max-height:280px;flex:1;min-width:200px">${treeHtml}</div>
+          <div id="db-rel-detail-pane" style="font-size:11px;font-family:var(--mono);line-height:2;background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;overflow:auto;max-height:280px;flex:1;min-width:200px">${initFlatList}</div>
+        </div>
+        <details style="margin-top:8px">
+          <summary style="font-size:11px;color:var(--muted);cursor:pointer;user-select:none;list-style:none;padding:4px 0">&#9658; Manual Relationship Editor &amp; Export</summary>
+          <div style="margin-top:8px;padding:10px 12px;background:var(--sur2);border:1px solid var(--border);border-radius:6px">
+            <div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
+              <div class="fg" style="margin-bottom:0;min-width:130px"><label class="fl">From table</label>
+                <select id="db-rel-from-tbl" onchange="DB._relFormLoadCols('from')" style="${_ss}"><option value="">— table —</option>${_tblOpts}</select></div>
+              <div class="fg" style="margin-bottom:0;min-width:130px"><label class="fl">FK column</label>
+                <select id="db-rel-from-col" style="${_ss}"><option value="">— select table —</option></select></div>
+              <span style="align-self:center;padding-bottom:2px;color:var(--muted);font-size:14px">&#8594;</span>
+              <div class="fg" style="margin-bottom:0;min-width:130px"><label class="fl">To table (PK side)</label>
+                <select id="db-rel-to-tbl" onchange="DB._relFormLoadCols('to')" style="${_ss}"><option value="">— table —</option>${_tblOpts}</select></div>
+              <div class="fg" style="margin-bottom:0;min-width:130px"><label class="fl">PK column</label>
+                <select id="db-rel-to-col" style="${_ss}"><option value="">— select table —</option></select></div>
+              <div class="fg" style="margin-bottom:0;min-width:90px"><label class="fl">Confidence</label>
+                <select id="db-rel-conf" style="${_ss}"><option value="explicit">explicit</option><option value="inferred">inferred</option></select></div>
+              <button class="btn btn-g" style="padding:5px 14px;font-size:11px" onclick="DB._addManualRel()">+ Add</button>
+              <button class="btn btn-o" style="padding:5px 12px;font-size:11px" onclick="DB._downloadSchemaAsJson()">&#8595; Export JSON</button>
+            </div>
+            <details style="margin-top:4px" ontoggle="if(this.open)setTimeout(()=>DB._drawTblRefLines(),80)"><summary style="font-size:11px;color:var(--muted);cursor:pointer;user-select:none;list-style:none">&#9658; Table &amp; column reference</summary>
+              <div id="db-tblref-panels" style="position:relative;display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;max-height:340px;overflow:auto;padding-bottom:4px" onscroll="DB._drawTblRefLines()">${_tblRef}
+                <svg id="db-tblref-svg" style="position:absolute;top:0;left:0;pointer-events:none;overflow:visible;width:0;height:0"></svg>
+              </div>
+            </details>
+          </div>
+        </details>
+      </details>`;
     }
-    html += `</div>`;
-    sec.innerHTML = html;
+
+    h += `<div id="db-rel-qb" style="display:none"></div>`;
+    h += `</div>`;
+    sec.innerHTML = h;
+    setTimeout(() => { DB._onSmartTplChange(); DB._loadSmartCounts(); }, 0);
+  },
+
+  _filterSmartTemplates() {
+    const filter    = (document.getElementById('db-smart-filter')?.value || '').toLowerCase();
+    const cat       = document.getElementById('db-smart-cat')?.value || '';
+    const showEmpty = document.getElementById('db-smart-show-empty')?.checked ?? false;
+    const sel       = document.getElementById('db-smart-tpl');
+    if (!sel || !this._smartSchema) return;
+    const shown = (this._smartSchema.smartTemplates || []).filter(t => {
+      if (cat && t.category !== cat) return false;
+      if (filter && !t.label.toLowerCase().includes(filter) &&
+          !(t.description || '').toLowerCase().includes(filter) &&
+          !(t.sql || '').toLowerCase().includes(filter)) return false;
+      if (!showEmpty) {
+        const cnt = this._smartCounts[t.id];
+        if (cnt === 0) return false;
+      }
+      return true;
+    });
+    sel.innerHTML = shown.map(t => {
+      const cnt = this._smartCounts[t.id];
+      const cntStr = (cnt !== undefined && cnt >= 0) ? ` (${cnt.toLocaleString()})` : '';
+      return `<option value="${t.id}" title="${t.description || ''}">${t.label}${cntStr}${t.category ? ' [' + t.category + ']' : ''}</option>`;
+    }).join('');
+    this._onSmartTplChange();
+  },
+
+  async _loadSmartCounts() {
+    if (!this.conn || !this._smartSchema) return;
+    const tpls = this._smartSchema.smartTemplates || [];
+    for (const tpl of tpls) {
+      try {
+        const r = await fetch('/api/db/query', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...this.conn, sql: this._buildCountSql(tpl.sql || '') })
+        }).then(res => res.json()).catch(() => ({ ok: false }));
+        if (r.ok && r.rows?.length) {
+          const row = r.rows[0];
+          this._smartCounts[tpl.id] = parseInt(row.__cnt ?? row['count(*)'] ?? row.count ?? 0, 10);
+        } else {
+          this._smartCounts[tpl.id] = -1;
+        }
+      } catch { this._smartCounts[tpl.id] = -1; }
+      this._filterSmartTemplates();
+    }
+  },
+
+  _buildCountSql(sql) {
+    // Drop only placeholder WHERE conditions (:param lines, ILIKE '%word%'), keeping
+    // fixed conditions (e.g. wfstatus = 1) so counts reflect what the template returns.
+    let s = this._cleanUnsubstituted(sql.trim(), false);
+    // Replace :params remaining outside the WHERE clause (SELECT/HAVING/...) with NULL
+    s = s.replace(/:([a-zA-Z_]\w*)/g, 'NULL');
+    // Strip ORDER BY / LIMIT / OFFSET from outer query
+    s = s.replace(/\bORDER\s+BY\b[\s\S]*$/i, '').trim();
+    s = s.replace(/\bLIMIT\s+\d+(\s*,\s*\d+)?\b/gi, '').replace(/\bOFFSET\s+\d+\b/gi, '').trim();
+    return `SELECT COUNT(*) AS __cnt FROM (${s.trim()}) AS __csub`;
+  },
+
+  _stripWhere(sql) {
+    let s = sql.trim();
+    // Find outermost WHERE using depth tracking (skip WHERE inside subqueries)
+    let depth = 0, wi = -1;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === '(') { depth++; continue; }
+      if (ch === ')') { depth--; continue; }
+      if (depth === 0 && i + 5 <= s.length && /^WHERE\b/i.test(s.slice(i))) { wi = i; break; }
+    }
+    if (wi !== -1) {
+      const after = s.slice(wi);
+      const nc = after.search(/\b(?:ORDER\s+BY|GROUP\s+BY|HAVING|LIMIT|OFFSET)\b/i);
+      s = nc !== -1 ? s.slice(0, wi) + after.slice(nc) : s.slice(0, wi);
+    }
+    // Replace any :params that remain outside WHERE (e.g. in SELECT/ORDER BY) with NULL
+    s = s.replace(/:([a-zA-Z_]\w*)/g, 'NULL');
+    return s.trim();
+  },
+
+  // Parse the SELECT list of a template into [{ expr, alias, col, complex }].
+  // 'c.code AS "Company Code"' → { expr:'c.code', alias:'Company Code', col:'code' }
+  _parseSelectFields(sql) {
+    const m = (sql || '').match(/SELECT\s+(?:DISTINCT\s+)?([\s\S]+?)\s+FROM\b/i);
+    if (!m) return [];
+    const parts = []; let depth = 0, cur = '';
+    for (const ch of m[1]) {
+      if (ch === '(') { depth++; cur += ch; }
+      else if (ch === ')') { depth--; cur += ch; }
+      else if (ch === ',' && depth === 0) { parts.push(cur.trim()); cur = ''; }
+      else cur += ch;
+    }
+    if (cur.trim()) parts.push(cur.trim());
+    return parts.filter(Boolean).map(part => {
+      const am = part.match(/^([\s\S]+?)\s+AS\s+(?:"([^"]+)"|(\w+))\s*$/i);
+      const expr = (am ? am[1] : part).trim();
+      const col = expr.split('.').pop().replace(/"/g, '');
+      const alias = am ? (am[2] || am[3]) : col;
+      const complex = /[(*]/.test(expr) || /\bCASE\b/i.test(expr);
+      return { expr, alias, col, complex };
+    });
+  },
+
+  // Distinct values of two template SELECT fields, run against the template's own
+  // FROM/JOIN clause (fixed WHERE conditions kept, placeholder conditions dropped).
+  _buildTplDistinctSql(tplSql, keyExpr, dispExpr) {
+    let s = this._cleanUnsubstituted((tplSql || '').trim(), false);
+    s = s.replace(/:([a-zA-Z_]\w*)/g, 'NULL');
+    s = s.replace(/\bORDER\s+BY\b[\s\S]*$/i, '').trim();
+    s = s.replace(/\bGROUP\s+BY\b[\s\S]*$/i, '').trim();
+    s = s.replace(/\bLIMIT\s+\d+(\s*,\s*\d+)?\b/gi, '').replace(/\bOFFSET\s+\d+\b/gi, '').trim();
+    // Find the top-level FROM (skip subqueries in the SELECT list, e.g. "valid_from")
+    let depth = 0, fi = -1;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === '(') { depth++; continue; }
+      if (ch === ')') { depth--; continue; }
+      if (depth === 0 && (i === 0 || !/\w/.test(s[i - 1])) && /^FROM\b/i.test(s.slice(i))) { fi = i; break; }
+    }
+    if (fi === -1) return null;
+    return `SELECT DISTINCT ${keyExpr} AS __k, ${dispExpr} AS __d\n${s.slice(fi)}\nORDER BY 2 LIMIT 300`;
+  },
+
+  _normCols(cols) {
+    if (!cols) return [];
+    if (Array.isArray(cols)) return cols;
+    // Object format from _buildSchemaJson: { col_name: { type, pk, nullable, ... } }
+    return Object.entries(cols).map(([name, def]) => ({
+      name,
+      type: def.type || '',
+      isPk: !!(def.isPk || def.pk),
+      nullable: def.nullable
+    }));
+  },
+
+  _getJoinColors(sql) {
+    const palette = ['#5b9cf6', '#52c87c', '#ff9f4a', '#c877f7', '#f76b6b', '#ffd700', '#00bcd4', '#ff7eb3'];
+    const aliasMap = {};
+    let idx = 0;
+    const re = /(?:FROM|JOIN)\s+(?:"?(\w+)"?)\s+(?:(?:AS)\s+)?(?:"?(\w+)"?)?/gi;
+    let m;
+    while ((m = re.exec(sql)) !== null) {
+      const tbl = m[1];
+      const alias = (m[2] && !/^(?:ON|WHERE|SET|LEFT|RIGHT|INNER|OUTER|FULL|CROSS)$/i.test(m[2])) ? m[2] : m[1];
+      if (!aliasMap[alias]) {
+        const color = palette[idx++ % palette.length];
+        aliasMap[alias] = color;
+        if (alias !== tbl) aliasMap[tbl] = color;
+      }
+    }
+    const fieldColors = {};
+    const selM = sql.match(/SELECT\s+([\s\S]+?)\s+FROM\b/i);
+    if (!selM) return fieldColors;
+    const parts = []; let depth = 0, cur = '';
+    for (const ch of selM[1]) {
+      if (ch === '(') { depth++; cur += ch; }
+      else if (ch === ')') { depth--; cur += ch; }
+      else if (ch === ',' && depth === 0) { parts.push(cur.trim()); cur = ''; }
+      else cur += ch;
+    }
+    if (cur.trim()) parts.push(cur.trim());
+    for (const part of parts) {
+      const am = part.match(/^(\w+)\.(\w+)(?:\s+(?:AS\s+)?(\w+))?$/i);
+      if (am) {
+        const resultKey = (am[3] || am[2]).toLowerCase();
+        if (aliasMap[am[1]]) fieldColors[resultKey] = aliasMap[am[1]];
+      }
+    }
+    return fieldColors;
+  },
+
+  async _renderSmartResult(rows, fields, tpl, sql) {
+    const out = document.getElementById('db-query-out');
+    if (!out) return;
+    if (!rows?.length) {
+      out.innerHTML = '<span style="color:var(--muted)">Query completed — no rows returned.</span>';
+      return;
+    }
+    const isJoin = /\bJOIN\b/i.test(sql);
+    const fColors = isJoin ? this._getJoinColors(sql) : {};
+    const thBase = 'padding:4px 8px;text-align:left;white-space:nowrap;font-size:11px;border-bottom:1px solid var(--border)';
+    const tdStyle = 'padding:3px 8px;font-size:11px;font-family:var(--mono);border-bottom:1px solid var(--sur2);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis';
+    this._hiddenCols = new Set();
+    const hdr = `<tr>${fields.map((f, i) => {
+      const c = fColors[f.toLowerCase()];
+      return `<th data-col="${i}" style="${thBase}${c ? ';color:' + c : ''}">${f}</th>`;
+    }).join('')}</tr>`;
+    const rowsHtml = rows.slice(0, 500).map(row =>
+      `<tr>${fields.map((f, i) => `<td data-col="${i}" style="${tdStyle}">${row[f] ?? ''}</td>`).join('')}</tr>`
+    ).join('');
+    const colToggles = fields.map((f, i) => `<button id="db-cv-${i}" class="hbtn" style="font-size:10px;padding:2px 6px;border-radius:3px" onclick="DB._toggleColumn(${i})" title="Toggle column">${f}</button>`).join('');
+    out.innerHTML = `<div style="margin-bottom:5px;display:flex;flex-wrap:wrap;gap:3px;align-items:center"><span style="font-size:10px;color:var(--muted);margin-right:2px">Cols:</span>${colToggles}</div><div style="overflow:auto;max-height:320px"><table style="border-collapse:collapse">${hdr}${rowsHtml}</table></div><div style="color:var(--muted);font-size:11px;margin-top:4px">${rows.length} row(s)${rows.length > 500 ? ' (limited to 500)' : ''}</div>`;
+
+    if (!this.conn) return;
+    const textFields = fields.filter(f => /\b(?:name|description|desc)\b/i.test(f));
+    if (!textFields.length) return;
+
+    const lbWrap = document.createElement('div');
+    lbWrap.style.cssText = 'margin-top:10px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start';
+    out.appendChild(lbWrap);
+
+    const baseSql = this._stripWhere(this._smartBaseSql || sql)
+      .replace(/\bLIMIT\s+\d+(\s*,\s*\d+)?\b/gi, '').replace(/\bOFFSET\s+\d+\b/gi, '').trim();
+
+    for (const f of textFields) {
+      const dSql = `SELECT DISTINCT "${f}" FROM (${baseSql}) AS __dq WHERE "${f}" IS NOT NULL AND "${f}" <> '' ORDER BY "${f}" LIMIT 200`;
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'min-width:150px;max-width:220px';
+      const curVal = this._smartListboxFilters[f] || '';
+      wrap.innerHTML = `<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px">${f}</div><select size="6" data-field="${f}" style="width:100%;font-size:11px;background:var(--sur2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:3px" onchange="DB._onSmartListboxChange('${f}',this.value)"><option value="">Loading…</option></select>`;
+      lbWrap.appendChild(wrap);
+      const fieldRef = f;
+      fetch('/api/db/query', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...this.conn, sql: dSql })
+      }).then(r => r.json()).then(r => {
+        const s = wrap.querySelector('select');
+        if (!s) return;
+        if (!r.ok || !r.rows?.length) { s.innerHTML = '<option value="">No values</option>'; return; }
+        s.innerHTML = `<option value="">— all —</option>` + r.rows.map(row => {
+          const v = String(row[fieldRef] ?? '');
+          return `<option value="${v.replace(/"/g, '&quot;').replace(/'/g, '&#39;')}"${v === curVal ? ' selected' : ''}>${v}</option>`;
+        }).join('');
+      }).catch(() => { const s = wrap.querySelector('select'); if (s) s.innerHTML = '<option value="">Error</option>'; });
+    }
+  },
+
+  _onSmartListboxChange(field, value) {
+    this._smartListboxFilters[field] = value;
+    let sql = this._smartBaseSql;
+    const conditions = Object.entries(this._smartListboxFilters)
+      .filter(([, v]) => v)
+      .map(([f, v]) => `"${f}" = '${v.replace(/'/g, "''")}'`);
+    if (conditions.length) {
+      const hasWhere = /\bWHERE\b/i.test(sql);
+      const cond = conditions.join(' AND ');
+      const insertAt = sql.search(/\b(?:ORDER\s+BY|GROUP\s+BY|LIMIT|OFFSET)\b/i);
+      if (insertAt !== -1) {
+        sql = sql.slice(0, insertAt) + (hasWhere ? ' AND ' : ' WHERE ') + cond + ' ' + sql.slice(insertAt);
+      } else {
+        sql += (hasWhere ? ' AND ' : ' WHERE ') + cond;
+      }
+    }
+    const selEl = document.getElementById('db-smart-tpl');
+    const tpl = selEl && this._smartSchema ? (this._smartSchema.smartTemplates || []).find(t => t.id === selEl.value) : null;
+    this._executeSmartSql(sql, tpl);
+  },
+
+  async _executeSmartSql(sql, tpl) {
+    if (!this.conn) return;
+    const out = document.getElementById('db-query-out');
+    if (out) out.innerHTML = '<span style="color:var(--muted)">Executing…</span>';
+    const r = await fetch('/api/db/query', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...this.conn, sql })
+    }).then(res => res.json()).catch(e => ({ ok: false, error: e.message }));
+    if (!r.ok) { if (out) out.innerHTML = `<span style="color:var(--red)">✗ ${r.error}</span>`; return; }
+    const fields = r.fields?.length ? r.fields : Object.keys(r.rows?.[0] || {});
+    this.lastRows = r.rows || []; this.lastFields = fields;
+    await this._renderSmartResult(r.rows || [], fields, tpl, sql);
+  },
+
+  _onSmartTplChange() {
+    const sel    = document.getElementById('db-smart-tpl');
+    const descEl = document.getElementById('db-smart-desc');
+    const parEl  = document.getElementById('db-smart-params');
+    if (!sel || !this._smartSchema) return;
+    const tpl = (this._smartSchema.smartTemplates || []).find(t => t.id === sel.value);
+    if (!tpl) { if (descEl) descEl.textContent = ''; if (parEl) parEl.style.display = 'none'; return; }
+    if (descEl) descEl.textContent = tpl.description || '';
+
+    // Detect :param_name placeholders in SQL
+    const sqlNames = new Set();
+    for (const m of (tpl.sql || '').matchAll(/:([a-zA-Z_]\w*)/g)) sqlNames.add(m[1]);
+    const definedParams = tpl.params || [];
+    const allNames = [...new Set([...sqlNames, ...definedParams.map(p => p.name)])];
+
+    if (!parEl) return;
+
+    const _iS = `background:var(--sur);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:5px 9px;width:100%;outline:none`;
+    const _lS = `background:var(--sur);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:10px;padding:3px 6px;width:100%;outline:none;margin-top:3px`;
+    const _descKw = ['desc','doc','detail','comment','label','key','name','title'];
+
+    // Detect if we need an auto-listbox (no select-type params with explicit source)
+    const hasSelectSrc = definedParams.some(p => p.type === 'select' && p.source);
+    let autoLb = null;
+    this._autoLbState = null;
+    if (!hasSelectSrc) {
+      const autoTable = (tpl.sql || '').match(/\bFROM\s+["'`]?(\w+)["'`]?/i)?.[1];
+      const firstTxtParam = allNames.find(n => { const d = definedParams.find(p=>p.name===n)||{}; return d.type!=='select'||!d.source; });
+      // onchgJs: store selected value in data-val for _runSmartTemplate (always injects WHERE)
+      const onchgJs = `if(this.value!==''&&this.value!==undefined){this.dataset.val=this.value;}else{this.dataset.val='';}`;
+      // Prefer the first+second fields of the template's own SELECT list when the
+      // second one looks like a dictionary-description column (desc/detail/value/name/…)
+      const _dictKw = ['desc', 'detail', 'value', 'name', 'label', 'title', 'comment', 'text', 'info', 'bezeichnung'];
+      const [f1, f2] = this._parseSelectFields(tpl.sql || '');
+      const isDictCol = f => !!f && !f.complex && _dictKw.some(kw => f.alias.toLowerCase().includes(kw) || f.col.toLowerCase().includes(kw));
+      if (f1 && !f1.complex && isDictCol(f2)) {
+        autoLb = { mode: 'tpl', table: autoTable || '', key: f1.expr, dispExpr: f2.expr,
+                   tplSql: tpl.sql, colLabel: `${f1.alias} / ${f2.alias}`, onchgJs };
+        this._autoLbState = { table: autoTable, key: f1.expr, firstTxtParam: firstTxtParam || null };
+      } else if (autoTable && this._smartSchema?.entities?.[autoTable]) {
+        // Fallback (only when the template's 2nd field is not a dictionary-description
+        // field): first+second column of the main table from the schema
+        const autoCols = this._normCols(this._smartSchema.entities[autoTable]?.columns);
+        if (autoCols.length >= 1) {
+          const col2 = autoCols.length > 1 ? autoCols[1].name : null;
+          const colLabel = col2 ? `${autoCols[0].name} / ${col2}` : autoCols[0].name;
+          autoLb = { mode: 'table', table: autoTable, key: autoCols[0].name, cols: autoCols, colLabel, onchgJs };
+          this._autoLbState = { table: autoTable, key: autoCols[0].name, firstTxtParam: firstTxtParam || null };
+        }
+      }
+    }
+
+    if (!allNames.length && !autoLb) { parEl.style.display = 'none'; return; }
+
+    parEl.style.display = 'block';
+    let ph = `<div style="font-size:11px;color:var(--muted);margin-bottom:8px;font-weight:600">Parameters</div>`;
+    ph += `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">`;
+    for (const name of allNames) {
+      const def = definedParams.find(p => p.name === name) || {};
+      const lbl = def.label || name.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase());
+      if (def.type === 'select' && def.source) {
+        ph += `<div class="fg" style="margin-bottom:0;min-width:160px">
+          <label class="fl">${lbl}</label>
+          <input type="text" id="db-sparam-${name}" data-param="${name}" placeholder="${lbl}…" style="${_iS}">
+          <select id="db-sparam-${name}-lb"
+            onchange="if(this.value!==''){document.getElementById('db-sparam-${name}').value=this.value;}"
+            style="${_lS}"><option value="">⏳ Loading…</option></select></div>`;
+      } else {
+        ph += `<div class="fg" style="margin-bottom:0;min-width:130px">
+          <label class="fl">${lbl}</label>
+          <input type="${def.type==='number'?'number':'text'}" id="db-sparam-${name}" data-param="${name}"
+            value="${def.default !== undefined ? String(def.default) : ''}" placeholder="${lbl}…"
+            style="${_iS}"></div>`;
+      }
+    }
+    // Auto-listbox: first+second column distinct from the main table
+    if (autoLb) {
+      ph += `<div class="fg" style="margin-bottom:0;min-width:160px">
+        <label class="fl" title="Distinct values from ${autoLb.table}">${autoLb.table} — ${autoLb.colLabel}</label>
+        <select id="db-sparam-auto-lb" onchange="${autoLb.onchgJs}" style="${_lS}">
+          <option value="">⏳ Loading…</option></select></div>`;
+    }
+    ph += `</div>`;
+    parEl.innerHTML = ph;
+
+    // Shared listbox loader: detects best display column using keyword heuristic
+    const loadListbox = async (lbId, srcTable, srcKey, hintDisp, pickLabel) => {
+      const lbEl = document.getElementById(lbId);
+      if (!lbEl || !this.conn) return;
+      let srcDisp = hintDisp || null;
+      if (!srcDisp && this._smartSchema?.entities?.[srcTable]) {
+        const eCols = this._normCols(this._smartSchema.entities[srcTable]?.columns);
+        const descC = eCols.find(c => !c.isPk && c.name !== srcKey && _descKw.some(kw => c.name.toLowerCase().includes(kw)));
+        if (descC) srcDisp = descC.name;
+        else { const oth = eCols.filter(c => c.name !== srcKey); if (oth.length) srcDisp = oth[0].name; }
+      }
+      const sql2 = srcDisp
+        ? `SELECT DISTINCT "${srcKey}", "${srcDisp}" FROM "${srcTable}" ORDER BY "${srcDisp}" LIMIT 300`
+        : `SELECT DISTINCT "${srcKey}" FROM "${srcTable}" ORDER BY "${srcKey}" LIMIT 300`;
+      const r2 = await fetch('/api/db/query', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({...this.conn, sql:sql2}) }).then(r=>r.json()).catch(()=>({ok:false}));
+      if (!r2.ok || !r2.rows?.length) { lbEl.innerHTML = `<option value="">— no values —</option>`; return; }
+      lbEl.innerHTML = `<option value="">— ${pickLabel||'pick'} —</option>` +
+        r2.rows.map(row => {
+          const k = String(row[srcKey] ?? '');
+          const d = srcDisp && row[srcDisp] != null ? ` — ${row[srcDisp]}` : '';
+          return `<option value="${k}">${k}${d}</option>`;
+        }).join('');
+    };
+
+    // Load defined select-source params
+    definedParams.filter(p => p.type === 'select' && p.source && this.conn).forEach(async p => {
+      const [srcTable, srcKey] = (p.source || '').split('.');
+      const [, srcDispDef]     = (p.displaySource || '').split('.');
+      const lbl3 = p.label || p.name;
+      await loadListbox(`db-sparam-${p.name}-lb`, srcTable, srcKey, srcDispDef||null, lbl3);
+    });
+
+    // Load auto-listbox: explicitly pass second column as display so options show "col1 — col2"
+    if (autoLb && this.conn) {
+      const autoLbDisp = autoLb.cols.length > 1 ? autoLb.cols[1].name : null;
+      loadListbox('db-sparam-auto-lb', autoLb.table, autoLb.key, autoLbDisp, autoLb.table);
+    }
+  },
+
+  _toggleColumn(idx) {
+    if (!this._hiddenCols) this._hiddenCols = new Set();
+    const btn = document.getElementById(`db-cv-${idx}`);
+    const cells = document.querySelectorAll(`[data-col="${idx}"]`);
+    if (this._hiddenCols.has(idx)) {
+      this._hiddenCols.delete(idx);
+      cells.forEach(c => c.style.display = '');
+      if (btn) { btn.style.opacity = '1'; btn.style.textDecoration = ''; }
+    } else {
+      this._hiddenCols.add(idx);
+      cells.forEach(c => c.style.display = 'none');
+      if (btn) { btn.style.opacity = '.35'; btn.style.textDecoration = 'line-through'; }
+    }
+  },
+
+  async _deepRelSearch() {
+    if (!this._smartSchema) { alert('Load a Smart Schema first.'); return; }
+    const sec = document.getElementById('db-smart-section');
+    let statusDiv = document.getElementById('db-deep-scan-status');
+    if (!statusDiv) {
+      statusDiv = document.createElement('div');
+      statusDiv.id = 'db-deep-scan-status';
+      statusDiv.style.cssText = 'font-size:11px;color:var(--muted);margin:6px 0;padding:6px 10px;background:var(--sur2);border-radius:6px;border:1px solid var(--border);display:flex;align-items:center;gap:8px';
+      sec.insertBefore(statusDiv, sec.firstChild);
+    }
+    const setStatus = (msg, done) => {
+      statusDiv.innerHTML = msg + (done ? ` <button class="hbtn" style="font-size:10px;padding:1px 6px;margin-left:auto" onclick="this.closest('#db-deep-scan-status').remove()">&#x2715;</button>` : ' <button class="hbtn" style="font-size:10px;padding:1px 6px;margin-left:auto" onclick="DB._deepRelSearchAbort=true">Stop</button>');
+    };
+    this._deepRelSearchAbort = false;
+    const entities = this._smartSchema.entities || {};
+    const tableNames = Object.keys(entities);
+    if (!tableNames.length) { setStatus('No entities in schema.', true); return; }
+    // Identify candidate dictionary tables: 2-8 cols, has a text 2nd column
+    const _txtT = ['text','varchar','character','char','string','nvarchar','name','citext'];
+    const dictTables = tableNames.filter(t => {
+      const cols = this._normCols(entities[t]?.columns);
+      return cols.length >= 2 && cols.length <= 8 && cols.some((c, i) => i > 0 && _txtT.some(tt => (c.type||'').toLowerCase().includes(tt)));
+    });
+    const existingRels = new Set((this._smartSchema.relationships || []).map(r => `${r.from?.table}.${r.from?.column}->${r.to?.table}.${r.to?.column}`));
+    let found = 0, checked = 0;
+    for (const tbl of tableNames) {
+      if (this._deepRelSearchAbort) break;
+      checked++;
+      setStatus(`&#128269; Scanning <b>${tbl}</b> (${checked}/${tableNames.length}) — ${found} new rel(s) found`);
+      const cols = this._normCols(entities[tbl]?.columns);
+      for (const col of cols) {
+        if (col.isPk || this._deepRelSearchAbort) continue;
+        for (const dt of dictTables) {
+          if (dt === tbl) continue;
+          const dtCols = this._normCols(entities[dt]?.columns);
+          const dtPk = dtCols.find(c => c.isPk) || dtCols[0];
+          if (!dtPk) continue;
+          const relKey = `${tbl}.${col.name}->${dt}.${dtPk.name}`;
+          if (existingRels.has(relKey)) continue;
+          // Name heuristic
+          const dtBase = dt.replace(/s$/, '').replace(/_/g, '').toLowerCase();
+          const colBase = col.name.replace(/_(id|code|key|num|no|ref|type)$/i, '').replace(/_/g, '').toLowerCase();
+          if (colBase !== dtBase && !dt.toLowerCase().includes(colBase) && !colBase.includes(dtBase)) continue;
+          // SQL verification (only if connected)
+          if (!this.conn) continue;
+          try {
+            const vSql = `SELECT COUNT(*) AS __cnt FROM (SELECT DISTINCT "${col.name}" FROM "${tbl}" WHERE "${col.name}" IS NOT NULL) sq LEFT JOIN "${dt}" d ON CAST(sq."${col.name}" AS VARCHAR) = CAST(d."${dtPk.name}" AS VARCHAR) WHERE d."${dtPk.name}" IS NULL LIMIT 1`;
+            const r = await fetch('/api/db/query', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({...this.conn, sql:vSql}) }).then(res=>res.json()).catch(()=>({ok:false}));
+            if (r.ok && r.rows?.length && parseInt(r.rows[0].__cnt ?? r.rows[0]['count(*)'] ?? 1, 10) === 0) {
+              if (!this._smartSchema.relationships) this._smartSchema.relationships = [];
+              this._smartSchema.relationships.push({ from:{table:tbl,column:col.name}, to:{table:dt,column:dtPk.name}, confidence:'inferred' });
+              existingRels.add(relKey);
+              found++;
+              try { localStorage.setItem('db-smart-schema', JSON.stringify(this._smartSchema)); } catch {}
+            }
+          } catch {}
+        }
+      }
+    }
+    const dlBtn = found > 0 ? ` <button class="hbtn" style="font-size:10px;padding:1px 6px" onclick="DB._downloadSchemaAsJson()">&#8595; Download JSON</button>` : '';
+    setStatus(`&#10003; Deep scan complete — ${found} new relationship(s) found.${dlBtn}`, true);
+    if (found > 0) this._renderSmartSection();
+  },
+
+  _showRelQueryBuilder(tableName, preselectField) {
+    const schema = this._smartSchema;
+    if (!schema) return;
+    const allCols = this._normCols(schema.entities?.[tableName]?.columns);
+    if (!allCols.length) return;
+    // Preserve conditions when navigating within the same relationship group
+    const inSameGroup = this._relQBGroup instanceof Set && this._relQBGroup.has(tableName);
+    if (inSameGroup && this._relQBState.conditions) {
+      this._relQBState.table = tableName;
+    } else {
+      this._relQBState = { table: tableName, conditions: [] };
+    }
+    const rels = schema.relationships || [];
+    const relCols = new Set([
+      ...rels.filter(r => r.from?.table === tableName).map(r => r.from.column),
+      ...rels.filter(r => r.to?.table === tableName).map(r => r.to.column),
+    ]);
+    const filteredCols = allCols.filter(c => c.isPk || relCols.has(c.name));
+    const dispCols = preselectField ? allCols : (filteredCols.length ? filteredCols : allCols);
+    const prevLimit = document.getElementById('db-qb-limit')?.value || '25';
+    const is = `background:var(--sur);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:5px 9px;width:100%;outline:none`;
+    const isN = `background:var(--sur);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:5px 6px;width:58px;outline:none;text-align:center`;
+    let h = `<div style="margin-top:8px;padding:12px;background:var(--sur2);border:1px solid var(--border);border-radius:8px">`;
+    h += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">`;
+    h += `<strong style="font-size:12px">&#128270; Query Builder — <code>${tableName}</code></strong>`;
+    if (inSameGroup && this._relQBState.conditions.length) h += `<span style="font-size:10px;color:var(--muted)">(${this._relQBState.conditions.length} cond. preserved)</span>`;
+    h += `<button class="hbtn" style="font-size:10px;padding:1px 8px;margin-left:auto" onclick="document.getElementById('db-rel-qb').style.display='none'">&#x2715; Close</button>`;
+    h += `</div>`;
+    h += `<div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">`;
+    h += `<div class="fg" style="margin-bottom:0;min-width:170px"><label class="fl">Field</label><select id="db-qb-field" onchange="DB._qbLoadValues('${tableName}')" style="${is}"><option value="">— select —</option>${dispCols.map(c=>`<option value="${c.name}"${preselectField===c.name?' selected':''}>${c.name}${c.isPk?' &#9733;':relCols.has(c.name)?' &#8599;':''} [${c.type||'?'}]</option>`).join('')}</select></div>`;
+    h += `<div class="fg" style="margin-bottom:0;min-width:110px"><label class="fl">Compare</label><select id="db-qb-op" style="${is}"><option value="=">=</option><option value="!=">!=</option><option value=">">&gt;</option><option value="<">&lt;</option><option value=">=">&gt;=</option><option value="<=">&lt;=</option><option value="LIKE">LIKE</option><option value="IS NULL">IS NULL</option><option value="IS NOT NULL">IS NOT NULL</option></select></div>`;
+    h += `<button class="btn btn-o" style="padding:5px 12px;font-size:11px" onclick="DB._qbLoadValues('${tableName}')">&#128269; Load values</button>`;
+    h += `<div class="fg" style="margin-bottom:0;min-width:70px"><label class="fl">Logic</label><select id="db-qb-logic" style="${is}"><option>AND</option><option>OR</option><option>NOT</option></select></div>`;
+    h += `<div class="fg" style="margin-bottom:0"><label class="fl">Max items</label><input type="number" id="db-qb-limit" value="${prevLimit}" min="1" max="999" style="${isN}"></div>`;
+    h += `</div>`;
+    h += `<div id="db-qb-values" style="margin-bottom:8px"></div>`;
+    h += `<div id="db-qb-conds" style="margin-bottom:8px;font-size:11px;font-family:var(--mono)"></div>`;
+    h += `<div style="display:flex;gap:6px"><button class="btn btn-g" style="padding:5px 14px;font-size:11px" onclick="DB._qbBuildSQL('${tableName}')">&#9654; Build SQL</button><button class="btn btn-r" style="padding:5px 10px;font-size:11px" onclick="DB._relQBState.conditions=[];DB._qbRefreshConds()">&#9003; Clear</button></div>`;
+    h += `</div>`;
+    const qb = document.getElementById('db-rel-qb');
+    if (qb) { qb.style.display = ''; qb.innerHTML = h; }
+    if (this._relQBState.conditions?.length) this._qbRefreshConds();
+  },
+
+  async _qbLoadValues(tableName) {
+    const fs = document.getElementById('db-qb-field');
+    const vd = document.getElementById('db-qb-values');
+    if (!fs || !vd) return;
+    const field = fs.value;
+    const op = document.getElementById('db-qb-op')?.value || '=';
+    if (!field) { vd.innerHTML = '<span style="font-size:11px;color:var(--muted)">Select a field first.</span>'; return; }
+    if (op === 'IS NULL' || op === 'IS NOT NULL') {
+      const lg = document.getElementById('db-qb-logic')?.value || 'AND';
+      this._qbAddCond(field, '', lg, `${field} ${op}`, op, tableName);
+      vd.innerHTML = `<span style="font-size:11px;color:var(--muted)">Condition "${field} ${op}" added.</span>`;
+      return;
+    }
+    vd.innerHTML = '<span style="font-size:11px;color:var(--muted)">Loading…</span>';
+    const limit = Math.max(1, Math.min(999, parseInt(document.getElementById('db-qb-limit')?.value || '25', 10) || 25));
+    const schema = this._smartSchema;
+    const rels = schema?.relationships || [];
+    const fkRel = rels.find(r => r.from?.table === tableName && r.from?.column === field);
+    let sql, dispCol = null, valCol = field, srcTable = tableName;
+    if (fkRel) {
+      srcTable = fkRel.to.table;
+      valCol = fkRel.to.column;
+      const dtCols = this._normCols(schema.entities?.[srcTable]?.columns);
+      const _txtT = ['text','varchar','character','char','string','nvarchar','name','citext'];
+      const tc = dtCols.find((c,i) => i>0 && !c.isPk && _txtT.some(tt=>(c.type||'').toLowerCase().includes(tt)));
+      dispCol = tc?.name || null;
+      sql = dispCol ? `SELECT DISTINCT "${valCol}", "${dispCol}" FROM "${srcTable}" ORDER BY "${dispCol}" LIMIT ${limit}`
+                    : `SELECT DISTINCT "${valCol}" FROM "${srcTable}" ORDER BY "${valCol}" LIMIT ${limit}`;
+    } else {
+      sql = `SELECT DISTINCT "${field}" FROM "${tableName}" WHERE "${field}" IS NOT NULL ORDER BY "${field}" LIMIT ${limit}`;
+    }
+    if (!this.conn) { vd.innerHTML = '<span style="font-size:11px;color:var(--muted)">Not connected to DB.</span>'; return; }
+    const r = await fetch('/api/db/query', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...this.conn,sql})}).then(x=>x.json()).catch(()=>({ok:false}));
+    if (!r.ok || !r.rows?.length) { vd.innerHTML = '<span style="font-size:11px;color:var(--muted)">No values.</span>'; return; }
+    const lg = document.getElementById('db-qb-logic')?.value || 'AND';
+    let vh = `<div style="font-size:11px;color:var(--muted);margin-bottom:4px"><b>${field}</b> ${op}${fkRel?` (from ${srcTable})`:''}:</div><div style="display:flex;flex-wrap:wrap;gap:3px">`;
+    r.rows.forEach(row => {
+      const v = String(row[valCol]??'');
+      const d = dispCol&&row[dispCol] ? ` — ${row[dispCol]}` : '';
+      const lbl = `${v}${d}`;
+      const dispLbl = lbl.length > 50 ? lbl.slice(0, 50) + '…' : lbl;
+      const safe = v.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const safeL = lbl.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const safeOp = op.replace(/'/g,"\\'");
+      vh += `<button class="hbtn" style="font-size:11px;padding:2px 7px" title="${lbl.replace(/"/g,'&quot;')}" onclick="DB._qbAddCond('${field}','${safe}','${lg}','${safeL}','${safeOp}','${tableName}')">+${dispLbl}</button>`;
+    });
+    vh += `</div>`;
+    vd.innerHTML = vh;
+  },
+
+  _qbAddCond(field, value, logic, label, op, condTable) {
+    if (!this._relQBState.conditions) this._relQBState.conditions = [];
+    const effectiveOp  = op || '=';
+    const table        = condTable || this._relQBState.table;
+    // Auto-OR when the same table.field already has a condition
+    const effectiveLogic = this._relQBState.conditions.some(c =>
+      c.field === field && (c.table || '') === (table || '')
+    ) ? 'OR' : logic;
+    // Skip exact duplicates (same table + field + value + op already pending)
+    const isDup = this._relQBState.conditions.some(c =>
+      c.field === field && c.value === value && (c.op || '=') === effectiveOp &&
+      (c.table || '') === (table || '')
+    );
+    if (isDup) return;
+    this._relQBState.conditions.push({field, value, logic: effectiveLogic, label, op: effectiveOp, table});
+    this._qbRefreshConds();
+  },
+
+  _qbRefreshConds() {
+    const div = document.getElementById('db-qb-conds');
+    if (!div) return;
+    const conds = this._relQBState.conditions || [];
+    if (!conds.length) { div.innerHTML = ''; return; }
+    let h = `<div style="font-size:11px;color:var(--muted);margin-bottom:4px;font-weight:600">Conditions (${conds.length}):</div><div style="display:flex;flex-wrap:wrap;gap:3px">`;
+    conds.forEach((c,i) => {
+      const opDisp = c.op && c.op !== '=' ? ` <span style="color:var(--accent)">${c.op}</span>` : ' =';
+      const tblPfx = c.table ? `<span style="color:var(--muted);font-size:10px">${c.table}.</span>` : '';
+      h += `<span style="background:var(--sur);border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-size:11px;font-family:var(--mono)">`;
+      if (i>0) h += `<span style="color:var(--accent);font-family:sans-serif;margin-right:4px">${c.logic}</span>`;
+      if (c.op === 'IS NULL' || c.op === 'IS NOT NULL') {
+        h += `${tblPfx}${c.field} <span style="color:var(--accent)">${c.op}</span>`;
+      } else {
+        h += `${tblPfx}${c.field}${opDisp} <em style="font-style:normal;color:var(--green)">${c.label}</em>`;
+      }
+      h += ` <button class="hbtn" style="font-size:9px;padding:0 3px;margin-left:2px" onclick="DB._relQBState.conditions.splice(${i},1);DB._qbRefreshConds()">&#x2715;</button></span>`;
+    });
+    h += `</div>`;
+    div.innerHTML = h;
+  },
+
+  _qbBuildSQL(mainTable) {
+    const conds = this._relQBState.conditions || [];
+    if (!conds.length) { alert('Add at least one condition.'); return; }
+    const rels = this._smartSchema?.relationships || [];
+    const joins = [], usedTables = new Set([mainTable]);
+
+    // Ensure a table is JOINed to mainTable via a known relationship
+    const ensureJoined = tbl => {
+      if (usedTables.has(tbl)) return;
+      const r = rels.find(r =>
+        (r.from?.table === mainTable && r.to?.table === tbl) ||
+        (r.from?.table === tbl && r.to?.table === mainTable)
+      );
+      if (r) {
+        usedTables.add(tbl);
+        if (r.from.table === mainTable) {
+          joins.push(`LEFT JOIN "${tbl}" ON "${mainTable}"."${r.from.column}" = "${tbl}"."${r.to.column}"`);
+        } else {
+          joins.push(`LEFT JOIN "${tbl}" ON "${tbl}"."${r.from.column}" = "${mainTable}"."${r.to.column}"`);
+        }
+      }
+    };
+
+    const whereParts = conds.map((c, i) => {
+      const condTable = c.table || mainTable;
+      let colRef;
+      if (condTable === mainTable) {
+        // Field on mainTable: resolve FK → show PK side value
+        const fk = rels.find(r => r.from?.table === mainTable && r.from?.column === c.field);
+        if (fk) { ensureJoined(fk.to.table); colRef = `"${fk.to.table}"."${fk.to.column}"`; }
+        else { colRef = `"${mainTable}"."${c.field}"`; }
+      } else {
+        // Field on a related table: JOIN it first, then reference directly
+        ensureJoined(condTable);
+        colRef = `"${condTable}"."${c.field}"`;
+      }
+      const pfx = i === 0 ? '' : c.logic === 'NOT' ? 'AND NOT ' : c.logic + ' ';
+      const op = c.op || '=';
+      let clause;
+      if (op === 'IS NULL' || op === 'IS NOT NULL') {
+        clause = `${colRef} ${op}`;
+      } else if (op === 'LIKE') {
+        clause = `${colRef} LIKE '%${c.value.replace(/'/g, "''")}%'`;
+      } else {
+        clause = `${colRef} ${op} '${c.value.replace(/'/g, "''")}'`;
+      }
+      return `  ${pfx}${clause}`;
+    });
+    let sql = `SELECT "${mainTable}".*\nFROM "${mainTable}"\n${joins.join('\n')}${joins.length ? '\n' : ''}WHERE\n${whereParts.join('\n')}\nLIMIT 500`;
+    const editor = document.getElementById('db-sql-editor');
+    if (editor) { editor.value = sql; editor.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+    document.getElementById('db-rel-qb').style.display = 'none';
+    this._executeSmartSql(sql, null);
+  },
+
+  _showRelDetailNewGroup(tableName) {
+    const schema = this._smartSchema;
+    if (!schema) return;
+    const rels = (schema.relationships || []).map(r => this._normRel(r)).filter(Boolean);
+    const tableRels = rels.filter(r => r.from?.table === tableName || r.to?.table === tableName);
+    const involvedTables = new Set([tableName]);
+    tableRels.forEach(r => { if (r.from?.table) involvedTables.add(r.from.table); if (r.to?.table) involvedTables.add(r.to.table); });
+    this._relQBGroup = involvedTables;
+    this._relQBState = { table: tableName, conditions: [] };
+    this._showRelDetail(tableName);
+  },
+
+  _showRelDetail(tableName) {
+    const schema = this._smartSchema;
+    if (!schema) return;
+    const rels = (schema.relationships || []).map(r => this._normRel(r)).filter(Boolean);
+    const entities = schema.entities || {};
+    const tableRels = rels.filter(r => r.from?.table === tableName || r.to?.table === tableName);
+    const involvedTables = new Set([tableName]);
+    tableRels.forEach(r => { if(r.from?.table) involvedTables.add(r.from.table); if(r.to?.table) involvedTables.add(r.to.table); });
+    let h = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">`;
+    h += `<span style="font-size:11px;font-weight:600;color:var(--text)">${tableName}</span>`;
+    h += `<span style="font-size:10px;color:var(--muted)">(${tableRels.length} rel${tableRels.length!==1?'s':''})</span>`;
+    h += `<button class="hbtn" style="font-size:10px;padding:1px 6px;margin-left:auto" onclick="DB._showAllRelDetails()">&#8592; All</button>`;
+    h += `<button class="hbtn" style="font-size:10px;padding:1px 6px" onclick="DB._showRelQueryBuilder('${tableName}')">&#128270; Query</button>`;
+    h += `</div>`;
+    if (tableRels.length) {
+      tableRels.forEach(r => {
+        const isFrom = r.from?.table === tableName;
+        h += `<div style="font-size:11px;margin-bottom:3px;font-family:var(--mono)">`;
+        h += isFrom
+          ? `<span style="color:var(--accent)">${r.from.table}.<b>${r.from.column}</b></span> &#8594; <span style="color:var(--green)">${r.to.table}.<b>${r.to.column}</b></span>`
+          : `<span style="color:var(--green)">${r.to.table}.<b>${r.to.column}</b></span> &#8592; <span style="color:var(--accent)">${r.from.table}.<b>${r.from.column}</b></span>`;
+        h += ` <span style="color:var(--muted);font-size:10px">${r.confidence||''}</span>`;
+        h += `</div>`;
+      });
+      h += `<div style="border-top:1px solid var(--border);margin:6px 0"></div>`;
+    }
+    [...involvedTables].forEach(tbl => {
+      const cols = this._normCols(entities[tbl]?.columns);
+      if (!cols.length) return;
+      const fkSet = new Set(rels.filter(r=>r.from?.table===tbl).map(r=>r.from.column));
+      const pkSet = new Set(rels.filter(r=>r.to?.table===tbl).map(r=>r.to.column));
+      h += `<div style="margin-bottom:5px"><div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:2px">${tbl}</div>`;
+      h += `<div style="display:flex;flex-wrap:wrap;gap:2px">`;
+      cols.forEach(c => {
+        const isFk = fkSet.has(c.name), isPk2 = pkSet.has(c.name) || c.isPk;
+        const clr = c.isPk ? 'var(--accent)' : isFk ? '#ff9f4a' : isPk2 ? 'var(--green)' : 'var(--muted)';
+        h += `<span style="font-size:10px;font-family:var(--mono);color:${clr};background:var(--sur);border:1px solid var(--border);border-radius:3px;padding:1px 5px;cursor:pointer;text-decoration:underline dotted" onclick="DB._relDetailFieldClick('${tbl}','${c.name}')" title="Add to Query Builder">${c.name}${c.isPk?' &#9733;':isFk?' &#8599;':''}</span>`;
+      });
+      h += `</div></div>`;
+    });
+    const pane = document.getElementById('db-rel-detail-pane');
+    if (pane) pane.innerHTML = h;
+  },
+
+  _showAllRelDetails() {
+    const schema = this._smartSchema;
+    if (!schema) return;
+    const rels = (schema.relationships || []).map(r => this._normRel(r)).filter(Boolean);
+    const fl = rels.map(r =>
+      `<div style="margin-bottom:2px"><span style="color:var(--accent);cursor:pointer;text-decoration:underline dotted" onclick="DB._showRelDetail('${r.from?.table}')">${r.from?.table}.<b>${r.from?.column}</b></span>`
+      + ` &#8594; <span style="color:var(--green);cursor:pointer;text-decoration:underline dotted" onclick="DB._showRelDetail('${r.to?.table}')">${r.to?.table}.<b>${r.to?.column}</b></span>`
+      + ` <span style="color:var(--muted);font-size:10px">${r.confidence==='inferred'?'(inferred)':r.confidence==='explicit'?'(explicit)':''}</span></div>`
+    ).join('');
+    const pane = document.getElementById('db-rel-detail-pane');
+    if (pane) pane.innerHTML = fl || '<span style="font-size:11px;color:var(--muted)">No relationships.</span>';
+  },
+
+  _relDetailFieldClick(tableName, fieldName) {
+    this._showRelQueryBuilder(tableName, fieldName);
+    setTimeout(() => this._qbLoadValues(tableName), 0);
+  },
+
+  _drawTblRefLines() {
+    const panels = document.getElementById('db-tblref-panels');
+    const svg    = document.getElementById('db-tblref-svg');
+    if (!panels || !svg || !this._smartSchema) return;
+    svg.innerHTML = '';
+    svg.style.width  = panels.scrollWidth  + 'px';
+    svg.style.height = panels.scrollHeight + 'px';
+    const rels = (this._smartSchema.relationships || []).map(r => this._normRel(r)).filter(Boolean);
+    if (!rels.length) return;
+    const pR = panels.getBoundingClientRect();
+    const sT = panels.scrollTop, sL = panels.scrollLeft;
+    const safe = s => s.replace(/[^a-zA-Z0-9]/g, '_');
+    const colors = ['#4caf50','#2196f3','#ff9800','#e91e63','#9c27b0','#00bcd4','#ff5722','#8bc34a','#795548','#03a9f4'];
+    rels.forEach((r, idx) => {
+      const fromEl = document.getElementById(`db-trf-${safe(r.from.table)}__${safe(r.from.column)}`);
+      const toEl   = document.getElementById(`db-trf-${safe(r.to.table)}__${safe(r.to.column)}`);
+      if (!fromEl || !toEl) return;
+      const fR = fromEl.getBoundingClientRect(), tR = toEl.getBoundingClientRect();
+      const x1 = fR.right  - pR.left + sL + 2;
+      const y1 = fR.top    + fR.height/2 - pR.top + sT;
+      const x2 = tR.left   - pR.left + sL - 2;
+      const y2 = tR.top    + tR.height/2 - pR.top + sT;
+      const dx = Math.min(Math.abs(x2 - x1) * 0.5, 70);
+      const color = colors[idx % colors.length];
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', `M ${x1} ${y1} C ${x1+dx} ${y1}, ${x2-dx} ${y2}, ${x2} ${y2}`);
+      path.setAttribute('stroke', color); path.setAttribute('stroke-width', '1.5');
+      path.setAttribute('fill', 'none'); path.setAttribute('opacity', '0.55');
+      svg.appendChild(path);
+      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.setAttribute('cx', x2); dot.setAttribute('cy', y2);
+      dot.setAttribute('r', '3'); dot.setAttribute('fill', color);
+      svg.appendChild(dot);
+    });
+  },
+
+  _downloadSchemaAsJson() {
+    if (!this._smartSchema) return;
+    const json = JSON.stringify(this._smartSchema, null, 2);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    a.download = 'schema_updated.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  },
+
+  _relFormLoadCols(side) {
+    const tblSel = document.getElementById(`db-rel-${side}-tbl`);
+    const colSel = document.getElementById(`db-rel-${side}-col`);
+    if (!tblSel || !colSel || !this._smartSchema) return;
+    const cols = this._normCols(this._smartSchema.entities?.[tblSel.value]?.columns);
+    colSel.innerHTML = `<option value="">— select —</option>` + cols.map(c => `<option value="${c.name}">${c.name}${c.isPk?' (PK)':''} [${c.type||'?'}]</option>`).join('');
+  },
+
+  _addManualRel() {
+    const fromTbl = document.getElementById('db-rel-from-tbl')?.value;
+    const fromCol = document.getElementById('db-rel-from-col')?.value;
+    const toTbl   = document.getElementById('db-rel-to-tbl')?.value;
+    const toCol   = document.getElementById('db-rel-to-col')?.value;
+    const conf    = document.getElementById('db-rel-conf')?.value || 'explicit';
+    if (!fromTbl || !fromCol || !toTbl || !toCol) { alert('Please select all four fields (From table, FK column, To table, PK column).'); return; }
+    if (!this._smartSchema) return;
+    if (!this._smartSchema.relationships) this._smartSchema.relationships = [];
+    const exists = this._smartSchema.relationships.some(r => r.from?.table === fromTbl && r.from?.column === fromCol && r.to?.table === toTbl && r.to?.column === toCol);
+    if (exists) { alert('This relationship already exists.'); return; }
+    this._smartSchema.relationships.push({ from: { table: fromTbl, column: fromCol }, to: { table: toTbl, column: toCol }, confidence: conf });
+    try { localStorage.setItem('db-smart-schema', JSON.stringify(this._smartSchema)); } catch {}
+    this._renderSmartSection();
   },
 
   _runSmartTemplate() {
@@ -1529,110 +2483,571 @@ const DB = {
     if (!sel || !this._smartSchema) return;
     const tpl = (this._smartSchema.smartTemplates || []).find(t => t.id === sel.value);
     if (!tpl?.sql) return;
-    const editor = document.getElementById('db-sql-editor');
-    if (editor) { editor.value = tpl.sql; editor.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-    this.runQuery();
+
+    // Helper: commit sql to editor + execute
+    const _run = sql => {
+      this._smartListboxFilters = {};
+      this._smartBaseSql = sql;
+      const editor = document.getElementById('db-sql-editor');
+      if (editor) { editor.value = sql; editor.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+      this._executeSmartSql(sql, tpl);
+    };
+
+    // Read auto-listbox value (stored in data-val by onchange)
+    const autoLbEl  = document.getElementById('db-sparam-auto-lb');
+    const autoLbVal = (autoLbEl?.dataset?.val || autoLbEl?.value || '').trim();
+    const als       = this._autoLbState;  // { table, key, firstTxtParam }
+
+    // Deduplicated :param names from SQL
+    const paramNames = [...new Set([...tpl.sql.matchAll(/:([a-zA-Z_]\w*)/g)].map(m => m[1]))];
+    const hasParams  = paramNames.length > 0;
+
+    // Collect text-input param values
+    const vals = {};
+    let anyFilled = false;
+    for (const name of paramNames) {
+      const el = document.getElementById(`db-sparam-${name}`);
+      const v  = el ? el.value.trim() : '';
+      vals[name] = v;
+      if (v) anyFilled = true;
+    }
+
+    // ── Template has NO :params ──────────────────────────────────────────────────
+    // Use _cleanUnsubstituted(strict=false) to remove only ILIKE '%placeholder%'
+    // lines while keeping fixed WHERE conditions (e.g. wfstatus = 1, objstatus = 0).
+    if (!hasParams) {
+      let sql = this._cleanUnsubstituted(tpl.sql, false);
+      if (als && autoLbVal) sql = this._injectAutoLbFilter(sql, als.key, autoLbVal);
+      return _run(sql);
+    }
+
+    // ── Template HAS :params ─────────────────────────────────────────────────────
+    if (!anyFilled && !autoLbVal) {
+      // Nothing filled at all → strip WHERE
+      return _run(this._stripWhere(tpl.sql));
+    }
+
+    // Substitute :params.
+    // Handles ':param' inside string literals (e.g. '%:term%') without double-quoting.
+    let sql = tpl.sql;
+    for (const name of paramNames) {
+      const val = vals[name] || '';
+      const def = (tpl.params || []).find(p => p.name === name) || {};
+      if (def.type === 'number') {
+        const numVal = isNaN(Number(val)) ? '0' : String(Number(val));
+        sql = sql.replace(new RegExp(':' + name + '\\b', 'g'), numVal);
+      } else {
+        const rawVal = String(val).replace(/'/g, "''");
+        sql = sql.replace(new RegExp("'[^']*'|:" + name + '\\b', 'g'), match => {
+          if (match.startsWith("'"))
+            return match.replace(new RegExp(':' + name + '\\b', 'g'), rawVal);
+          return `'${rawVal}'`;
+        });
+      }
+    }
+
+    // Remove conditions that still contain placeholders (unsubstituted :param or ILIKE '%%')
+    sql = this._cleanUnsubstituted(sql);
+
+    // Auto-lb value always injects an exact-match WHERE condition
+    if (als && autoLbVal) {
+      sql = this._injectAutoLbFilter(sql, als.key, autoLbVal);
+    }
+
+    return _run(sql);
+  },
+
+  // Remove WHERE conditions that still hold unsubstituted placeholders, line by line.
+  // strict=true  (hasParams path): catches `:param` tokens and `ILIKE '%%'` only.
+  // strict=false (!hasParams path): also catches `ILIKE '%word%'` template placeholders
+  //   while leaving fixed conditions like `wfstatus = 1` or `objstatus = 0` intact.
+  _cleanUnsubstituted(sql, strict = true) {
+    const UNSUB = strict
+      ? /:[a-zA-Z_]\w*|(?:ILIKE|LIKE)\s*'%%'/i
+      : /:[a-zA-Z_]\w*|(?:ILIKE|LIKE)\s*'%(?:[a-zA-Z_]\w*)?%'/i;
+    if (!UNSUB.test(sql)) return sql;
+
+    // Find outermost WHERE (depth-tracked, skips subqueries)
+    let depth = 0, wi = -1;
+    for (let i = 0; i < sql.length; i++) {
+      if (sql[i] === '(') { depth++; continue; }
+      if (sql[i] === ')') { depth--; continue; }
+      if (depth === 0 && /^WHERE\b/i.test(sql.slice(i))) { wi = i; break; }
+    }
+    if (wi === -1) return sql;
+
+    // Find end of WHERE clause
+    depth = 0;
+    let sfx = sql.length;
+    for (let i = wi + 5; i < sql.length; i++) {
+      if (sql[i] === '(') { depth++; continue; }
+      if (sql[i] === ')') { depth--; continue; }
+      if (depth === 0 && /^\b(?:ORDER\s+BY|GROUP\s+BY|HAVING|LIMIT|OFFSET)\b/i.test(sql.slice(i))) { sfx = i; break; }
+    }
+
+    const before     = sql.slice(0, wi);
+    const whereBlock = sql.slice(wi, sfx);    // "WHERE ..."
+    const suffix     = sql.slice(sfx);
+
+    // Remove lines that contain placeholder patterns
+    const lines   = whereBlock.split('\n');
+    const cleaned = lines.filter(line => !UNSUB.test(line));
+    let result    = cleaned.join('\n').trim();
+
+    // If the WHERE keyword was on the same line as a removed placeholder, restore it.
+    // Example: "WHERE col ILIKE '%searchterm%'" is removed → remaining "AND col2 = 0"
+    //          needs to become "WHERE col2 = 0".
+    if (result && !/^WHERE\b/i.test(result)) {
+      result = 'WHERE ' + result.replace(/^\s*(?:AND|OR)\s+/i, '');
+    }
+
+    // Strip orphaned leading OR/AND after WHERE keyword
+    result = result.replace(/^(WHERE\s+(?:\n\s*)?)((?:OR|AND)\s+)+/i, '$1');
+    result = result.replace(/^WHERE\s*\n\s*(?:OR|AND)\s+/i, 'WHERE ');
+    // Strip trailing OR/AND
+    result = result.replace(/\s+(?:OR|AND)\s*$/i, '');
+
+    // If WHERE has no remaining conditions, drop it entirely
+    if (/^WHERE\s*$/i.test(result) || !result) {
+      return (before.trimEnd() + (suffix.trim() ? ' ' + suffix.trimStart() : '')).trim();
+    }
+
+    return (before + result + (suffix ? '\n' + suffix : '')).trim();
+  },
+
+  // Inject an exact-match WHERE condition (from auto-listbox selection).
+  _injectAutoLbFilter(sql, key, val) {
+    const safe = String(val).replace(/'/g, "''");
+    const cond = `"${key}" = '${safe}'`;
+
+    // Find outermost WHERE position
+    let depth = 0, wi = -1;
+    for (let i = 0; i < sql.length; i++) {
+      if (sql[i] === '(') { depth++; continue; }
+      if (sql[i] === ')') { depth--; continue; }
+      if (depth === 0 && /^WHERE\b/i.test(sql.slice(i))) { wi = i; break; }
+    }
+
+    if (wi !== -1) {
+      // Find end of WHERE clause
+      depth = 0;
+      let sfx = sql.length;
+      for (let i = wi + 5; i < sql.length; i++) {
+        if (sql[i] === '(') { depth++; continue; }
+        if (sql[i] === ')') { depth--; continue; }
+        if (depth === 0 && /^\b(?:ORDER\s+BY|GROUP\s+BY|HAVING|LIMIT|OFFSET)\b/i.test(sql.slice(i))) { sfx = i; break; }
+      }
+      const existing = sql.slice(wi + 5, sfx).trim();
+      const newWhere  = existing ? `WHERE ${cond}\n  AND ${existing}` : `WHERE ${cond}`;
+      return (sql.slice(0, wi) + newWhere + '\n' + sql.slice(sfx)).trim();
+    }
+
+    // No WHERE: insert before ORDER BY / LIMIT
+    depth = 0;
+    let insertAt = sql.length;
+    for (let i = 0; i < sql.length; i++) {
+      if (sql[i] === '(') { depth++; continue; }
+      if (sql[i] === ')') { depth--; continue; }
+      if (depth === 0 && /^\b(?:ORDER\s+BY|GROUP\s+BY|HAVING|LIMIT|OFFSET)\b/i.test(sql.slice(i))) { insertAt = i; break; }
+    }
+    const before = sql.slice(0, insertAt).trimEnd();
+    const after  = sql.slice(insertAt).trimStart();
+    return `${before}\nWHERE ${cond}${after ? '\n' + after : ''}`.trim();
   },
 
   _buildPrompt(schema) {
     const { dbType, host, port, database, tables, foreignKeys } = schema;
     const dbLabel = { postgresql: 'PostgreSQL', mysql: 'MySQL', mssql: 'SQL Server (MSSQL)' }[dbType] || dbType;
     const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
-    const totalCols = tables.reduce((s, t) => s + t.columns.length, 0);
-    const totalRows = tables.reduce((s, t) => s + (t.rowCount || 0), 0);
-
-    const mcpPkg = { postgresql: 'mcp-server-postgres', mysql: 'mcp-server-mysql', mssql: 'mcp-server-mssql' }[dbType] || 'mcp-server-db';
-    const connStr = dbType === 'postgresql'
-      ? `postgresql://USER:PASSWORD@${host}:${port}/${database}`
+    const totalCols  = tables.reduce((s, t) => s + t.columns.length, 0);
+    const mcpPkg     = { postgresql: 'mcp-server-postgres', mysql: 'mcp-server-mysql', mssql: 'mcp-server-mssql' }[dbType] || 'mcp-server-db';
+    const connStr    = dbType === 'postgresql'
+      ? `postgresql://${this.conn?.user||'USER'}:***@${host}:${port}/${database}`
       : dbType === 'mysql'
-        ? `mysql://USER:PASSWORD@${host}:${port}/${database}`
-        : `Server=${host},${port};Database=${database};User Id=USER;Password=PASSWORD;`;
+        ? `mysql://${this.conn?.user||'USER'}:***@${host}:${port}/${database}`
+        : `Server=${host},${port};Database=${database};User Id=${this.conn?.user||'USER'};Password=***;`;
 
-    let prompt = `# Database Schema Analysis & Smart Query Configuration\n`;
-    prompt += `Generated: ${now}\n\n`;
-    prompt += `You are an expert database analyst. Your task is to:\n`;
-    prompt += `1. Analyze the complete schema below and identify ALL table relationships\n`;
-    prompt += `2. Produce a "Smart Queries JSON" configuration file (format specified below)\n`;
-    prompt += `3. Generate a Mermaid ER diagram\n`;
-    prompt += `4. Provide a text report summarizing the data model\n\n`;
-    prompt += `---\n\n`;
-
-    prompt += `## Connection Details\n\n`;
-    prompt += `| Parameter | Value |\n|-----------|-------|\n`;
-    prompt += `| Database type | ${dbLabel} |\n`;
-    prompt += `| Host | ${host} |\n`;
-    prompt += `| Port | ${port} |\n`;
-    prompt += `| Database | ${database} |\n`;
-    prompt += `| Tables | ${tables.length} |\n`;
-    prompt += `| Total columns | ${totalCols} |\n`;
-    prompt += `| Estimated total rows | ${totalRows.toLocaleString()} |\n\n`;
-
-    prompt += `## MCP Server Setup (optional)\n\n`;
-    prompt += `To connect an MCP-compatible AI tool (e.g. Claude Desktop) directly to this database:\n\n`;
-    prompt += `\`\`\`bash\nnpm install -g ${mcpPkg}\n\`\`\`\n\n`;
-    prompt += `Claude Desktop config (\`claude_desktop_config.json\`):\n\`\`\`json\n`;
-    prompt += JSON.stringify({ mcpServers: { [database]: { command: 'npx', args: [mcpPkg, connStr.replace('USER', this.conn?.user || 'USER').replace('PASSWORD', '***')] } } }, null, 2);
-    prompt += `\n\`\`\`\n\n---\n\n`;
-
-    prompt += `## Database Schema (${tables.length} tables)\n\n`;
+    // ── Infer FK candidates from column naming ─────────────────────────────
+    const tableNames = new Set(tables.map(t => t.name));
+    const candidates = []; // { fromTable, fromCol, toTable, toPk, isExplicit }
     for (const tbl of tables) {
-      const rowStr = tbl.rowCount > 0 ? ` — ~${tbl.rowCount.toLocaleString()} rows` : '';
-      prompt += `### ${tbl.name}${rowStr}\n\n`;
-      prompt += `| # | Column | Type | Nullable | PK | Default |\n`;
-      prompt += `|---|--------|------|----------|----|---------|\n`;
-      tbl.columns.forEach((col, i) => {
-        prompt += `| ${i+1} | \`${col.name}\` | ${col.type} | ${col.nullable ? 'YES' : 'NO'} | ${col.isPk ? '✓ PK' : ''} | ${col.default ?? ''} |\n`;
-      });
-      prompt += `\n`;
+      for (const col of tbl.columns) {
+        if (col.isPk) continue;
+        const m = col.name.match(/^(.+?)_(id|code|key|num|no|ref)$/i);
+        if (!m) continue;
+        const base = m[1];
+        const refTable = [base, base+'s', base+'es', base.replace(/_/g,'')].find(n => tableNames.has(n) && n !== tbl.name);
+        if (!refTable) continue;
+        const toPk = tables.find(t => t.name === refTable)?.columns.find(c => c.isPk)?.name || 'id';
+        const isExplicit = foreignKeys.some(fk => fk.fromTable === tbl.name && fk.fromColumn === col.name);
+        if (!candidates.find(c => c.fromTable === tbl.name && c.fromCol === col.name))
+          candidates.push({ fromTable: tbl.name, fromCol: col.name, toTable: refTable, toPk, isExplicit });
+      }
+    }
+    // Tables involved in any relationship
+    const relatedTables = new Set([
+      ...foreignKeys.flatMap(fk => [fk.fromTable, fk.toTable]),
+      ...candidates.map(c => c.fromTable),
+    ]);
+
+    // ── Build prompt ───────────────────────────────────────────────────────
+    let p = `# Database Schema Analysis & Smart Query Configuration\n`;
+    p += `Generated: ${now} | ${dbLabel} | ${database} | ${tables.length} tables | ${totalCols} columns\n\n`;
+    p += `## Goal\nAnalyze this database schema and produce:\n`;
+    p += `1. A **relationship map** (confirmed via SQL validation queries below)\n`;
+    p += `2. A **Smart Queries JSON** file (schema starter attached separately — fill it in)\n`;
+    p += `3. A **Mermaid ER diagram**\n`;
+    p += `4. A short **domain report** (what this DB is for, key data flows)\n\n`;
+
+    p += `## Connection\n`;
+    p += `Type: ${dbLabel} | Host: \`${host}:${port}\` | DB: \`${database}\`\n`;
+    p += `User: \`${this.conn?.user||'USER'}\` | Password: *(use stored credentials)*\n\n`;
+    p += `**MCP setup (Claude Desktop):** \`npm i -g ${mcpPkg}\`\n`;
+    p += `\`\`\`json\n${JSON.stringify({ mcpServers:{ [database]:{ command:'npx', args:[mcpPkg, connStr] } } }, null, 2)}\n\`\`\`\n\n`;
+
+    // ── Schema: compact overview table ─────────────────────────────────────
+    p += `## Schema Overview — ${tables.length} tables\n\n`;
+    p += `| Table | Rows | Cols | PK | FK-like columns |\n`;
+    p += `|-------|-----:|-----:|----|------------------|\n`;
+    for (const tbl of tables) {
+      const pk  = tbl.columns.find(c => c.isPk)?.name || '—';
+      const fkCols = tbl.columns.filter(c => !c.isPk && /_(id|code|key|num|no|ref)$/i.test(c.name)).map(c => c.name).join(', ');
+      const rows = tbl.rowCount > 0 ? tbl.rowCount.toLocaleString() : '—';
+      p += `| \`${tbl.name}\` | ${rows} | ${tbl.columns.length} | \`${pk}\` | ${fkCols || '—'} |\n`;
+    }
+    p += `\n`;
+
+    // ── Full column detail only for related tables (max 12) ────────────────
+    const detailTables = tables.filter(t => relatedTables.has(t.name)).slice(0, 12);
+    if (detailTables.length) {
+      p += `## Column Detail — tables with relationships (${detailTables.length}/${tables.length})\n\n`;
+      for (const tbl of detailTables) {
+        p += `**${tbl.name}** (${tbl.rowCount > 0 ? '~'+tbl.rowCount.toLocaleString()+' rows' : 'empty'})\n`;
+        p += tbl.columns.map(c => `  ${c.isPk?'[PK] ':'     '}\`${c.name}\` ${c.type}${c.nullable?' NULL':''}`).join('\n') + '\n\n';
+      }
     }
 
-    prompt += `---\n\n## Declared Foreign Keys (${foreignKeys.length})\n\n`;
+    // ── Declared FKs ───────────────────────────────────────────────────────
+    p += `## Declared Foreign Keys (${foreignKeys.length})\n\n`;
     if (foreignKeys.length) {
-      prompt += `| From table | From column | → | To table | To column | Constraint |\n`;
-      prompt += `|------------|-------------|---|----------|-----------|------------|\n`;
-      foreignKeys.forEach(fk => {
-        prompt += `| \`${fk.fromTable}\` | \`${fk.fromColumn}\` | → | \`${fk.toTable}\` | \`${fk.toColumn}\` | ${fk.constraintName} |\n`;
-      });
+      foreignKeys.forEach(fk => { p += `- \`${fk.fromTable}.${fk.fromColumn}\` → \`${fk.toTable}.${fk.toPk||fk.toColumn}\`\n`; });
     } else {
-      prompt += `No explicit foreign keys declared. Infer relationships from column naming patterns (e.g. \`user_id\` likely references \`users.id\`).\n`;
+      p += `None declared — use naming-pattern candidates below.\n`;
+    }
+    p += `\n`;
+
+    // ── Inferred candidates ────────────────────────────────────────────────
+    const newCandidates = candidates.filter(c => !c.isExplicit);
+    if (newCandidates.length) {
+      p += `## Inferred FK Candidates (${newCandidates.length} — not declared, inferred from naming)\n\n`;
+      newCandidates.forEach(c => { p += `- \`${c.fromTable}.${c.fromCol}\` → \`${c.toTable}.${c.toPk}\`\n`; });
+      p += `\n`;
     }
 
-    prompt += `\n---\n\n## Your Tasks\n\n`;
+    // ── SQL Validation queries ─────────────────────────────────────────────
+    const allCandidates = candidates; // explicit + inferred
+    if (allCandidates.length) {
+      p += `## SQL Validation Queries\n\n`;
+      p += `Run these queries to **confirm or discard** each relationship candidate.\n`;
+      p += `**orphans = 0** → relationship valid ✓ | **orphans > 0** → values missing in master table, discard or investigate\n\n`;
+      p += `\`\`\`sql\n`;
+      allCandidates.forEach((c, i) => {
+        p += `-- [${i+1}] ${c.fromTable}.${c.fromCol} → ${c.toTable}.${c.toPk}${c.isExplicit?' (declared FK)':' (inferred)'}\n`;
+        p += `SELECT COUNT(*) AS orphans FROM ${c.fromTable}\n`;
+        p += `  WHERE ${c.fromCol} IS NOT NULL\n`;
+        p += `    AND ${c.fromCol} NOT IN (SELECT ${c.toPk} FROM ${c.toTable});\n\n`;
+      });
+      p += `\`\`\`\n\n`;
+      p += `Also check for NULL-only FK columns (these aren't real relationships):\n\`\`\`sql\n`;
+      allCandidates.forEach(c => {
+        p += `SELECT COUNT(*) AS non_null FROM ${c.fromTable} WHERE ${c.fromCol} IS NOT NULL; -- ${c.fromTable}.${c.fromCol}\n`;
+      });
+      p += `\`\`\`\n\n`;
+      p += `**Decision rule:** Discard candidate if orphans > 0 OR non_null = 0. Keep only confirmed relationships in the output JSON.\n\n`;
+    }
 
-    prompt += `### Task 1 — Relationship Analysis\n\n`;
-    prompt += `Identify ALL relationships between tables:\n`;
-    prompt += `- Explicit FK constraints (listed above)\n`;
-    prompt += `- Inferred from column naming: \`<table>_id\` → \`<table>.id\`, \`<table>_code\` → \`<table>.code\`, etc.\n`;
-    prompt += `- Junction/pivot tables (tables with exactly 2 FK-like columns suggesting many-to-many)\n`;
-    prompt += `- Self-referential relationships (e.g. \`parent_id\` in the same table)\n\n`;
+    // ── JSON format — fully annotated example using real tables ───────────
+    const ex1 = tables.find(t => candidates.some(c => c.fromTable === t.name)) || tables[0];
+    const ex2 = ex1 ? tables.find(t => t.name !== ex1.name && (candidates.some(c => c.toTable === t.name) || foreignKeys.some(fk => fk.toTable === t.name))) || tables[1] : tables[1];
+    const exCand = candidates.find(c => c.fromTable === ex1?.name) || (ex1 && ex2 ? { fromTable: ex1.name, fromCol: ex2?.name?.replace(/s$/,'')+'_id', toTable: ex2?.name, toPk: 'id' } : null);
 
-    prompt += `### Task 2 — Smart Queries JSON\n\n`;
-    prompt += `Output a valid JSON file with **exactly** this structure. This file will be loaded directly into the database admin tool:\n\n`;
-    prompt += `\`\`\`json\n`;
-    prompt += JSON.stringify(this._buildSchemaJson(schema), null, 2);
-    prompt += `\n\`\`\`\n\n`;
-    prompt += `**Instructions for filling the JSON:**\n`;
-    prompt += `- \`entities[table].displayField\`: the column most useful for display (name, title, email, code, description)\n`;
-    prompt += `- \`entities[table].description\`: 1-sentence description of what this table represents in the business domain\n`;
-    prompt += `- \`entities[table].columns[col].label\`: human-readable label for the column\n`;
-    prompt += `- \`entities[table].columns[col].searchable\`: true if this column is useful for text search\n`;
-    prompt += `- \`entities[table].relations\`: all relationships this entity has (hasMany, belongsTo, hasOne, manyToMany)\n`;
-    prompt += `- \`smartTemplates\`: 3-5 useful queries per entity showing joins, aggregations, and lookups\n`;
-    prompt += `- \`relationships[].confidence\`: "explicit" if FK-declared, "inferred" if guessed from naming\n`;
-    prompt += `- \`diagram.mermaid\`: a valid Mermaid ER diagram string\n\n`;
+    const dispCands = ['name','title','email','code','description','label','nombre','bezeichnung'];
+    const pickDisp = tbl => tbl?.columns.find(c => dispCands.some(d => c.name.toLowerCase().includes(d)))?.name || tbl?.columns.find(c => !c.isPk)?.name || tbl?.columns[0]?.name || 'id';
+    const pickTextCols = tbl => (tbl?.columns || []).filter(c => ['varchar','text','char','nvarchar','character varying'].some(t => c.type.startsWith(t))).map(c => c.name);
 
-    prompt += `### Task 3 — Schema Report\n\n`;
-    prompt += `Write a concise (< 400 words) natural-language description of the data model:\n`;
-    prompt += `- What domain/application this database appears to serve\n`;
-    prompt += `- Key entities and their roles\n`;
-    prompt += `- Main data flows (e.g. "a User places Orders, each Order has OrderItems linked to Products")\n`;
-    prompt += `- Any notable patterns (audit tables, lookup/reference tables, soft deletes, multi-tenancy, etc.)\n\n`;
+    p += `## Task 2 — Smart Queries JSON (import format)\n\n`;
+    p += `This JSON is loaded directly into the app via **Load Schema**. The app uses it to:\n`;
+    p += `- Show **Smart Query templates** in the DB Admin query bar (dropdown → Run)\n`;
+    p += `- Display **entity relationships** so the user understands the data model\n`;
+    p += `- Power future auto-join suggestions\n\n`;
+    p += `**The schema starter JSON** (download via the AI-Prompt modal) already has all ${tables.length} tables with columns and types.\n`;
+    p += `You must fill in every \`""\` and \`[]\` field, and add \`smartTemplates\`.\n\n`;
 
-    prompt += `### Task 4 — Mermaid ER Diagram\n\n`;
-    prompt += `Generate a \`erDiagram\` block showing all entities and their relationships.\n`;
-    prompt += `Use standard Mermaid ER notation: \`||--o{\`, \`}o--||\`, \`||--||\`, etc.\n\n`;
+    p += `### Field-by-field reference\n\n`;
+    p += `\`\`\`\nROOT FIELDS\n`;
+    p += `  version          string   always "1.0"\n`;
+    p += `  connection       object   DB connection params (already filled)\n`;
+    p += `  entities         object   one key per table name — the main content\n`;
+    p += `  relationships    array    flat list of all confirmed FK pairs\n`;
+    p += `  smartTemplates   array    SQL query templates shown in the UI\n`;
+    p += `  diagram.mermaid  string   Mermaid erDiagram source\n\n`;
+    p += `EACH ENTITY (entities["table_name"])\n`;
+    p += `  table        string   exact table name in DB\n`;
+    p += `  pk           string   primary key column name\n`;
+    p += `  displayField string   column shown as the "label" when referencing this entity\n`;
+    p += `                         e.g. "name", "email", "code" — NOT the id\n`;
+    p += `  description  string   one sentence: what this table represents in the business\n`;
+    p += `  columns      object   one key per column\n`;
+    p += `    .type        string   SQL type, e.g. "integer", "varchar(255)"\n`;
+    p += `    .label       string   human-readable name shown in the UI\n`;
+    p += `    .pk          bool     true if primary key\n`;
+    p += `    .nullable    bool     true if the column allows NULL (from schema)\n`;
+    p += `    .searchable  bool     true if useful for free-text search (name, email, code…)\n`;
+    p += `  relations    object   outgoing relationships from this entity\n`;
+    p += `    key = target table name\n`;
+    p += `    .type        "belongsTo" | "hasMany" | "hasOne" | "manyToMany"\n`;
+    p += `    .foreignKey  FK column on the child side\n`;
+    p += `    .localKey    PK column on the parent side\n`;
+    p += `    .label       short human description, e.g. "Order's customer"\n\n`;
+    p += `EACH RELATIONSHIP (relationships[])\n`;
+    p += `  from.table / from.column   child table + FK column\n`;
+    p += `  to.table   / to.column     parent table + PK column\n`;
+    p += `  type         "MANY_TO_ONE" | "ONE_TO_ONE" | "MANY_TO_MANY"\n`;
+    p += `  confidence   "explicit" (declared FK) | "inferred" (naming pattern, SQL-confirmed)\n`;
+    p += `  label        short description, e.g. "Each order belongs to a customer"\n\n`;
+    p += `EACH SMART TEMPLATE (smartTemplates[])\n`;
+    p += `  id             unique string, kebab-case\n`;
+    p += `  label          short name shown in the UI dropdown\n`;
+    p += `  description    one sentence explaining what the query returns\n`;
+    p += `  category       "Overview" | "Reports" | "Lookups" | "Audit" | "Join" | "Aggregate"\n`;
+    p += `  sql            complete runnable SQL — use :param_name for substitutable values\n`;
+    p += `                   e.g.  WHERE company_code = :company_code\n`;
+    p += `                   The frontend replaces :param_name with the user's input before running.\n`;
+    p += `                   Do NOT use $1/$2 PostgreSQL syntax — use :name instead.\n`;
+    p += `  params         array (empty [] if no parameters needed)\n`;
+    p += `    .name          matches :param_name in SQL (exact match)\n`;
+    p += `    .type          "string" | "number" | "select"\n`;
+    p += `    .label         human-readable input label\n`;
+    p += `    .default       default value (optional)\n`;
+    p += `    .source        for type "select" ONLY: "table_name.pk_column"\n`;
+    p += `                   The frontend fetches DISTINCT values from that column and shows a dropdown.\n`;
+    p += `    .displaySource for type "select" ONLY: "table_name.display_column"\n`;
+    p += `                   Shows "pk_value — display_value" in the dropdown.\n\n`;
+    p += `DICTIONARY / LOOKUP TABLE DETECTION\n`;
+    p += `  A table is a "dictionary" if it has <= 5 columns where 1 column is a short code/id\n`;
+    p += `  and another column is a description/name. Examples: sol_company (code, name),\n`;
+    p += `  sol_vat_rates (country, rate), elocolor (colorno, ...), sordtype (id, ...).\n`;
+    p += `  For templates filtering by a dictionary value, use type "select" with source:\n`;
+    p += `    { "name": "company_code", "type": "select", "label": "Company",\n`;
+    p += `      "source": "sol_company.code", "displaySource": "sol_company.name" }\n`;
+    p += `  This shows a populated dropdown instead of a raw text input.\n\n`;
+    p += `MULTI-TABLE JOIN REQUIREMENT\n`;
+    p += `  Include at least 2 smartTemplates with 3 or more table JOINs.\n`;
+    p += `  When a lookup/dictionary table is part of the chain, JOIN it to show the description\n`;
+    p += `  column instead of the raw code. Example: orders → vendors → countries → country_name.\n`;
+    p += `\`\`\`\n\n`;
 
-    return prompt;
+    // Build the fully-worked example — structure must match _buildSchemaJson exactly
+    p += `### Fully worked example using tables from this database\n\n`;
+    p += `> **This example uses the same structure as the schema starter JSON you will download.**\n`;
+    p += `> Do NOT rewrite the JSON from scratch. Open the starter, fill in the empty \`""\` strings, add \`relations\` objects and \`smartTemplates\` entries.\n\n`;
+    p += `\`\`\`json\n`;
+    const ex1pk   = ex1?.columns.find(c => c.isPk)?.name || 'id';
+    const ex2pk   = ex2?.columns.find(c => c.isPk)?.name || 'id';
+    const ex1disp = pickDisp(ex1);
+    const ex2disp = pickDisp(ex2);
+    const ex1txt  = pickTextCols(ex1).slice(0, 3);
+    const ex2txt  = pickTextCols(ex2).slice(0, 2);
+    // likeOp: ILIKE for PostgreSQL (case-insensitive), LIKE for MySQL/MSSQL
+    const likeOp  = dbType === 'postgresql' ? 'ILIKE' : 'LIKE';
+    // Column builder — matches _buildSchemaJson exactly (type, label, pk, nullable, searchable)
+    const mkCols  = (tbl, txtCols) => Object.fromEntries(
+      (tbl?.columns || []).slice(0, 5).map(c => [c.name, {
+        type:       c.type,
+        label:      c.name.replace(/_/g,' ').replace(/\b\w/g, l => l.toUpperCase()),
+        pk:         c.isPk,
+        nullable:   c.nullable,
+        searchable: txtCols.includes(c.name),
+      }])
+    );
+    const ex1cols = mkCols(ex1, ex1txt);
+    const ex2cols = mkCols(ex2, ex2txt);
+    const ex1rel  = exCand ? { [exCand.toTable]: { type:'belongsTo', foreignKey: exCand.fromCol, localKey: exCand.toPk, label: `${ex1?.name} belongs to ${exCand.toTable}` } } : {};
+    const ex2rel  = exCand ? { [ex1?.name]:     { type:'hasMany',    foreignKey: exCand.fromCol, localKey: exCand.toPk, label: `${exCand.toTable} has many ${ex1?.name}` } } : {};
+    const exJsonFull = {
+      version:     '1.0',
+      generatedAt: new Date().toISOString(),
+      connection:  { type: dbType, host, port: Number(port), database },
+      entities: {
+        ...(ex1 ? { [ex1.name]: { table: ex1.name, pk: ex1pk, displayField: ex1disp, description: `Stores ${ex1.name} records`, columns: ex1cols, relations: ex1rel } } : {}),
+        ...(ex2 ? { [ex2.name]: { table: ex2.name, pk: ex2pk, displayField: ex2disp, description: `Master reference for ${ex2.name}`, columns: ex2cols, relations: ex2rel } } : {}),
+      },
+      relationships: exCand ? [{
+        from:       { table: exCand.fromTable, column: exCand.fromCol },
+        to:         { table: exCand.toTable,   column: exCand.toPk   },
+        type:       'MANY_TO_ONE',
+        confidence: exCand.isExplicit ? 'explicit' : 'inferred',
+        label:      `Each ${ex1?.name} belongs to one ${exCand.toTable}`,
+      }] : [],
+      smartTemplates: exCand ? [
+        {
+          id:          `${ex1?.name}-with-${ex2?.name}`,
+          label:       `${ex1?.name} + ${ex2?.name}`,
+          description: `${ex1?.name} rows joined with their ${ex2?.name}`,
+          category:    'Overview',
+          sql:         `SELECT a.${ex1pk}${ex1txt[0] ? ', a.'+ex1txt[0] : ''}, b.${ex2disp} AS ${ex2?.name || 'parent'}_name\nFROM ${ex1?.name} a\nLEFT JOIN ${ex2?.name} b ON b.${exCand.toPk} = a.${exCand.fromCol}\nORDER BY a.${ex1pk} DESC\nLIMIT 100`,
+          params:      [],
+        },
+        {
+          id:          `${ex2?.name}-totals`,
+          label:       `${ex2?.name} totals`,
+          description: `Number of ${ex1?.name} per ${ex2?.name}`,
+          category:    'Reports',
+          sql:         `SELECT b.${ex2pk}, b.${ex2disp}, COUNT(a.${ex1pk}) AS total\nFROM ${ex2?.name} b\nLEFT JOIN ${ex1?.name} a ON a.${exCand.fromCol} = b.${exCand.toPk}\nGROUP BY b.${ex2pk}, b.${ex2disp}\nORDER BY total DESC`,
+          params:      [],
+        },
+        // Search template — uses a literal example value (params not yet handled by the app)
+        ...(ex1txt.length ? [{
+          id:          `${ex1?.name}-search`,
+          label:       `Search ${ex1?.name}`,
+          description: `Find ${ex1?.name} by text — replace 'example' with your search term`,
+          category:    'Lookups',
+          sql:         `SELECT * FROM ${ex1?.name}\nWHERE ${ex1txt.map(c => `${c} ${likeOp} '%example%'`).join('\n   OR ')}\nLIMIT 50`,
+          params:      [],
+        }] : []),
+      ] : [],
+      diagram: {
+        mermaid: exCand
+          ? `erDiagram\n  ${ex2?.name} ||--o{ ${ex1?.name} : "has"\n  ${ex1?.name} {\n    integer ${ex1pk} PK\n    integer ${exCand.fromCol} FK\n  }`
+          : '',
+      },
+    };
+    p += JSON.stringify(exJsonFull, null, 2);
+    p += `\n\`\`\`\n\n`;
+    p += `**Compatibility notes:**\n`;
+    p += `- The app validates the file on load: it needs \`entities\` or \`smartTemplates\` to be present\n`;
+    p += `- \`smartTemplates[].id\` must be unique — used as the select option value\n`;
+    p += `- \`smartTemplates[].sql\` is executed as-is against the connected DB — must be valid ${dbLabel} SQL\n`;
+    p += `- \`relationships[].from.column\` / \`to.column\` must be exact column names as they appear in the DB\n`;
+    p += `- \`entities[].columns[].nullable\` comes from the schema — do not change it\n`;
+    p += `- Search templates: use \`${likeOp}\` (correct for ${dbLabel}); do NOT use \`:params\` syntax — not yet supported\n\n`;
+
+    // ── Pre-generated relationships table ─────────────────────────────────
+    const allRels = [
+      ...foreignKeys.map(fk => ({ fromTable: fk.fromTable, fromCol: fk.fromColumn, toTable: fk.toTable, toCol: fk.toColumn, confidence: 'explicit', status: '✓ declared' })),
+      ...candidates.filter(c => !c.isExplicit).map(c => ({ fromTable: c.fromTable, fromCol: c.fromCol, toTable: c.toTable, toCol: c.toPk, confidence: 'inferred', status: '? pending SQL check' })),
+    ];
+
+    p += `## Preliminary Relationship Map\n\n`;
+    p += `Sourced from: declared FKs + column-naming inference. **Validate with the SQL queries above before trusting inferred rows.**\n\n`;
+    p += `| # | Child table | FK column | Parent table | PK | Type | Confidence | Status |\n`;
+    p += `|---|-------------|-----------|--------------|-----|------|------------|--------|\n`;
+    allRels.forEach((r, i) => {
+      const relType = candidates.find(c => c.fromTable === r.fromTable && c.fromCol === r.fromCol && c.toTable === r.toTable)
+        ? 'many → one' : 'many → one';
+      p += `| ${i+1} | \`${r.fromTable}\` | \`${r.fromCol}\` | \`${r.toTable}\` | \`${r.toCol}\` | ${relType} | ${r.confidence} | ${r.status} |\n`;
+    });
+    p += `\n`;
+
+    // Detect likely many-to-many junction tables (exactly 2 FK-like cols, small own columns)
+    const junctions = tables.filter(t => {
+      const fkLike = t.columns.filter(c => !c.isPk && /_(id|code|key)$/i.test(c.name));
+      return fkLike.length >= 2 && t.columns.length <= fkLike.length + 3;
+    });
+    if (junctions.length) {
+      p += `**Possible many-to-many junction tables:** ${junctions.map(t => `\`${t.name}\``).join(', ')}\n`;
+      p += `These tables have 2+ FK-like columns and few other columns — typical pivot/junction pattern.\n\n`;
+    }
+
+    // Detect self-referential tables (column like parent_id in same table)
+    const selfRef = [];
+    for (const tbl of tables) {
+      const col = tbl.columns.find(c => !c.isPk && (c.name === 'parent_id' || c.name === `${tbl.name.replace(/s$/,'')}_id`));
+      if (col) selfRef.push({ table: tbl.name, col: col.name });
+    }
+    if (selfRef.length) {
+      p += `**Self-referential candidates:** ${selfRef.map(s => `\`${s.table}.${s.col}\``).join(', ')}\n\n`;
+    }
+
+    // ── Pre-generated Mermaid ER diagram ───────────────────────────────────
+    p += `## Preliminary Mermaid ER Diagram\n\n`;
+    p += `Based on declared FKs and inferred candidates. Inferred relationships are marked with \`~~inferred~~\`.\n`;
+    p += `**After running SQL validation, update this diagram:** remove discarded relationships, add any missed ones.\n\n`;
+    p += `\`\`\`mermaid\nerDiagram\n`;
+
+    // Emit entity blocks for related tables (compact: only PK + FK cols)
+    for (const tbl of tables.filter(t => relatedTables.has(t.name) || junctions.some(j => j.name === t.name))) {
+      p += `  ${tbl.name} {\n`;
+      tbl.columns.filter(c => c.isPk || /_(id|code|key)$/i.test(c.name) || tbl.columns.indexOf(c) < 4).slice(0, 6).forEach(c => {
+        const ann = c.isPk ? ' PK' : allRels.some(r => r.fromTable === tbl.name && r.fromCol === c.name) ? ' FK' : '';
+        p += `    ${c.type.replace(/[()]/g,'').replace(/\s+/g,'_')} ${c.name}${ann}\n`;
+      });
+      p += `  }\n`;
+    }
+    p += `\n`;
+
+    // Emit declared FK relationships
+    foreignKeys.forEach(fk => {
+      p += `  ${fk.toTable} ||--o{ ${fk.fromTable} : "has"\n`;
+    });
+    // Emit inferred candidates (add comment marker)
+    candidates.filter(c => !c.isExplicit).forEach(c => {
+      p += `  ${c.toTable} ||--o{ ${c.fromTable} : "~~inferred~~"\n`;
+    });
+    // Many-to-many via junction
+    junctions.forEach(j => {
+      const fkCols = j.columns.filter(c => !c.isPk && /_(id|code|key)$/i.test(c.name));
+      if (fkCols.length >= 2) {
+        const ref1 = candidates.find(c => c.fromTable === j.name && c.fromCol === fkCols[0].name);
+        const ref2 = candidates.find(c => c.fromTable === j.name && c.fromCol === fkCols[1].name);
+        if (ref1 && ref2) p += `  ${ref1.toTable} }|--|{ ${ref2.toTable} : "${j.name}"\n`;
+      }
+    });
+    p += `\`\`\`\n\n`;
+
+    // ── Tasks ──────────────────────────────────────────────────────────────
+    p += `## Your Tasks\n\n`;
+    p += `### Step 1 — SQL Validation\n`;
+    p += `Run every query in the **SQL Validation Queries** section above. For each candidate:\n`;
+    p += `- \`orphans = 0\` AND \`non_null > 0\` → **confirmed** ✓ (keep in JSON and diagram)\n`;
+    p += `- \`orphans > 0\` → **discard** ✗ (remove from relationships table and diagram)\n`;
+    p += `- \`non_null = 0\` → column is always NULL → **discard** ✗\n\n`;
+
+    p += `### Step 2 — Updated Relationships Table\n`;
+    p += `Return the Preliminary Relationship Map table above with the Status column updated: \`✓ confirmed\` or \`✗ discarded (reason)\`.\n`;
+    p += `Add any additional relationships you detect.\n\n`;
+
+    p += `### Step 3 — Updated Mermaid ER Diagram\n`;
+    p += `Return the corrected Mermaid diagram with:\n`;
+    p += `- All confirmed relationships (remove \`~~inferred~~\` from confirmed ones)\n`;
+    p += `- Discarded relationships removed\n`;
+    p += `- Any missed relationships added\n`;
+    p += `- All tables included (even those with no relationships, as standalone entities)\n\n`;
+
+    p += `### Step 4 — Smart Queries JSON\n`;
+    p += `Fill the **schema starter JSON** (downloaded separately) with:\n`;
+    p += `- \`description\`: 1-sentence business description per entity\n`;
+    p += `- \`displayField\`: best column for human display (name/title/email/code)\n`;
+    p += `- \`columns[].label\`: human-readable label. If a \`translations\` table exists, use its text values.\n`;
+    p += `- \`columns[].searchable\`: true for text columns useful in search\n`;
+    p += `- \`relations\`: only confirmed relationships from Step 1\n`;
+    p += `- \`smartTemplates\`: 3-5 templates per main entity:\n`;
+    p += `    - At least 2 templates with JOINs across 3+ tables\n`;
+    p += `    - For dictionary/lookup table params use \`"type": "select"\` with \`source\` + \`displaySource\`\n`;
+    p += `    - Use \`:param_name\` syntax (NOT \$1/\$2) for substitutable filter values\n`;
+    p += `    - SQL must be valid ${dbLabel} — test mentally against the schema\n`;
+    p += `- \`diagram.mermaid\`: the final Mermaid diagram from Step 3\n\n`;
+
+    p += `### Step 5 — Domain Report (≤500 words)\n`;
+    p += `Write a structured report covering:\n`;
+    p += `- **Domain**: what application or business process this database serves\n`;
+    p += `- **Key entities**: each main table — what it stores and its role in the system\n`;
+    p += `- **Data flows**: how data moves (e.g. "Users place Orders → Orders contain OrderItems → OrderItems reference Products")\n`;
+    p += `- **Confirmed relationships table**: reproduce the updated relationships table from Step 2\n`;
+    p += `- **Patterns observed**: audit/history tables, lookup/reference tables, soft deletes (\`deleted_at\`), multi-tenancy (\`tenant_id\`), versioning, translation tables\n`;
+    p += `- **Data quality notes**: any orphan records found, NULL-heavy FK columns, tables with 0 rows\n`;
+
+    return p;
   },
 
   _buildSchemaJson(schema) {
@@ -1990,6 +3405,7 @@ const VMPanel = {
     const vmPass = document.getElementById('vm-cred-pass')?.value || S.vmPass;
     if (!vmUser || !vmPass) { alert('Enter VM credentials first.'); return; }
     S.vmUser = vmUser; S.vmPass = vmPass; App.saveState();
+    try { localStorage.setItem('vmCreds', JSON.stringify({ user: vmUser, pass: vmPass })); } catch {}
 
     const log    = document.getElementById('vm-expose-log');
     const status = document.getElementById('vm-expose-status');
@@ -2913,13 +4329,20 @@ const panels = {
     </div>
     <div class="brow">
       <button class="btn btn-g" onclick="DB.runQuery()">&#9654; Execute</button>
-      <button class="btn btn-o" onclick="DB.exportDb()">&#8595; Export .sql</button>
-      <button class="btn btn-o" onclick="DB.exportCsv()">&#8595; Export .csv</button>
       <input type="text" id="db-search-input" placeholder="Search all tables&hellip;" style="flex:1;max-width:220px" onkeydown="if(event.key==='Enter')DB.search()">
       <button class="btn btn-o" onclick="DB.search()">&#128269; Search</button>
-      <button class="btn btn-ai" onclick="DB.generateAIPrompt()" title="Generate AI prompt for full schema analysis, relationships and Smart Queries JSON">&#129302; AI&#8209;Prompt</button>
-      <button class="btn btn-o" onclick="DB.loadSmartSchema()" title="Load AI-generated schema JSON to enable Smart Query templates">&#128193; Load&nbsp;Schema</button>
     </div>
+    <details style="margin-top:5px">
+      <summary style="font-size:11px;color:var(--muted);cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:4px;padding:2px 0">
+        <span id="db-adv-arrow">&#9658;</span> Advanced options
+      </summary>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px" onclick="document.getElementById('db-adv-arrow').textContent=document.getElementById('db-adv-arrow').closest('details').open?'▸':'▾'">
+        <button class="btn btn-o" onclick="DB.exportDb()">&#8595; Export .sql</button>
+        <button class="btn btn-o" onclick="DB.exportCsv()">&#8595; Export .csv</button>
+        <button class="btn btn-ai" onclick="DB.generateAIPrompt()" title="Generate AI prompt for full schema analysis, relationships and Smart Queries JSON">&#129302; AI&#8209;Prompt</button>
+        <button class="btn btn-o" onclick="DB.loadSmartSchema()" title="Load AI-generated schema JSON to enable Smart Query templates">&#128193; Load&nbsp;Schema</button>
+      </div>
+    </details>
     <!-- Search progress -->
     <div id="db-search-progress" style="display:none;margin-top:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
@@ -5585,7 +7008,7 @@ function saveCreds() {
   S.vmUser = document.getElementById('u')?.value.trim() || '';
   S.vmPass = document.getElementById('p')?.value || '';
   if (!S.vmUser) { alert('Enter VM username.'); return; }
-  sessionStorage.setItem('vmCreds', JSON.stringify({ user: S.vmUser, pass: S.vmPass }));
+  localStorage.setItem('vmCreds', JSON.stringify({ user: S.vmUser, pass: S.vmPass }));
   App.saveState().then(() => {
     App.showPanel(hasWSL() ? 'models' : 'downloads');
     openVMBrowser();
@@ -5829,7 +7252,7 @@ async function init() {
     const running = vms.find(v => v.State === 'Running');
     if (running) S.vmName = running.Name;
   }
-  const savedCreds = JSON.parse(sessionStorage.getItem('vmCreds') || 'null');
+  const savedCreds = JSON.parse(localStorage.getItem('vmCreds') || 'null');
   if (savedCreds && !S.vmUser) {
     S.vmUser = savedCreds.user || '';
     S.vmPass = savedCreds.pass || '';
