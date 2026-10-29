@@ -891,7 +891,7 @@ app.post('/api/vm/probe', (req, res) => {
   });
   const isTls = port => new Promise(resolve => {
     const sock = tls.connect({ host: '127.0.0.1', port, rejectUnauthorized: false, servername: 'localhost' });
-    sock.setTimeout(2500);
+    sock.setTimeout(5000);
     const done = ok => { sock.destroy(); resolve(ok); };
     sock.once('secureConnect', () => done(true)); sock.once('timeout', () => done(false)); sock.once('error', () => done(false));
   });
@@ -911,26 +911,110 @@ app.post('/api/vm/probe', (req, res) => {
   })).then(results => res.json({ results }));
 });
 
-// Open the exposed VM in the host's Remote Desktop client without a login prompt: the credential is stored
-// for TERMSRV/<target> and the .rdp disables CredSSP so mstsc sends it directly (NLA is turned off by Expose).
+// Open the exposed VM in the host's Remote Desktop client without a login prompt: the .rdp carries the
+// password DPAPI-encrypted for the current Windows user ("password 51:b:"), which mstsc uses to log in
+// directly; the credential is also stored for TERMSRV/<target>.
 app.post('/api/vm/rdp/open', (req, res) => {
-  const { vmName, vmUser, vmPass, target } = req.body || {};
+  const { vmName, vmUser, vmPass, target, session } = req.body || {};
   if (!vmName || !vmUser || !vmPass) return res.status(400).json({ ok: false, error: 'VM credentials required' });
   const q = s => String(s).replace(/'/g, "''");
+  // session 'existing' = take over the user's current session (same desktop; the Hyper-V console window
+  // disconnects); 'new' = separate session alongside it. Windows decides this via fSingleSessionPerUser.
+  const single = session === 'existing' ? 1 : 0;
   const rdpFile = path.join(os.tmpdir(), `hvc-${String(vmName).replace(/[^\w-]/g, '_')}.rdp`);
   runPS(`$ErrorActionPreference='Stop'; ` +
     `$ip=@(Get-VMNetworkAdapter -VMName '${q(vmName)}' | ForEach-Object IPAddresses | Where-Object {$_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$'})[0]; ` +
     `if(-not $ip){throw 'No IPv4 address found for the VM'}; ` +
     `$target='${q(target || '')}'; if(-not $target){$target=$ip}; ` +
-    `$user='${q(vmUser)}'; if($user -notmatch '[\\\\@]'){ $user='.\\'+$user }; ` +
+    // Qualify the account with the guest's computer name: ".\\user" fails on the first logon attempt without NLA.
+    `$user='${q(vmUser)}'; $cred=New-Object PSCredential($user,(ConvertTo-SecureString '${q(vmPass)}' -AsPlainText -Force)); ` +
+    `$cn=try{ Invoke-Command -VMName '${q(vmName)}' -Credential $cred -ArgumentList ${single} -ScriptBlock { param($single) ` +
+    `Set-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server' fSingleSessionPerUser -Value $single -Type DWord; $env:COMPUTERNAME } -ErrorAction Stop }catch{ '.' }; ` +
+    `if($user -notmatch '[\\\\@]'){ $user="$cn\\$user" }; ` +
     `cmdkey /generic:"TERMSRV/$target" /user:"$user" /pass:'${q(vmPass)}' | Out-Null; ` +
-    `$rdp=@("full address:s:$target","username:s:$user","prompt for credentials:i:0","enablecredsspsupport:i:0","authentication level:i:0",` +
+    `$blob=ConvertTo-SecureString '${q(vmPass)}' -AsPlainText -Force | ConvertFrom-SecureString; ` +
+    `$rdp=@("full address:s:$target","username:s:$user","password 51:b:$blob","prompt for credentials:i:0","promptcredentialonce:i:0","authentication level:i:0",` +
     `"redirectclipboard:i:1","screen mode id:i:2","dynamic resolution:i:1") -join [Environment]::NewLine; ` +
     `[IO.File]::WriteAllText('${q(rdpFile)}', $rdp); Start-Process mstsc.exe -ArgumentList '"${q(rdpFile)}"'; "OPENED:$target"`,
     (out, err) => {
       const t = out.match(/OPENED:(\S+)/)?.[1];
       res.json(t ? { ok: true, target: t } : { ok: false, error: err || out || 'Could not start Remote Desktop' });
     });
+});
+
+// ── Web RDP (Apache Guacamole in Docker) ─────────────────────────────────────
+// Browser access to an exposed VM's desktop for anyone on the network: http://<host>:8080/guacamole.
+// Connections live in C:\ollama-ssl\guacamole\user-mapping.xml (Guacamole's file auth, reloaded on change);
+// each VM's Guacamole login is its own VM credentials. guacd reaches the VM through the host's RDP
+// portproxy (host.docker.internal:<rdpPort>).
+const GUAC_DIR = 'C:\\ollama-ssl\\guacamole';
+const GUAC_PORT = 8080;
+const GUAC_VERSION = '1.6.0';
+
+function writeGuacMapping(entries) {
+  const x = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const byLogin = {};
+  for (const [name, e] of Object.entries(entries)) (byLogin[`${e.user}\u0000${e.pass}`] ||= []).push([name, e]);
+  const xml = ['<user-mapping>'];
+  for (const [login, conns] of Object.entries(byLogin)) {
+    const [user, pass] = login.split('\u0000');
+    xml.push(`  <authorize username="${x(user)}" password="${x(pass)}">`);
+    for (const [name, e] of conns) {
+      xml.push(`    <connection name="${x(name)}">`, `      <protocol>rdp</protocol>`);
+      const params = { hostname: 'host.docker.internal', port: e.port, username: e.user, password: e.pass, domain: e.domain,
+        security: 'any', 'ignore-cert': 'true', 'resize-method': 'display-update', 'enable-wallpaper': 'false' };
+      for (const [k, v] of Object.entries(params)) if (v) xml.push(`      <param name="${k}">${x(v)}</param>`);
+      xml.push(`    </connection>`);
+    }
+    xml.push(`  </authorize>`);
+  }
+  xml.push('</user-mapping>');
+  fs.writeFileSync(path.join(GUAC_DIR, 'user-mapping.xml'), xml.join('\n'), 'utf8');
+}
+
+app.post('/api/webrdp/setup', (req, res) => {
+  const { vmName, vmUser, vmPass, rdpPort, guestName } = req.body || {};
+  if (!vmName || !vmUser || !vmPass) return res.status(400).json({ ok: false, error: 'VM credentials required' });
+  try {
+    fs.mkdirSync(GUAC_DIR, { recursive: true });
+    const stateFile = path.join(GUAC_DIR, 'connections.json');
+    const entries = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : {};
+    const plainUser = String(vmUser).replace(/^.*\\/, '');
+    entries[vmName] = { user: plainUser, pass: vmPass, port: Number(rdpPort) || 3389, domain: guestName || '' };
+    fs.writeFileSync(stateFile, JSON.stringify(entries, null, 2), 'utf8');
+    writeGuacMapping(entries);
+  } catch (e) { return res.json({ ok: false, error: e.message }); }
+  const home = GUAC_DIR.replace(/\\/g, '/');
+  // Idempotent: create the network/containers only if missing, start them if stopped.
+  runPS(`$ErrorActionPreference='Continue'; ` +
+    `docker info --format '{{.ServerVersion}}' *> $null; if($LASTEXITCODE -ne 0){ $dd='C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe'; if(Test-Path $dd){ Start-Process $dd }; ` +
+    `foreach($i in 1..36){ Start-Sleep 5; docker info --format '{{.ServerVersion}}' *> $null; if($LASTEXITCODE -eq 0){break} } }; ` +
+    `docker info --format '{{.ServerVersion}}' *> $null; if($LASTEXITCODE -ne 0){ 'ERROR:Docker is not running'; exit }; ` +
+    `if(-not (docker network ls -q -f name=^hvc-guac$)){ docker network create hvc-guac | Out-Null }; ` +
+    `if(-not (docker ps -aq -f name=^hvc-guacd$)){ docker run -d --name hvc-guacd --network hvc-guac --restart unless-stopped guacamole/guacd:${GUAC_VERSION} | Out-Null } else { docker start hvc-guacd | Out-Null }; ` +
+    `if(-not (docker ps -aq -f name=^hvc-guacamole$)){ docker run -d --name hvc-guacamole --network hvc-guac --restart unless-stopped -p ${GUAC_PORT}:8080 ` +
+    `-e GUACD_HOSTNAME=hvc-guacd -e GUACAMOLE_HOME=/guac-home -v '${home}:/guac-home' guacamole/guacamole:${GUAC_VERSION} | Out-Null } else { docker start hvc-guacamole | Out-Null }; ` +
+    `Remove-NetFirewallRule -DisplayName 'HVC-WebRDP-${GUAC_PORT}' -EA SilentlyContinue; ` +
+    `New-NetFirewallRule -DisplayName 'HVC-WebRDP-${GUAC_PORT}' -Direction Inbound -Protocol TCP -LocalPort ${GUAC_PORT} -Action Allow -Profile Any | Out-Null; ` +
+    `foreach($i in 1..40){ try { $r=Invoke-WebRequest 'http://localhost:${GUAC_PORT}/guacamole/' -UseBasicParsing -TimeoutSec 3; if($r.StatusCode -eq 200){ 'READY'; exit } } catch {}; Start-Sleep 2 }; 'ERROR:Guacamole did not become ready on port ${GUAC_PORT}'`,
+    (out, err) => {
+      if (/READY/.test(out)) {
+        // Guacamole client id: base64("<connection name>\0c\0default") for the file auth data source.
+        const clientId = Buffer.from(`${vmName}\u0000c\u0000default`, 'utf8').toString('base64');
+        return res.json({ ok: true, port: GUAC_PORT, path: '/guacamole/', clientId, user: String(vmUser).replace(/^.*\\/, '') });
+      }
+      res.json({ ok: false, error: out.match(/ERROR:(.*)/)?.[1] || err || out || 'Web RDP setup failed' });
+    });
+});
+
+// Host IPv4 addresses teammates could use to reach exposed VM ports (Hyper-V internal switches excluded).
+app.get('/api/host/ips', (_req, res) => {
+  const list = [];
+  for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
+    if (/vEthernet|Loopback/i.test(name)) continue;
+    for (const a of addrs || []) if (a.family === 'IPv4' && !a.internal && !a.address.startsWith('169.254.')) list.push({ ip: a.address, name });
+  }
+  res.json(list);
 });
 
 // Returns TCP ports listening on the local host machine (simple list)
@@ -1075,6 +1159,8 @@ app.post('/api/vm/expose', (req, res) => {
       `  Set-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server' fDenyTSConnections -Value 0 -Type DWord`,
       // NLA off: lets mstsc log in directly with saved credentials (CredSSP refuses saved creds for non-domain targets).
       `  Set-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp' UserAuthentication -Value 0 -Type DWord`,
+      // Separate session per connection, so an RDP login doesn't take over (and close) the Hyper-V console session.
+      `  Set-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server' fSingleSessionPerUser -Value 0 -Type DWord`,
       `  Set-Service TermService -StartupType Automatic -EA SilentlyContinue; Start-Service TermService -EA SilentlyContinue`,
       `  Get-NetFirewallRule -DisplayGroup 'Remote Desktop' -EA SilentlyContinue | Set-NetFirewallRule -Profile Any -Enabled True`,
       `}`,
@@ -1116,15 +1202,26 @@ app.post('/api/vm/expose', (req, res) => {
 
   lines.push(
     `Write-Output 'STEP:Configuring host portproxy and firewall rules'`,
+    // Drop previous forwards to this VM (including alternate ports from an earlier run).
+    `(netsh interface portproxy show v4tov4) -split '\\r?\\n' | ForEach-Object { if ($_ -match '^\\s*([\\d.*]+)\\s+(\\d+)\\s+([\\d.]+)\\s+\\d+' -and $Matches[3] -eq $vmIp) { netsh interface portproxy delete v4tov4 listenaddress=$($Matches[1]) listenport=$($Matches[2]) | Out-Null; Remove-NetFirewallRule -DisplayName "VMProxy-$($Matches[2])" -EA SilentlyContinue } }`,
+    // A port the host itself already listens on (e.g. its own RDP on 3389) can't be forwarded as-is:
+    // connections would reach the host. Those go to an alternate host port: 10000+port (3389 -> 13389).
+    `$proxyPid = (Get-CimInstance Win32_Service -Filter "Name='iphlpsvc'").ProcessId`,
+    `$hostBusy = @(Get-NetTCPConnection -State Listen -EA SilentlyContinue | Where-Object { $_.OwningProcess -ne $proxyPid } | ForEach-Object LocalPort | Sort-Object -Unique)`,
+    `$portMap = [ordered]@{}`,
     `foreach ($port in $vmPorts) {`,
-    `  netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=$port 2>&1 | Out-Null`,
-    `  netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=$port connectaddress=$vmIp connectport=$port | Out-Null`,
-    `  $rn = "VMProxy-$port"`,
+    `  $hp = [int]$port; if ($hp -in $hostBusy) { $hp = 10000 + [int]$port; while ($hp -in $hostBusy -and $hp -lt 65535) { $hp++ } }`,
+    `  $portMap["$port"] = $hp`,
+    `  netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=$hp 2>&1 | Out-Null`,
+    `  netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=$hp connectaddress=$vmIp connectport=$port | Out-Null`,
+    `  if ($hp -ne [int]$port) { Write-Output "Host already uses port $port - VM port $port is forwarded on host port $hp" }`,
+    `  $rn = "VMProxy-$hp"`,
     `  Remove-NetFirewallRule -DisplayName $rn -EA SilentlyContinue`,
-    `  New-NetFirewallRule -DisplayName $rn -Direction Inbound -Protocol TCP -LocalPort $port -Action Allow -Profile Any | Out-Null`,
+    `  New-NetFirewallRule -DisplayName $rn -Direction Inbound -Protocol TCP -LocalPort $hp -Action Allow -Profile Any | Out-Null`,
     `}`,
+    `Write-Output "PORTMAP:$($portMap | ConvertTo-Json -Compress)"`,
     `$hostIp = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | Sort-Object @{E={$a=$_.InterfaceAlias;if($a -match 'WLAN|Wi-Fi'){1}elseif($a -match 'Ethernet'){2}else{3}}} | Select-Object -First 1).IPAddress`,
-    `$json = [ordered]@{ vmName='${esc(vmName)}'; vmIp=$vmIp; hostIp=$hostIp; guestName="$guestName"; rdpUser='${esc(vmUser)}'; rdp=(3389 -in $vmPorts); ports=@($vmPorts|ForEach-Object{[int]$_}); timestamp=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') } | ConvertTo-Json -Compress`,
+    `$json = [ordered]@{ vmName='${esc(vmName)}'; vmIp=$vmIp; hostIp=$hostIp; guestName="$guestName"; rdpUser='${esc(vmUser)}'; rdp=(3389 -in $vmPorts); rdpPort=$portMap['3389']; portMap=$portMap; ports=@($vmPorts|ForEach-Object{[int]$_}); timestamp=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') } | ConvertTo-Json -Compress`,
     `$utf8 = New-Object System.Text.UTF8Encoding $false`,
     `[System.IO.File]::WriteAllText('C:\\ollama-ssl\\vm-exposure.json', $json, $utf8)`,
     `Write-Output "DONE:$hostIp"`
@@ -1138,6 +1235,7 @@ app.post('/api/vm/expose', (req, res) => {
       if      (line.startsWith('VM_IP:'))  send({ type: 'vmip',  ip:     line.slice(6).trim() });
       else if (line.startsWith('STEP:'))   send({ type: 'step',  text:   line.slice(5).trim() });
       else if (line.startsWith('PORTS:'))  send({ type: 'ports', ports:  line.slice(6).trim().split(',').map(Number).filter(Boolean) });
+      else if (line.startsWith('PORTMAP:')) { try { send({ type: 'portmap', map: JSON.parse(line.slice(8)) }); } catch {} }
       else if (line.startsWith('DONE:'))   send({ type: 'done',  hostIp: line.slice(5).trim() });
       else if (line.startsWith('ERROR:'))  send({ type: 'error', error:  line.slice(6).trim() });
       else                                 send({ type: 'log',   text:   line });
