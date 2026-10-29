@@ -76,6 +76,20 @@ async function runWsl(distro, bash, timeoutSec = 600) {
 }
 
 const SEAT_IMAGE = 'hvc-seat-desktop';
+// Desktops for the Docker mode (DESKTOP build arg in docker/Dockerfile); size = rough image size.
+const DESKTOPS = {
+  xfce:    { label: 'XFCE',             kind: 'full',  size: '~0.9 GB' },
+  mate:    { label: 'MATE',             kind: 'full',  size: '~1 GB' },
+  kde:     { label: 'KDE Plasma',       kind: 'full',  size: '~2 GB' },
+  gnome:   { label: 'GNOME Flashback',  kind: 'full',  size: '~1.2 GB', note: 'GNOME Shell needs 3D; Flashback runs on the virtual screen' },
+  lxqt:    { label: 'LXQt',             kind: 'light', size: '~0.6 GB' },
+  lxde:    { label: 'LXDE',             kind: 'light', size: '~0.5 GB' },
+  openbox: { label: 'Openbox + tint2',  kind: 'wm',    size: '~0.3 GB' },
+  icewm:   { label: 'IceWM',            kind: 'wm',    size: '~0.3 GB' },
+  fluxbox: { label: 'Fluxbox',          kind: 'wm',    size: '~0.3 GB' },
+  jwm:     { label: 'JWM',              kind: 'wm',    size: '~0.3 GB' },
+  i3:      { label: 'i3 (tiling, keyboard)', kind: 'wm', size: '~0.3 GB' },
+};
 const DOCKER_CTX = `${WSL_SEAT_DIR}/docker`;
 const seatCmd ='tr -d "\\r" < ' + shq(`${WSL_SEAT_DIR}/seat.sh`) + ' > /usr/local/bin/hvc-seat && chmod +x /usr/local/bin/hvc-seat';
 
@@ -120,7 +134,8 @@ async function status() {
   // One scheduled-task round trip: list the user's distros, pick one, run the checks in it.
   fs.mkdirSync(RUN_DIR, { recursive: true });
   const shFile = path.join(RUN_DIR, `check-${Date.now().toString(36)}.sh`);
-  fs.writeFileSync(shFile, `#!/bin/bash\n${seatCmd}; hvc-seat check; for d in 2 3 4 5; do pgrep -f "Xorg :$d " >/dev/null && echo "running:$d"; done\n`);
+  fs.writeFileSync(shFile, `#!/bin/bash\n${seatCmd}; hvc-seat check; hvc-seat monitors | sed 's/^/monitor:/'; ` +
+    `for d in 2 3 4 5 6 7 8 9; do { pgrep -f "Xorg :$d " || docker ps -q -f name=hvc-seat-$d 2>/dev/null | grep -q .; } >/dev/null && echo "running:$d"; done\n`);
   let out = '';
   try {
     out = await runAsUser(`$env:WSL_UTF8='1'; $all=@((wsl.exe -l -q) -replace "\`0","" | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -notmatch '^docker-desktop' }); ` +
@@ -139,7 +154,10 @@ async function status() {
     browsers: check.filter(l => l.startsWith('browser:')).map(l => l.slice(8)),
     gateway: (check.find(l => l.startsWith('gateway:')) || '').slice(8),
     docker: (check.find(l => l.startsWith('docker:')) || 'docker:missing').slice(7),   // active | inactive | missing
-    dockerImage: check.some(l => l === `image:${SEAT_IMAGE}`),
+    // Desktops already built (hvc-seat-desktop:<desktop>); others are built on first use.
+    dockerDesktops: check.filter(l => l.startsWith(`image:${SEAT_IMAGE}:`)).map(l => l.slice(`image:${SEAT_IMAGE}:`.length)),
+    // Monitors as WSLg sees them: a seat can go full screen on one at its resolution.
+    monitors: check.filter(l => l.startsWith('monitor:')).map(l => { const [index, size, x, y, name] = l.slice(8).split('|'); return { index: +index, size, x: +x, y: +y, name }; }),
     running: check.filter(l => l.startsWith('running:')).map(l => +l.slice(8)), seats: st.seats || {} };
 }
 
@@ -173,23 +191,31 @@ async function prepare({ distro, chrome, edge, docker } = {}) {
 }
 
 // Attach the chosen devices to WSL and start seat <display>.
-async function start({ display = 2, mouse, keyboard, mode, target, user, pass, browser, url, image }) {
+async function start({ display = 2, mouse, keyboard, mode, target, user, pass, browser, url, image, desktop, monitor }) {
   display = Number(display) || 2;
+  if (display < 2 || display > 9) throw new Error('Seat number must be 2-9');
   const st = loadState();
   const { devices } = await listDevices();
   const busids = [...new Set([mouse, keyboard].filter(Boolean))];
   if (!busids.length) throw new Error('Choose a mouse and/or a keyboard');
+  // A device belongs to one seat at a time.
+  for (const [d, s] of Object.entries(st.seats || {}))
+    if (+d !== display) for (const b of busids) if ((s.busids || []).includes(b)) throw new Error(`USB device ${b} is already used by seat ${d}`);
+  const monitorIdx = monitor === '' || monitor == null ? '' : String(Number(monitor));
   for (const b of busids) if (!devices.find(d => d.busid === b)) throw new Error(`USB device ${b} not found`);
   const distro = st.distro || (await listDistros()).find(d => /ubuntu/i.test(d));
   if (!distro) throw new Error('Prepare the seat first (no WSL distro)');
-  // Docker mode: check Docker Engine and the image in the distro and install/build whatever is missing first.
+  // Docker mode: make sure Docker Engine (and the seat packages) are installed first; the desktop image itself is
+  // built by seat.sh on first use. A custom image must already exist.
   let prepared = null;
   if (mode === 'docker') {
+    if (desktop && !DESKTOPS[desktop]) throw new Error(`Unknown desktop "${desktop}"`);
     const chk = await runWsl(distro, `${seatCmd}; hvc-seat check`, 120);
-    if (!/^docker:active$/m.test(chk) || !chk.includes(`image:${image || SEAT_IMAGE}`) || /^missing:/m.test(chk)) {
-      if ((image || SEAT_IMAGE) !== SEAT_IMAGE && /^docker:active$/m.test(chk))
-        throw new Error(`Docker image "${image}" not found in ${distro}`);
-      prepared = await prepare({ distro, docker: true });
+    if (!/^docker:active$/m.test(chk) || /^missing:/m.test(chk)) prepared = await prepare({ distro, docker: true });
+    else if (image && !new RegExp(`^image:${image.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm').test(chk)
+             && !image.startsWith(`${SEAT_IMAGE}:`)) {
+      const has = await runWsl(distro, `docker image inspect ${shq(image)} >/dev/null 2>&1 && echo yes`, 60);
+      if (!/yes/.test(has)) throw new Error(`Docker image "${image}" not found in ${distro}`);
     }
   }
   // Bind needs admin (this process); attach must run as the user that owns the WSL VM.
@@ -213,15 +239,24 @@ async function start({ display = 2, mouse, keyboard, mode, target, user, pass, b
   if (mouse && !mouseEv) throw new Error('Mouse not found in WSL after attach:\n' + devOut);
   if (keyboard && !kbdEv) throw new Error('Keyboard not found in WSL after attach:\n' + devOut);
   const args = mode === 'rdp' ? ['rdp', target || 'host:13389', user, pass]
-    : mode === 'docker' ? ['docker', image || SEAT_IMAGE, DOCKER_CTX]
+    : mode === 'docker' ? ['docker', image || `${SEAT_IMAGE}:${desktop || 'xfce'}`, DOCKER_CTX, image ? '' : (desktop || 'xfce')]
     : ['browser', browser || 'firefox', url];
-  const out = await runWsl(distro, `${seatCmd}; hvc-seat start ${display} ${mouseEv || 'none'} ${kbdEv || 'none'} ${args.map(shq).join(' ')} 2>/dev/null`, 600);
+  const out = await runWsl(distro, `${seatCmd}; SEAT_MONITOR=${shq(monitorIdx)} hvc-seat start ${display} ${mouseEv || 'none'} ${kbdEv || 'none'} ${args.map(shq).join(' ')} 2>/dev/null`, 600);
   if (!/Xorg :\d|container hvc-seat-\d/.test(out)) throw new Error('Seat did not start:\n' + out.trim());
   st.seats = st.seats || {};
-  st.seats[display] = { busids, mouse, keyboard, mouseEv, kbdEv, mode, browser,
-    target: mode === 'rdp' ? target : mode === 'docker' ? (image || SEAT_IMAGE) : url, started: new Date().toISOString() };
+  st.seats[display] = { busids, mouse, keyboard, mouseEv, kbdEv, mode, browser, monitor: monitorIdx,
+    target: mode === 'rdp' ? target : mode === 'docker' ? (image || `${SEAT_IMAGE}:${desktop || 'xfce'}`) : url, started: new Date().toISOString() };
   saveState(st);
   return { ok: true, display, mouseEv, kbdEv, prepared: prepared?.log || null, processes: out.trim().split('\n') };
+}
+
+// Restart a running Docker seat with another desktop (or image), keeping its devices attached and its screen.
+async function switchDesktop({ display, desktop, image } = {}) {
+  display = Number(display);
+  const seat = (loadState().seats || {})[display];
+  if (!seat) throw new Error(`Seat ${display} is not running`);
+  if (seat.mode !== 'docker') throw new Error(`Seat ${display} is not a Docker seat`);
+  return start({ display, mouse: seat.mouse, keyboard: seat.keyboard, monitor: seat.monitor, mode: 'docker', desktop, image });
 }
 
 // Stop seat <display> and give its USB devices back to Windows.
@@ -246,10 +281,12 @@ function router() {
   const wrap = fn => async (req, res) => { try { res.json(await fn(req)); } catch (e) { res.json({ ok: false, error: e.message }); } };
   r.get('/status', wrap(() => status()));
   r.get('/devices', wrap(() => listDevices()));
+  r.get('/desktops', (_req, res) => res.json(DESKTOPS));
   r.post('/prepare', wrap(req => prepare(req.body || {})));
   r.post('/start', wrap(req => start(req.body || {})));
   r.post('/stop', wrap(req => stop(req.body || {})));
+  r.post('/switch', wrap(req => switchDesktop(req.body || {})));
   return r;
 }
 
-module.exports = { router, status, prepare, start, stop, listDevices, runAsUser, runWsl };
+module.exports = { router, status, prepare, start, stop, switchDesktop, listDevices, runAsUser, runWsl };

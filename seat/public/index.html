@@ -51,7 +51,14 @@ code { font-family:var(--mono); }
       <div><label for="mouse">Mouse</label><select id="mouse"></select></div>
       <div><label for="keyboard">Keyboard</label><select id="keyboard"></select></div>
     </div>
-    <p class="muted">USB devices only (usbipd). Built-in laptop devices and Bluetooth devices cannot be passed to WSL.</p>
+    <div class="row">
+      <div style="flex:0 1 140px"><label for="seatno">Seat</label><select id="seatno">
+        <option value="2">Seat 2</option><option value="3">Seat 3</option><option value="4">Seat 4</option><option value="5">Seat 5</option>
+      </select></div>
+      <div><label for="monitor">Screen</label><select id="monitor"></select></div>
+    </div>
+    <p class="muted">USB devices only (usbipd). Built-in laptop devices and Bluetooth devices cannot be passed to WSL.
+      Several seats can run at once, each with its own devices and screen.</p>
   </div>
 
   <div class="card">
@@ -71,17 +78,18 @@ code { font-family:var(--mono); }
       <div><label for="url">URL <span class="muted">(<code>host</code> = this Windows machine)</span></label><input type="text" id="url" value="http://host:9090/"></div>
     </div>
     <div id="m-docker" class="row" hidden>
-      <div><label for="image">Image <span class="muted">(default: Ubuntu 24.04 + XFCE, built automatically)</span></label><input type="text" id="image" value="hvc-seat-desktop"></div>
-      <div><p class="muted" id="docker-note" style="margin-top:22px"></p></div>
+      <div><label for="desktop">Desktop <span class="muted">(Ubuntu 24.04; built on first use)</span></label><select id="desktop" onchange="dockerNote()"></select></div>
+      <div><label for="image">Custom image <span class="muted">(optional, overrides the desktop)</span></label><input type="text" id="image" placeholder="e.g. myorg/elo-desktop:latest"></div>
+      <div style="flex-basis:100%"><p class="muted" id="docker-note" style="margin:4px 0 0"></p></div>
     </div>
     <div style="margin-top:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap">
       <button class="primary" id="btn-start" onclick="startSeat()">Start seat</button>
-      <button id="btn-stop" onclick="stopSeat()">Stop seat &amp; return devices</button>
+      <button id="btn-stop" onclick="stopSeat(+$('seatno').value)">Stop this seat &amp; return devices</button>
       <span id="msg"></span>
     </div>
   </div>
 
-  <div class="card"><h2>Active seat</h2><div id="active" class="muted">—</div></div>
+  <div class="card"><h2>Active seats</h2><div id="active" class="muted">—</div></div>
 </main>
 <script>
 const API = '/api/seat';
@@ -99,7 +107,32 @@ function modeUi() {
   $('m-rdp').hidden = m !== 'rdp'; $('m-browser').hidden = m !== 'browser'; $('m-docker').hidden = m !== 'docker';
 }
 
+let DESKTOPS = {};
+function desktopOptions(selected) {
+  const kinds = { full: 'Full desktops', light: 'Lightweight desktops', wm: 'Window managers (very light)' };
+  return Object.entries(kinds).map(([k, title]) => `<optgroup label="${title}">` +
+    Object.entries(DESKTOPS).filter(([, d]) => d.kind === k).map(([id, d]) =>
+      `<option value="${id}"${id === selected ? ' selected' : ''}>${esc(d.label)} (${d.size})${S.dockerDesktops?.includes(id) ? ' ✓ built' : ''}</option>`).join('') + '</optgroup>').join('');
+}
+
+async function switchDesktop(display) {
+  const desktop = $(`sw-${display}`).value;
+  const built = S.dockerDesktops?.includes(desktop);
+  const r = await call('/switch', { display, desktop },
+    built ? `Switching seat ${display} to ${desktop}…` : `Building ${desktop} and switching seat ${display} (several minutes)…`);
+  $('msg').innerHTML = r.ok ? `<span class="ok">Seat ${display} now runs ${esc(desktop)}</span>` : `<span class="err">${esc(r.error)}</span>`;
+  load();
+}
+function dockerNote() {
+  const id = $('desktop').value, d = DESKTOPS[id] || {};
+  const built = S.dockerDesktops?.includes(id);
+  $('docker-note').textContent = [d.note,
+    S.docker !== 'active' ? 'Docker Engine will be installed in WSL before starting (several minutes).'
+      : built ? 'Ready to start.' : `This desktop will be built on start (${d.size || 'a few hundred MB'}, several minutes).`].filter(Boolean).join(' ');
+}
+
 async function load() {
+  if (!Object.keys(DESKTOPS).length) DESKTOPS = await fetch(API + '/desktops').then(r => r.json()).catch(() => ({}));
   S = await fetch(API + '/status').then(r => r.json()).catch(e => ({ error: e.message }));
   const req = [];
   if (S.error) req.push(`<span class="err">${esc(S.error)}</span>`);
@@ -107,21 +140,34 @@ async function load() {
   req.push(S.distro ? `<span class="ok">● WSL distro: ${esc(S.distro)}</span>` : '<span class="warn">● no WSL distro for the signed-in user</span>');
   req.push(S.missing?.length ? `<span class="warn">● missing in WSL: ${esc(S.missing.join(', '))}</span>` : (S.distro ? '<span class="ok">● Linux packages installed</span>' : ''));
   if (S.distro) req.push(S.docker === 'active'
-    ? `<span class="ok">● Docker Engine running${S.dockerImage ? ', desktop image built' : ' (desktop image will be built on first use)'}</span>`
+    ? `<span class="ok">● Docker Engine running${S.dockerDesktops?.length ? ` · desktops built: ${esc(S.dockerDesktops.join(', '))}` : ''}</span>`
     : `<span class="muted">● Docker Engine ${S.docker === 'missing' ? 'not installed' : S.docker} — only needed for Docker mode; installed automatically when you start it</span>`);
   $('req').innerHTML = req.filter(Boolean).join('<br>');
-  $('docker-note').textContent = S.docker === 'active' ? (S.dockerImage ? 'Docker ready.' : 'The image will be built on start (a few minutes).')
-    : 'Docker Engine and the image will be installed in WSL before starting (several minutes).';
+  const curDesktop = $('desktop').value || 'xfce';
+  $('desktop').innerHTML = desktopOptions(curDesktop);
+  dockerNote();
   $('prep').hidden = !!S.ready;
   const opt = (d, kind) => `<option value="${d.busid}">${esc(d.busid)} · ${esc(d.vidpid)} · ${esc(d.name)}${d.attached ? ' (in WSL)' : ''}</option>`;
   const devs = S.devices || [];
   $('mouse').innerHTML = '<option value="">— none —</option>' + devs.filter(d => d.mouse).map(d => opt(d)).join('');
   $('keyboard').innerHTML = '<option value="">— none —</option>' + devs.filter(d => d.keyboard).map(d => opt(d)).join('');
   $('browser').innerHTML = (S.browsers?.length ? S.browsers : ['firefox']).map(b => `<option>${esc(b)}</option>`).join('');
+  const curMon = $('monitor').value;
+  $('monitor').innerHTML = '<option value="">Window (1280×800)</option>' + (S.monitors || []).map(m =>
+    `<option value="${m.index}">Full screen on monitor ${m.index + 1} — ${esc(m.size)} at ${m.x},${m.y}</option>`).join('');
+  $('monitor').value = curMon;
+  const monName = i => i === '' || i == null ? 'window' : `monitor ${+i + 1}`;
   const seats = Object.entries(S.seats || {});
   $('active').innerHTML = seats.length ? seats.map(([d, s]) =>
-    `Display :${esc(d)} — ${esc(s.mode === 'rdp' ? 'RDP ' + s.target : s.mode === 'docker' ? 'Docker ' + s.target : (s.browser + ' ' + s.target))}<br><span class="muted">devices ${esc((s.busids||[]).join(', '))} (${esc([s.mouseEv, s.kbdEv].filter(Boolean).join(', '))}) · since ${esc(new Date(s.started).toLocaleString())}</span>`).join('<br>') : '—';
-  const cur = seats[0]?.[1]; if (cur) { if (cur.mouse) $('mouse').value = cur.mouse; if (cur.keyboard) $('keyboard').value = cur.keyboard; }
+    `<div style="margin-bottom:8px"><strong>Seat ${esc(d)}</strong> — ${esc(s.mode === 'rdp' ? 'RDP ' + s.target : s.mode === 'docker' ? 'Docker ' + s.target : (s.browser + ' ' + s.target))} · ${esc(monName(s.monitor))}
+      <button style="margin-left:8px;padding:2px 8px;font-size:12px" onclick="stopSeat(${+d})">Stop</button>
+      ${s.mode === 'docker' ? `<span style="white-space:nowrap;margin-left:8px">
+        <select id="sw-${+d}" style="width:auto;padding:2px 4px;font-size:12px">${desktopOptions(String(s.target).split(':').pop())}</select>
+        <button style="padding:2px 8px;font-size:12px" onclick="switchDesktop(${+d})">Switch desktop</button></span>` : ''}<br>
+      <span class="muted">devices ${esc((s.busids||[]).join(', '))} (${esc([s.mouseEv, s.kbdEv].filter(Boolean).join(', '))}) · since ${esc(new Date(s.started).toLocaleString())}</span></div>`).join('') : '—';
+  // Pre-select the next free seat number.
+  const used = seats.map(([d]) => +d);
+  if (used.includes(+$('seatno').value)) { const free = [2,3,4,5].find(n => !used.includes(n)); if (free) $('seatno').value = free; }
 }
 
 async function call(path, body, busyText) {
@@ -142,19 +188,19 @@ async function prepare() {
 
 async function startSeat() {
   const mode = document.querySelector('input[name=mode]:checked').value;
-  const body = { display: 2, mouse: $('mouse').value, keyboard: $('keyboard').value, mode,
+  const body = { display: +$('seatno').value, monitor: $('monitor').value, mouse: $('mouse').value, keyboard: $('keyboard').value, mode,
     target: $('target').value.trim(), user: $('user').value.trim(), pass: $('pass').value,
-    browser: $('browser').value, url: $('url').value.trim(), image: $('image').value.trim() };
+    browser: $('browser').value, url: $('url').value.trim(), image: $('image').value.trim(), desktop: $('desktop').value };
   if (!body.mouse && !body.keyboard) { $('msg').innerHTML = '<span class="err">Choose a mouse and/or a keyboard</span>'; return; }
-  const busy = mode === 'docker' && (S.docker !== 'active' || !S.dockerImage)
-    ? 'Installing Docker / building the image, then starting the seat (several minutes)…' : 'Attaching devices and starting the seat…';
+  const busy = mode === 'docker' && (S.docker !== 'active' || (!body.image && !S.dockerDesktops?.includes(body.desktop)))
+    ? 'Installing Docker / building the desktop image, then starting the seat (several minutes)…' : 'Attaching devices and starting the seat…';
   const r = await call('/start', body, busy);
-  $('msg').innerHTML = r.ok ? `<span class="ok">Seat started on display :${r.display} — use the TigerVNC window with the chosen devices</span>` : `<span class="err">${esc(r.error)}</span>`;
+  $('msg').innerHTML = r.ok ? `<span class="ok">Seat ${r.display} started — use it with the chosen devices</span>` : `<span class="err">${esc(r.error)}</span>`;
   load();
 }
 
-async function stopSeat() {
-  const r = await call('/stop', { display: 2 }, 'Stopping and returning devices to Windows…');
+async function stopSeat(display) {
+  const r = await call('/stop', { display }, `Stopping seat ${display} and returning its devices to Windows…`);
   $('msg').innerHTML = r.ok ? `<span class="ok">Stopped; devices returned: ${esc(r.released.join(', ') || 'none')}</span>` : `<span class="err">${esc(r.error)}</span>`;
   load();
 }

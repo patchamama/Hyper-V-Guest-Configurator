@@ -7,7 +7,10 @@
 # Usage (as root):
 #   seat.sh start <display> <mouse-event> <kbd-event> rdp <host:port> <[domain\]user> <pass>
 #   seat.sh start <display> <mouse-event> <kbd-event> browser <firefox|google-chrome|microsoft-edge> <url>
-#   seat.sh start <display> <mouse-event> <kbd-event> docker [image] [build-context-dir]
+#   seat.sh start <display> <mouse-event> <kbd-event> docker [image] [build-context-dir] [desktop]
+#     image hvc-seat-desktop:<desktop> is built on first use (xfce|mate|kde|gnome|lxqt|lxde|openbox|icewm|fluxbox|jwm|i3)
+#   (env SEAT_MONITOR=<index from "monitors">: full screen on that monitor at its resolution)
+#   seat.sh monitors           # Windows monitors as seen by WSLg (index|WxH|X|Y|name)
 #   seat.sh stop <display>
 #   seat.sh devices            # input devices attached to WSL (name | handlers | phys)
 #   seat.sh status <display>
@@ -37,7 +40,7 @@ check() {
   # Docker Engine inside this distro (/usr/bin/docker; Docker Desktop's Windows shim does not count).
   if [ -x /usr/bin/docker ]; then
     echo "docker:$(systemctl is-active docker 2>/dev/null)"
-    docker image inspect "${SEAT_IMAGE:-hvc-seat-desktop}" >/dev/null 2>&1 && echo "image:${SEAT_IMAGE:-hvc-seat-desktop}"
+    docker image ls hvc-seat-desktop --format 'image:hvc-seat-desktop:{{.Tag}}' 2>/dev/null
   else echo "docker:missing"; fi
 }
 
@@ -52,29 +55,58 @@ stop_seat() {
   sleep 1
 }
 
-# Viewer for seat <D>: view-only TigerVNC on the Windows desktop (WSLg), uncompressed (local link).
+# Monitors of the Windows desktop as WSLg exposes them: "index|WxH|X|Y|name".
+monitors() {
+  DISPLAY=:0 xrandr --listmonitors 2>/dev/null | awk 'NR>1 { split($3,a,/[\/x+]/); print $1 "|" a[1] "x" a[3] "|" a[5] "|" a[6] "|" $4 }' | tr -d ':'
+}
+
+# Seat geometry: SEAT_MONITOR=<index> puts the seat full screen on that WSLg monitor at its resolution;
+# otherwise a 1280x800 window. Sets W, H, GEOM, FULL.
+seat_geometry() {
+  W=1280; H=800; GEOM="1280x800"; FULL=""
+  if [ -n "${SEAT_MONITOR:-}" ]; then
+    local m; m=$(monitors | awk -F'|' -v i="$SEAT_MONITOR" '$1==i')
+    if [ -n "$m" ]; then
+      IFS='|' read -r _ wh mx my _ <<<"$m"; W=${wh%x*}; H=${wh#*x}
+      GEOM="${W}x${H}+${mx}+${my}"; FULL=1
+    fi
+  fi
+}
+
+# Xorg Monitor modeline for WxH (cvt ships with xserver-xorg-core).
+modeline() { cvt "$1" "$2" 60 2>/dev/null | awk '/^Modeline/ { $2="\"" W "x" H "\""; print }' W="$1" H="$2"; }
+
+# Viewer for seat <D>: view-only TigerVNC on the Windows desktop (WSLg), uncompressed (local link); full screen on
+# the seat's monitor when one was chosen.
 start_viewer() {
   local D=$1 PORT=$((5900 + $1))
+  seat_geometry
   for i in $(seq 1 40); do timeout 1 bash -c "</dev/tcp/127.0.0.1/$PORT" 2>/dev/null && break; sleep 0.5; done
-  DISPLAY=:0 setsid xtigervncviewer -ViewOnly -RemoteResize=0 -DesktopSize=1280x800 \
+  DISPLAY=:0 setsid xtigervncviewer -ViewOnly -RemoteResize=0 -DesktopSize="${W}x${H}" \
     -AutoSelect=0 -PreferredEncoding=Raw -NoJPEG=1 -FullColor=1 \
-    -geometry 1280x800 "127.0.0.1:$PORT" >"/tmp/hvc-viewer-$D.log" 2>&1 < /dev/null &
+    ${FULL:+-FullScreen -FullScreenMode=Current -FullScreenSystemKeys=0} \
+    -geometry "$GEOM" "127.0.0.1:$PORT" >"/tmp/hvc-viewer-$D.log" 2>&1 < /dev/null &
 }
 
 # Docker mode: a desktop container that gets only the seat's devices (--device) and serves its screen over VNC.
 # Its X display number is offset by 20: with --network host it shares the abstract X socket namespace.
 start_docker_seat() {
-  local D=$1 MOUSE=$2 KBD=$3 IMAGE=${4:-hvc-seat-desktop} CTX=${5:-}
+  local D=$1 MOUSE=$2 KBD=$3 IMAGE=${4:-hvc-seat-desktop:xfce} CTX=${5:-} DESKTOP=${6:-}
   [ -x /usr/bin/docker ] || { echo "ERROR: Docker Engine is not installed in this distro"; return 1; }
   if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
     [ -n "$CTX" ] && [ -d "$CTX" ] || { echo "ERROR: image $IMAGE not found and no build context"; return 1; }
-    docker build -q -t "$IMAGE" "$CTX" >/dev/null || { echo "ERROR: docker build failed"; return 1; }
+    # hvc-seat-desktop:<desktop> images are built on first use with that desktop.
+    [ -z "$DESKTOP" ] && case "$IMAGE" in hvc-seat-desktop:*) DESKTOP=${IMAGE#hvc-seat-desktop:} ;; esac
+    docker build -q ${DESKTOP:+--build-arg "DESKTOP=$DESKTOP"} -t "$IMAGE" "$CTX" >"/tmp/hvc-build-$D.log" 2>&1 \
+      || { echo "ERROR: docker build failed"; tail -5 "/tmp/hvc-build-$D.log"; return 1; }
   fi
   local devs=()
   [ "$MOUSE" != none ] && devs+=(--device "/dev/input/$MOUSE")
   [ "$KBD" != none ] && devs+=(--device "/dev/input/$KBD")
+  seat_geometry
   docker run -d --name "hvc-seat-$D" --network host "${devs[@]}" -v /run/udev:/run/udev:ro \
-    -e MOUSE="$MOUSE" -e KBD="$KBD" -e DISPLAY_NUM=$((D + 20)) -e VNC_PORT=$((5900 + D)) "$IMAGE" >/dev/null \
+    -e MOUSE="$MOUSE" -e KBD="$KBD" -e DISPLAY_NUM=$((D + 20)) -e VNC_PORT=$((5900 + D)) \
+    -e SEAT_W="$W" -e SEAT_H="$H" "$IMAGE" >/dev/null \
     || { echo "ERROR: docker run failed"; return 1; }
   start_viewer "$D"
   sleep 3
@@ -94,6 +126,8 @@ start_seat() {
   local PORT=$((5900 + D)) CONF=/tmp/hvc-seat-$D.conf
   stop_seat "$D"
   if [ "$MODE" = docker ]; then start_docker_seat "$D" "$MOUSE" "$KBD" "$@"; return; fi
+  seat_geometry
+  local ML; ML=$(modeline "$W" "$H"); [ -n "$ML" ] || { W=1280; H=800; ML='Modeline "1280x800" 83.50 1280 1352 1480 1680 800 803 809 831 -hsync +vsync'; }
   local inputs="" layout=""
   if [ -n "$MOUSE" ] && [ "$MOUSE" != none ]; then
     inputs+=$'Section "InputDevice"\n  Identifier "seat-mouse"\n  Driver "libinput"\n  Option "Device" "/dev/input/'"$MOUSE"$'"\nEndSection\n'
@@ -119,7 +153,7 @@ Section "Monitor"
   Identifier "mon"
   HorizSync 5.0-1000.0
   VertRefresh 5.0-200.0
-  Modeline "1280x800" 83.50 1280 1352 1480 1680 800 803 809 831
+  $ML
 EndSection
 Section "Screen"
   Identifier "scr"
@@ -128,7 +162,7 @@ Section "Screen"
   DefaultDepth 24
   SubSection "Display"
     Depth 24
-    Modes "1280x800"
+    Modes "${W}x${H}"
   EndSubSection
 EndSection
 $inputs
@@ -186,6 +220,7 @@ case "$CMD" in
   status)  status_seat "$1" ;;
   devices) devices ;;
   check)   check ;;
+  monitors) monitors ;;
   logs)    D=$1; for f in xorg vnc viewer app; do echo "--- $f"; tail -c 800 "/tmp/hvc-$f-$D.log" 2>/dev/null | tr -cd '[:print:]\n' | tail -4; done ;;
   *) echo "usage: seat.sh start|stop|status|devices|logs ..."; exit 2 ;;
 esac
