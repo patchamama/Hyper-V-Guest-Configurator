@@ -15,7 +15,8 @@ Funciona y está probado con un ratón USB y un teclado USB:
 1. **usbipd-win** desconecta los dispositivos USB elegidos de Windows y los conecta a la distro WSL del usuario.
 2. En WSL, `seat.sh` arranca un **Xorg sobre una pantalla virtual** (`dummy`) cuya **única entrada** son esos
    dispositivos (`libinput`, `AutoAddDevices off`).
-3. Dentro corre una **sesión RDP** a una VM (`xfreerdp3`) o un **navegador en modo kiosk** (Firefox; Chrome/Edge opcionales).
+3. Dentro corre una **sesión RDP** a una VM (`xfreerdp3`), un **navegador en modo kiosk** (Firefox; Chrome/Edge opcionales)
+   o, en modo Docker, un **contenedor con escritorio** (Ubuntu + XFCE) que recibe solo esos dispositivos.
 4. La imagen se muestra en el escritorio de Windows con un **visor VNC de solo lectura** (x11vnc + TigerVNC vía WSLg),
    así que el teclado y el ratón de Windows no pueden actuar sobre ella. El cursor se pinta en la imagen.
 5. Al detener el puesto, los dispositivos vuelven a Windows.
@@ -127,7 +128,10 @@ Si se detectan varias pantallas, cada una puede ser un puesto:
         -v /run/udev:/run/udev:ro -e MOUSE=event0 -e KBD=event1 -e DISPLAY_NUM=3 -e VNC_PORT=5903 hvc-seat-desktop
       DISPLAY=:0 xtigervncviewer -ViewOnly -PreferredEncoding=Raw -AutoSelect=0 127.0.0.1:5903
       ```
-- [ ] Integrar el modo Docker en `seat-lib.js` / la interfaz (elegir imagen y arrancar/parar el contenedor).
+- [x] Modo Docker integrado en la interfaz ("Desktop container (Docker)"): al iniciar comprueba Docker Engine y la imagen
+      en la distro y, si falta algo, instala Docker Engine (repositorio oficial) y construye la imagen antes de arrancar
+      el contenedor `hvc-seat-<display>`; al detener se elimina el contenedor y los dispositivos vuelven a Windows.
+      También instalable desde "Install / repair requirements" (`setup.sh docker=<contexto>`).
 - [ ] Contenedor con escritorio accesible por navegador (`linuxserver/webtop`) como alternativa sin dispositivos dedicados.
 - [ ] Averiguar si existe una imagen de **ELO sobre Ubuntu**; si no, crear una.
 
