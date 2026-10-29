@@ -17,6 +17,8 @@
   --green:      #3fb950;
   --yellow:     #d29922;
   --red:        #f85149;
+  --amber:      #d29922;
+  --orange:     #f0883e;
   --elo-orange: #E8820C;
   --elo-blue:   #4a9fd4;
   --font:       -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -34,6 +36,8 @@
   --green:      #2E7D32;
   --yellow:     #C65100;
   --red:        #C62828;
+  --amber:      #9A7400;
+  --orange:     #D84315;
   --elo-orange: #E8820C;
   --elo-blue:   #0060A8;
 }
@@ -683,6 +687,7 @@ const App = {
       transient.className = 'panel show';
       transient.style.display = '';
       transient.innerHTML = panels[id]?.() || '<div class="card"><h2>Coming soon</h2></div>';
+      if (id === 'vm') { setTimeout(() => { VMPanel.loadStatus(); VMPanel.loadStorage(); }, 0); }
     }
   },
 
@@ -1283,7 +1288,7 @@ const DB = {
     if (!q) return;
     if (this._searchAbort) { this._searchAbort.abort(); this._searchAbort = null; }
 
-    const rowLimit   = Math.max(1, parseInt(document.getElementById('db-search-rows')?.value) || 100);
+    const rowLimit   = Math.max(1, parseInt(document.getElementById('db-search-rows')?.value) || 25);
     const searchMeta = document.getElementById('db-search-meta')?.checked ?? true;
 
     const out      = document.getElementById('db-query-out');
@@ -2017,20 +2022,39 @@ const DB = {
             style="${_iS}"></div>`;
       }
     }
-    // Auto-listbox: first+second column distinct from the main table
+    // Auto-listbox: distinct values of the template's first+second SELECT fields
+    // (mode 'tpl'), or of the main table's first+second column (mode 'table' fallback)
     if (autoLb) {
+      const lbTitle = autoLb.mode === 'tpl'
+        ? `Distinct values of the template fields ${autoLb.colLabel}`
+        : `Distinct values from ${autoLb.table}`;
+      const lbLabel = autoLb.mode === 'tpl'
+        ? autoLb.colLabel
+        : `${autoLb.table} — ${autoLb.colLabel}`;
       ph += `<div class="fg" style="margin-bottom:0;min-width:160px">
-        <label class="fl" title="Distinct values from ${autoLb.table}">${autoLb.table} — ${autoLb.colLabel}</label>
+        <label class="fl" title="${lbTitle}">${lbLabel}</label>
         <select id="db-sparam-auto-lb" onchange="${autoLb.onchgJs}" style="${_lS}">
           <option value="">⏳ Loading…</option></select></div>`;
     }
     ph += `</div>`;
     parEl.innerHTML = ph;
 
-    // Shared listbox loader: detects best display column using keyword heuristic
-    const loadListbox = async (lbId, srcTable, srcKey, hintDisp, pickLabel) => {
+    // Shared listbox loader (raw SQL variant): fills options from kField/dField columns
+    const loadListboxSql = async (lbId, sql2, kField, dField, pickLabel) => {
       const lbEl = document.getElementById(lbId);
       if (!lbEl || !this.conn) return;
+      if (!sql2) { lbEl.innerHTML = `<option value="">— no values —</option>`; return; }
+      const r2 = await fetch('/api/db/query', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({...this.conn, sql:sql2}) }).then(r=>r.json()).catch(()=>({ok:false}));
+      if (!r2.ok || !r2.rows?.length) { lbEl.innerHTML = `<option value="">— no values —</option>`; return; }
+      lbEl.innerHTML = `<option value="">— ${pickLabel||'pick'} —</option>` +
+        r2.rows.map(row => {
+          const k = String(row[kField] ?? '');
+          const d = dField && row[dField] != null ? ` — ${row[dField]}` : '';
+          return `<option value="${k.replace(/"/g,'&quot;')}">${k}${d}</option>`;
+        }).join('');
+    };
+    // Table-based listbox loader: detects best display column using keyword heuristic
+    const loadListbox = async (lbId, srcTable, srcKey, hintDisp, pickLabel) => {
       let srcDisp = hintDisp || null;
       if (!srcDisp && this._smartSchema?.entities?.[srcTable]) {
         const eCols = this._normCols(this._smartSchema.entities[srcTable]?.columns);
@@ -2041,14 +2065,7 @@ const DB = {
       const sql2 = srcDisp
         ? `SELECT DISTINCT "${srcKey}", "${srcDisp}" FROM "${srcTable}" ORDER BY "${srcDisp}" LIMIT 300`
         : `SELECT DISTINCT "${srcKey}" FROM "${srcTable}" ORDER BY "${srcKey}" LIMIT 300`;
-      const r2 = await fetch('/api/db/query', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({...this.conn, sql:sql2}) }).then(r=>r.json()).catch(()=>({ok:false}));
-      if (!r2.ok || !r2.rows?.length) { lbEl.innerHTML = `<option value="">— no values —</option>`; return; }
-      lbEl.innerHTML = `<option value="">— ${pickLabel||'pick'} —</option>` +
-        r2.rows.map(row => {
-          const k = String(row[srcKey] ?? '');
-          const d = srcDisp && row[srcDisp] != null ? ` — ${row[srcDisp]}` : '';
-          return `<option value="${k}">${k}${d}</option>`;
-        }).join('');
+      return loadListboxSql(lbId, sql2, srcKey, srcDisp, pickLabel);
     };
 
     // Load defined select-source params
@@ -2059,10 +2076,16 @@ const DB = {
       await loadListbox(`db-sparam-${p.name}-lb`, srcTable, srcKey, srcDispDef||null, lbl3);
     });
 
-    // Load auto-listbox: explicitly pass second column as display so options show "col1 — col2"
+    // Load auto-listbox: options show "field1 — field2"
     if (autoLb && this.conn) {
-      const autoLbDisp = autoLb.cols.length > 1 ? autoLb.cols[1].name : null;
-      loadListbox('db-sparam-auto-lb', autoLb.table, autoLb.key, autoLbDisp, autoLb.table);
+      if (autoLb.mode === 'tpl') {
+        // Distinct values of the template's own first+second SELECT fields
+        const dSql = this._buildTplDistinctSql(autoLb.tplSql, autoLb.key, autoLb.dispExpr);
+        loadListboxSql('db-sparam-auto-lb', dSql, '__k', '__d', autoLb.colLabel);
+      } else {
+        const autoLbDisp = autoLb.cols.length > 1 ? autoLb.cols[1].name : null;
+        loadListbox('db-sparam-auto-lb', autoLb.table, autoLb.key, autoLbDisp, autoLb.table);
+      }
     }
   },
 
@@ -2616,9 +2639,11 @@ const DB = {
   },
 
   // Inject an exact-match WHERE condition (from auto-listbox selection).
+  // `key` may be a plain column name (quoted) or a template expression like c.code (used as-is).
   _injectAutoLbFilter(sql, key, val) {
     const safe = String(val).replace(/'/g, "''");
-    const cond = `"${key}" = '${safe}'`;
+    const colRef = /^[a-zA-Z_]\w*$/.test(key) ? `"${key}"` : key;
+    const cond = `${colRef} = '${safe}'`;
 
     // Find outermost WHERE position
     let depth = 0, wi = -1;
@@ -3227,6 +3252,45 @@ const VMTools = {
 
 // ── VM Panel — selection, credentials, port exposure ─────────────────────────
 const VMPanel = {
+  // Guest volume free space per VM name: { loading } | { vols } | { error }. Read via PowerShell Direct, so it
+  // needs the VM running and the saved VM credentials; cached so re-renders don't re-query every guest.
+  _guestFree: {},
+
+  guestFreeHtml(v) {
+    if (v.State !== 'Running') return '<span style="color:var(--muted)">VM is not running</span>';
+    if (!this._guestFree[v.Name]) this.loadGuestFree(v.Name);
+    const c = this._guestFree[v.Name];
+    if (c.loading) return '<span style="color:var(--muted)">checking…</span>';
+    if (c.error) return `<span style="color:var(--muted)" title="${String(c.error).replace(/"/g,'&quot;')}">not available</span>`;
+    if (!c.vols.length) return '<span style="color:var(--muted)">no volumes reported</span>';
+    // green ≥25% free, amber ≥15%, orange ≥8%, red below (or under 5 GB free regardless of size).
+    const level = (pct, gb) => gb < 5 || pct < 8 ? ['var(--red)','critical'] : pct < 15 ? ['var(--orange)','needs attention']
+      : pct < 25 ? ['var(--amber)','watch'] : ['var(--green)','OK'];
+    return c.vols.map(x => {
+      const freeGB = x.SizeRemaining / 1073741824, pct = x.Size ? x.SizeRemaining / x.Size * 100 : 0;
+      const [color, label] = level(pct, freeGB);
+      return `<span style="color:${color};font-weight:600" title="${label}">● ${x.DriveLetter}: ${freeGB.toFixed(1)} GB free (${pct.toFixed(0)}%)</span>`;
+    }).join(' · ');
+  },
+
+  async loadGuestFree(name, force) {
+    if (!force && this._guestFree[name]) return;
+    const vmUser = S.vmUser, vmPass = S.vmPass;
+    if (!vmUser || !vmPass) { this._guestFree[name] = { error: 'Enter VM credentials to read guest disk space' }; return this._paintGuestFree(name); }
+    this._guestFree[name] = { loading: true };
+    const r = await fetch('/api/vm/storage', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ vmName:name, vmUser, vmPass }) })
+      .then(r=>r.json()).catch(e=>({ ok:false, error:e.message }));
+    const vols = r.Volumes ? (Array.isArray(r.Volumes) ? r.Volumes : [r.Volumes]).filter(x => x && x.Size > 0) : [];
+    this._guestFree[name] = r.ok && !r.GuestError ? { vols: vols.sort((a,b)=>String(a.DriveLetter).localeCompare(b.DriveLetter)) } : { error: r.GuestError || r.error || 'Guest query failed' };
+    this._paintGuestFree(name);
+  },
+
+  _paintGuestFree(name) {
+    const v = (typeof vms !== 'undefined' ? vms : []).find(x => x.Name === name);
+    if (!v) return;
+    document.querySelectorAll(`[data-vmfree="${CSS.escape(encodeURIComponent(name))}"]`).forEach(el => { el.innerHTML = this.guestFreeHtml(v); });
+  },
+
   selectVM(name) {
     const prev = S.vmName;
     S.vmName = name;
@@ -3254,6 +3318,8 @@ const VMPanel = {
     });
     const credSect = document.getElementById('vm-cred-section');
     if (credSect) credSect.style.display = name === '__local__' ? 'none' : '';
+    const storageSect = document.getElementById('vm-storage-section');
+    if (storageSect) storageSect.style.display = name === '__local__' ? 'none' : '';
     const modeSection = document.getElementById('vm-expose-mode-section');
     if (modeSection) modeSection.style.display = name === '__local__' ? 'none' : '';
     const desc = document.getElementById('vm-expose-desc');
@@ -3263,6 +3329,7 @@ const VMPanel = {
     const expBtn = document.getElementById('vm-expose-btn');
     if (expBtn) expBtn.disabled = !name || name === '__local__';
     this.loadStatus();
+    this.loadStorage();
   },
 
   setExposeMode(mode) {
@@ -3364,6 +3431,138 @@ const VMPanel = {
     if (btn) btn.textContent = '↻';
   },
 
+  async loadStorage() {
+    const out = document.getElementById('vm-storage-result');
+    if (!out) return;
+    const vmName = S.vmName;
+    const vmUser = document.getElementById('vm-cred-user')?.value?.trim() || S.vmUser;
+    const vmPass = document.getElementById('vm-cred-pass')?.value || S.vmPass;
+    if (!vmName || vmName === '__local__') { out.textContent = 'Select a Hyper-V VM to inspect its disks.'; return; }
+    out.innerHTML = '<span class="spin">↻</span> Reading host virtual disks…';
+    const r = await fetch('/api/vm/storage', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({vmName,vmUser,vmPass}) }).then(r=>r.json()).catch(e=>({error:e.message}));
+    if (!r.ok) { out.innerHTML = `<span style="color:var(--red)">${r.error||'Unable to read disk information'}</span>`; return; }
+    const fmt = n => { n=Number(n)||0; const u=['B','KB','MB','GB','TB']; let i=0; while(n>=1024&&i<u.length-1){n/=1024;i++;} return `${n.toFixed(i?1:0)} ${u[i]}`; };
+    const disks = Array.isArray(r.Disks) ? r.Disks : [r.Disks].filter(Boolean);
+    const vols = Array.isArray(r.Volumes) ? r.Volumes : [r.Volumes].filter(Boolean);
+    this._storageDisks = disks;
+    const html = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    out.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">VM state: ${r.State||'unknown'}</div>` +
+      `<div style="overflow:auto"><table style="border-collapse:collapse;width:100%"><tr><th style="text-align:left;padding:4px">Virtual disk / controller</th><th style="text-align:left;padding:4px">Capacity</th><th style="text-align:left;padding:4px">Host file</th><th style="text-align:left;padding:4px">Type</th></tr>` +
+      disks.map((d,i)=>`<tr><td style="padding:4px;font-size:11px">Disk ${i+1} · ${d.Controller||''}</td><td style="padding:4px">${fmt(d.SizeBytes)}</td><td style="padding:4px">${fmt(d.FileBytes)}</td><td style="padding:4px">${d.VhdType||''}</td></tr>`).join('') + `</table></div>` +
+      `<div style="margin-top:8px"><strong>Guest volumes (used / free / total)</strong><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:5px">` +
+      (vols.length ? vols.map(v=>`<span class="tag">${html(v.DriveLetter)}: ${html(v.FileSystemLabel||v.FileSystem||'')} · ${fmt(Number(v.Size)-Number(v.SizeRemaining))} used · ${fmt(v.SizeRemaining)} free / ${fmt(v.Size)}</span>`).join('') : `<span style="font-size:11px;color:var(--muted)">${html(r.GuestError||'Guest volume details are unavailable. Host disk expansion remains available.')}</span>`) + `</div></div>` +
+      `<div class="brow" style="margin-top:10px"><select id="vm-storage-disk" style="max-width:420px">${disks.map((d,i)=>`<option value="${html(d.Path)}">Disk ${i+1} · ${html(d.Controller)} · ${fmt(d.SizeBytes)}</option>`).join('')}</select><input id="vm-storage-size" type="number" min="1" step="1" placeholder="New total size (GB)" style="width:180px"><button class="btn btn-o" onclick="VMPanel.expandDisk()" ${disks.length?'':'disabled'}>Expand virtual disk</button></div>` +
+      `<div id="vm-storage-instructions" style="font-size:11px;color:var(--muted);margin-top:8px">Virtual disk expansion changes its capacity. Afterward, extend the Windows partition inside the guest using the instructions shown after expansion.</div>`;
+  },
+
+  async expandDisk() {
+    const diskPath = document.getElementById('vm-storage-disk')?.value;
+    const sizeGB = Number(document.getElementById('vm-storage-size')?.value);
+    if (!diskPath || !sizeGB) { alert('Select a disk and enter its new total size in GB.'); return; }
+    if (!confirm(`Expand this virtual disk to ${sizeGB} GB? This changes the VHDX capacity. You must then extend the partition inside the guest.`)) return;
+    const out = document.getElementById('vm-storage-result');
+    out.textContent = 'Expanding virtual disk…';
+    const r = await fetch('/api/vm/storage/expand', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ vmName:S.vmName, diskPath, sizeGB }) }).then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
+    if (!r.ok) { out.innerHTML = `<span style="color:var(--red)">${r.error||'Expansion failed'}</span>`; return; }
+    await this.loadStorage();
+    const help = document.getElementById('vm-storage-instructions');
+    if (help) help.innerHTML = `<strong>Extend the volume inside the guest:</strong><ol>${r.instructions.map(x=>`<li><code>${x.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code></li>`).join('')}</ol>`;
+  },
+
+  async enableSMB() {
+    const vmUser = document.getElementById('vm-cred-user')?.value?.trim() || S.vmUser;
+    const vmPass = document.getElementById('vm-cred-pass')?.value || S.vmPass;
+    const out = document.getElementById('vm-smb-result');
+    if (!vmUser || !vmPass) { alert('Enter VM credentials first.'); return; }
+    out.textContent = 'Enabling SMB access and checking port 445…';
+    const r = await fetch('/api/vm/storage/smb', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({vmName:S.vmName,vmUser,vmPass}) }).then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
+    const html = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const status = r.drive ? `Mounted as ${r.drive}; Explorer opened`
+      : r.uncOpened ? 'Explorer opened on the network share (drive letter could not be assigned)'
+      : r.online ? 'SMB is reachable, but automatic mounting failed' : 'SMB port 445 is not reachable from the host';
+    out.innerHTML = r.ok
+      ? `<span style="color:${r.drive?'var(--green)':(r.online?'var(--yellow)':'var(--red)')}">${status}</span> · <code>${html(r.unc)}</code>${r.account?` <span style="color:var(--muted);font-size:11px">as ${html(r.account)}</span>`:''}${r.mountError?`<div style="color:var(--yellow);font-size:11px;margin-top:3px">${html(r.mountError)}</div>`:''}<div style="font-size:11px;color:var(--muted)">The drive mapping lasts for this Windows session; credentials are stored in Windows Credential Manager so no login prompt appears.</div>`
+      : `<span style="color:var(--red)">${html(r.error||'SMB configuration failed')}</span>`;
+  },
+
+  async showExposedLinks(hostIp, ports) {
+    const out = document.getElementById('vm-expose-links');
+    if (!out) return;
+    if (!ports?.length) { out.textContent = 'No forwarded ports to check.'; return; }
+    out.textContent = 'Checking forwarded services from the host…';
+    const r = await fetch('/api/vm/probe', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ports}) }).then(r=>r.json()).catch(()=>({results:[]}));
+    const results = Object.fromEntries((r.results||[]).map(x=>[x.port,x]));
+    const states = Object.fromEntries((r.results||[]).map(x=>[x.port,x.online]));
+    const html = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const link = url => `<a href="${html(url)}" target="_blank" rel="noopener" style="color:var(--accent)">${html(url)}</a>`;
+    const vmUser = document.getElementById('vm-cred-user')?.value?.trim() || S.vmUser;
+    const vmPass = document.getElementById('vm-cred-pass')?.value || S.vmPass;
+    const shareLines = [`VM: ${S.vmName}`, `Host: ${hostIp}`];
+
+    // ELO WebClient / AdminConsole for every repository folder in the guest's C:\ELO\archive (9093 https, 9090 http).
+    let eloLinks = '';
+    const eloPorts = [[9093,'https'],[9090,'http']].filter(([p]) => states[p]);
+    let guestName = '';
+    if (eloPorts.length) {
+      const elo = await fetch('/api/elo/archive-repos', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({vmName:S.vmName,vmUser,vmPass}) }).then(r=>r.json()).catch(()=>({repos:[]}));
+      guestName = elo.hostName || '';
+      const hosts = [hostIp, guestName].filter(Boolean);
+      const eloUrl = (scheme, host, port, repo, page) => `${scheme}://${host}:${port}/ix-${encodeURIComponent(repo)}/plugin/de.elo.ix.plugin.proxy/${page}`;
+      eloLinks = `<div style="margin-top:10px"><strong>ELO links</strong>` + (elo.repos?.length ? elo.repos.map(repo => {
+        const rows = eloPorts.flatMap(([port, scheme]) => [
+          ['WebClient', 'web/'], ['AdminConsole', 'ac/ui/menu/index.xhtml'],
+        ].map(([label, page]) => {
+          const urls = hosts.map(h => eloUrl(scheme, h, port, repo, page));
+          shareLines.push(`ELO ${repo} ${label} (${port}): ${urls.join('  |  ')}`);
+          return `<div>${label} <span style="color:var(--muted);font-size:10px">${port}</span>: ${urls.map(link).join(' · ')}</div>`;
+        }));
+        return `<div style="margin-top:5px"><strong>${html(repo)}</strong>${rows.join('')}</div>`;
+      }).join('') : `<div style="color:var(--muted);font-size:11px">No repository folders found in C:\\ELO\\archive${elo.guestError?` (guest: ${html(elo.guestError)})`:''}.</div>`) + `</div>`;
+    }
+    // Every forwarded port, linked when the probe detected an HTTP or HTTPS service on it.
+    const portRows = ports.map(port => {
+      const x = results[port] || {};
+      const web = x.scheme === 'http' || x.scheme === 'https';
+      const url = `${x.scheme}://${hostIp}:${port}/`;
+      if (x.online) shareLines.push(port === 3389 ? `RDP: ${hostIp}:3389` : web ? url : `TCP ${hostIp}:${port}`);
+      const address = web ? link(url) : `<code>${hostIp}:${port}</code>`;
+      const kind = port === 3389 ? 'RDP' : web ? x.scheme.toUpperCase() : 'TCP';
+      return `<div style="display:flex;gap:8px;align-items:center;margin:3px 0;flex-wrap:wrap"><span style="color:${x.online?'var(--green)':'var(--red)'}">● ${x.online?'ONLINE':'OFFLINE'}</span> ${address} <span style="color:var(--muted);font-size:10px">${kind} ${port}</span></div>`;
+    }).join('');
+
+    // Remote Desktop: open directly from this host (saved credential, no prompt) or hand the data to a teammate.
+    let rdpBlock = '';
+    if (states[3389]) {
+      const rdpUser = /[\\@]/.test(vmUser||'') ? vmUser : `${guestName || '.'}\\${vmUser}`;
+      shareLines.push(`RDP user: ${rdpUser}`, `RDP password: ${vmPass}`);
+      this._rdpShare = { host: hostIp, user: rdpUser };
+      rdpBlock = `<div style="margin-top:10px"><strong>Remote Desktop</strong>
+        <div class="brow" style="margin:5px 0;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-p" style="padding:3px 10px;font-size:12px" onclick="VMPanel.openRdp()">&#128421; Open RDP now (no login)</button>
+          <button class="btn btn-o" style="padding:3px 10px;font-size:12px" onclick="downloadRdp(VMPanel._rdpShare.host,3389,VMPanel._rdpShare.user)">&#11015; .rdp file for teammates</button>
+        </div>
+        <div id="vm-rdp-result" style="font-size:11px"></div></div>`;
+    }
+
+    out.innerHTML = `<div style="font-weight:600;margin:6px 0">Host access checks</div>` + portRows + eloLinks + rdpBlock +
+      `<details style="margin-top:10px"><summary style="cursor:pointer"><strong>Access data to share with your team</strong></summary>
+        <textarea id="vm-share-data" readonly style="width:100%;min-height:140px;margin-top:5px;font-family:var(--mono);font-size:11px">${html(shareLines.join('\n'))}</textarea>
+        <button class="hbtn" style="font-size:11px" onclick="navigator.clipboard.writeText(document.getElementById('vm-share-data').value)">Copy</button>
+        <div style="font-size:11px;color:var(--muted)">Teammates connect from their PC with <code>mstsc /v:${html(hostIp)}:3389</code> and the user/password above.</div>
+      </details>`;
+  },
+
+  async openRdp() {
+    const vmUser = document.getElementById('vm-cred-user')?.value?.trim() || S.vmUser;
+    const vmPass = document.getElementById('vm-cred-pass')?.value || S.vmPass;
+    const out = document.getElementById('vm-rdp-result');
+    if (out) out.textContent = 'Starting Remote Desktop…';
+    const r = await fetch('/api/vm/rdp/open', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({vmName:S.vmName,vmUser,vmPass}) }).then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
+    if (out) out.innerHTML = r.ok
+      ? `<span style="color:var(--green)">Remote Desktop opened on this host → ${r.target}</span>`
+      : `<span style="color:var(--red)">${String(r.error||'RDP failed').replace(/</g,'&lt;')}</span>`;
+  },
+
   async resolvePortProcess(port) {
     const el = document.getElementById(`proc-${port}`);
     if (!el) return;
@@ -3393,9 +3592,11 @@ const VMPanel = {
       body: JSON.stringify({ vmName, vmUser, vmPass }),
     }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }));
     btn.disabled = false; btn.textContent = '✓ Test Connection';
+    if (r.ok) { S.vmUser = vmUser; S.vmPass = vmPass; App.saveState(); try { localStorage.setItem('vmCreds', JSON.stringify({user:vmUser,pass:vmPass})); } catch {} this.loadGuestFree(S.vmName, true); }
     res.innerHTML = r.ok
       ? `<span style="color:var(--green)">&#10003; Connected — <strong>${r.computerName}</strong></span>`
       : `<span style="color:var(--red)">&#10007; ${r.error?.substring(0,120)}</span>`;
+    if (r.ok) this.loadStorage();
   },
 
   expose() {
@@ -3419,6 +3620,7 @@ const VMPanel = {
       ? (S.exposePorts||'').split(';').map(s=>+s.trim()).filter(p=>p>0&&p<65536) : [];
 
     const addLog = text => { const d=document.createElement('div'); d.textContent=text; log.appendChild(d); log.scrollTop=log.scrollHeight; };
+    let exposedPorts = [];
 
     fetch('/api/vm/expose', {
       method: 'POST', headers: {'Content-Type':'application/json'},
@@ -3436,9 +3638,9 @@ const VMPanel = {
           let msg; try { msg = JSON.parse(line.slice(6)); } catch { continue; }
           if      (msg.type==='step')  addLog('▶ ' + msg.text);
           else if (msg.type==='vmip')  addLog('VM IP: ' + msg.ip);
-          else if (msg.type==='ports') addLog('Ports: ' + msg.ports.join(', '));
+          else if (msg.type==='ports') { exposedPorts = msg.ports || []; addLog('Ports: ' + exposedPorts.join(', ')); }
           else if (msg.type==='log')   addLog(msg.text);
-          else if (msg.type==='done')  { addLog('✓ Done — host: ' + msg.hostIp); if (status) status.textContent='✓ '+msg.hostIp; this.loadStatus(); }
+          else if (msg.type==='done')  { addLog('✓ Done — host: ' + msg.hostIp); if (status) status.textContent='✓ '+msg.hostIp; this.showExposedLinks(msg.hostIp, exposedPorts); this.loadStatus(); }
           else if (msg.type==='error') { addLog('✗ ' + msg.error); if (status) status.innerHTML=`<span style="color:var(--red)">✗ ${msg.error}</span>`; }
         }
       }
@@ -3589,7 +3791,9 @@ const panels = {
         <div class="chk">${sel?'●':''}</div>
         <div>
           <div class="opt-name">${v.Name}</div>
-          <div class="opt-sub">State: <span style="color:${run?'var(--green)':'var(--muted)'}">${v.State}</span> &nbsp;·&nbsp; ${v.MemGB} GB</div>
+          <div class="opt-sub">State: <span style="color:${run?'var(--green)':'var(--muted)'}">${v.State}</span> &nbsp;·&nbsp; Memory: ${v.MemGB} GB</div>
+          <div class="opt-sub">Disk on host: ${v.DiskReservedGB ?? 0} GB used &nbsp;·&nbsp; ${v.DiskCapacityGB ?? 0} GB virtual capacity</div>
+          <div class="opt-sub">Free space in VM: <span data-vmfree="${encodeURIComponent(v.Name)}">${VMPanel.guestFreeHtml(v)}</span></div>
         </div>
       </div>`;
     }).join('');
@@ -3626,6 +3830,14 @@ const panels = {
       <span id="vm-cred-test-result" style="font-size:12px;margin-left:10px"></span>
     </div>
   </div>
+</div>
+
+<div class="card" id="vm-storage-section" style="${localSel?'display:none':''}">
+  <h2>Virtual disk and file access</h2>
+  <p class="sub">Virtual disk capacity comes from Hyper-V. Used and free space comes from the guest Windows volumes.</p>
+  <div class="brow" style="margin-bottom:8px"><button class="hbtn" onclick="VMPanel.loadStorage()">&#8635; Refresh disk</button><button class="btn btn-o" onclick="VMPanel.enableSMB()">Enable SMB access</button></div>
+  <div id="vm-storage-result" style="font-size:12px;color:var(--muted)">Enter VM credentials to inspect disks.</div>
+  <div id="vm-smb-result" style="font-size:12px;margin-top:8px"></div>
 </div>
 
 <div class="card">
@@ -3669,6 +3881,7 @@ const panels = {
     <div id="vm-expose-result" style="font-size:12px;color:var(--muted)">Click ↻ to check</div>
   </div>
   <div id="vm-expose-log" style="display:none;background:var(--sur2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;max-height:160px;overflow-y:auto;font-family:var(--mono);font-size:11px;line-height:1.5;margin-top:10px"></div>
+  <div id="vm-expose-links" style="font-size:12px;margin-top:8px"></div>
 </div>
 
 <div class="brow">
@@ -4342,6 +4555,16 @@ const panels = {
         <button class="btn btn-ai" onclick="DB.generateAIPrompt()" title="Generate AI prompt for full schema analysis, relationships and Smart Queries JSON">&#129302; AI&#8209;Prompt</button>
         <button class="btn btn-o" onclick="DB.loadSmartSchema()" title="Load AI-generated schema JSON to enable Smart Query templates">&#128193; Load&nbsp;Schema</button>
       </div>
+      <div style="margin-top:10px;display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end;padding:10px 12px;background:var(--sur2);border-radius:8px;border:1px solid var(--border)">
+        <div class="fg" style="margin-bottom:0">
+          <label class="fl" style="font-size:11px">Max results per table (search)</label>
+          <input type="number" id="db-search-rows" value="25" min="1" max="1000" style="width:80px;background:var(--sur);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;padding:6px 10px;outline:none">
+        </div>
+        <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;margin-bottom:2px;user-select:none">
+          <input type="checkbox" id="db-search-meta" checked style="accent-color:var(--accent);width:14px;height:14px">
+          Match table/column <em>names</em>
+        </label>
+      </div>
     </details>
     <!-- Search progress -->
     <div id="db-search-progress" style="display:none;margin-top:10px">
@@ -4351,22 +4574,6 @@ const panels = {
       </div>
       <div class="pbar-wrap"><div class="pbar" id="db-search-bar" style="width:0%;transition:width .2s"></div></div>
     </div>
-    <!-- Search options (collapsible) -->
-    <details style="margin-top:8px">
-      <summary style="font-size:11px;color:var(--muted);cursor:pointer;user-select:none;padding:4px 0;list-style:none;display:flex;align-items:center;gap:5px" onclick="this.parentElement.open&&(this.firstChild.data='▸ ')">
-        <span>&#9658; </span>Search options
-      </summary>
-      <div style="margin-top:10px;display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end;padding:10px 12px;background:var(--sur2);border-radius:8px;border:1px solid var(--border)">
-        <div class="fg" style="margin-bottom:0">
-          <label class="fl">Max rows per table</label>
-          <input type="number" id="db-search-rows" value="100" min="1" max="1000" style="width:85px;background:var(--sur);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;padding:6px 10px;outline:none">
-        </div>
-        <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;margin-bottom:2px;user-select:none">
-          <input type="checkbox" id="db-search-meta" checked style="accent-color:var(--accent);width:14px;height:14px">
-          Show tables/columns whose <em>name</em> contains the search term
-        </label>
-      </div>
-    </details>
     <div id="db-query-out" style="margin-top:14px"></div>
     <div id="db-smart-section"></div>
   </div>
@@ -7276,6 +7483,7 @@ async function init() {
 }
 
 async function reloadVMs() {
+  VMPanel._guestFree = {};
   vms = await fetch('/api/vms').then(r=>r.json()).then(d=>Array.isArray(d)?d:[]).catch(()=>[]);
   App.showPanel('vm');
 }
