@@ -7,6 +7,7 @@
 # Usage (as root):
 #   seat.sh start <display> <mouse-event> <kbd-event> rdp <host:port> <[domain\]user> <pass>
 #   seat.sh start <display> <mouse-event> <kbd-event> browser <firefox|google-chrome|microsoft-edge> <url>
+#   seat.sh start <display> <mouse-event> <kbd-event> docker [image] [build-context-dir]
 #   seat.sh stop <display>
 #   seat.sh devices            # input devices attached to WSL (name | handlers | phys)
 #   seat.sh status <display>
@@ -33,6 +34,11 @@ check() {
   [ -f /usr/lib/xorg/modules/input/libinput_drv.so ] || echo "missing:xserver-xorg-input-libinput"
   for b in firefox google-chrome microsoft-edge chromium; do command -v "$b" >/dev/null && echo "browser:$b"; done
   echo "gateway:$(ip route | awk '/^default/ {print $3; exit}')"
+  # Docker Engine inside this distro (/usr/bin/docker; Docker Desktop's Windows shim does not count).
+  if [ -x /usr/bin/docker ]; then
+    echo "docker:$(systemctl is-active docker 2>/dev/null)"
+    docker image inspect "${SEAT_IMAGE:-hvc-seat-desktop}" >/dev/null 2>&1 && echo "image:${SEAT_IMAGE:-hvc-seat-desktop}"
+  else echo "docker:missing"; fi
 }
 
 stop_seat() {
@@ -42,12 +48,44 @@ stop_seat() {
   # Apps of this seat: any process whose environment has DISPLAY=:<D>.
   for p in $(grep -l -z -x "DISPLAY=:$D" /proc/[0-9]*/environ 2>/dev/null | cut -d/ -f3); do kill "$p" 2>/dev/null; done
   pkill -f "Xorg :$D " 2>/dev/null
+  [ -x /usr/bin/docker ] && docker rm -f "hvc-seat-$D" >/dev/null 2>&1
   sleep 1
+}
+
+# Viewer for seat <D>: view-only TigerVNC on the Windows desktop (WSLg), uncompressed (local link).
+start_viewer() {
+  local D=$1 PORT=$((5900 + $1))
+  for i in $(seq 1 40); do timeout 1 bash -c "</dev/tcp/127.0.0.1/$PORT" 2>/dev/null && break; sleep 0.5; done
+  DISPLAY=:0 setsid xtigervncviewer -ViewOnly -RemoteResize=0 -DesktopSize=1280x800 \
+    -AutoSelect=0 -PreferredEncoding=Raw -NoJPEG=1 -FullColor=1 \
+    -geometry 1280x800 "127.0.0.1:$PORT" >"/tmp/hvc-viewer-$D.log" 2>&1 < /dev/null &
+}
+
+# Docker mode: a desktop container that gets only the seat's devices (--device) and serves its screen over VNC.
+# Its X display number is offset by 20: with --network host it shares the abstract X socket namespace.
+start_docker_seat() {
+  local D=$1 MOUSE=$2 KBD=$3 IMAGE=${4:-hvc-seat-desktop} CTX=${5:-}
+  [ -x /usr/bin/docker ] || { echo "ERROR: Docker Engine is not installed in this distro"; return 1; }
+  if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    [ -n "$CTX" ] && [ -d "$CTX" ] || { echo "ERROR: image $IMAGE not found and no build context"; return 1; }
+    docker build -q -t "$IMAGE" "$CTX" >/dev/null || { echo "ERROR: docker build failed"; return 1; }
+  fi
+  local devs=()
+  [ "$MOUSE" != none ] && devs+=(--device "/dev/input/$MOUSE")
+  [ "$KBD" != none ] && devs+=(--device "/dev/input/$KBD")
+  docker run -d --name "hvc-seat-$D" --network host "${devs[@]}" -v /run/udev:/run/udev:ro \
+    -e MOUSE="$MOUSE" -e KBD="$KBD" -e DISPLAY_NUM=$((D + 20)) -e VNC_PORT=$((5900 + D)) "$IMAGE" >/dev/null \
+    || { echo "ERROR: docker run failed"; return 1; }
+  start_viewer "$D"
+  sleep 3
+  docker ps --filter "name=hvc-seat-$D" --format 'container {{.Names}} {{.Image}} {{.Status}}'
+  pgrep -af "xtigervncviewer.*:$((5900 + D))" | cut -c1-140
 }
 
 status_seat() {
   local D=$1
   pgrep -af "Xorg :$D |x11vnc -display :$D |xtigervncviewer.*:$((5900 + D))" | cut -c1-140
+  [ -x /usr/bin/docker ] && docker ps --filter "name=hvc-seat-$D" --format 'container {{.Names}} {{.Image}} {{.Status}}'
   for p in $(grep -l -z -x "DISPLAY=:$D" /proc/[0-9]*/environ 2>/dev/null | cut -d/ -f3); do ps -o pid=,args= -p "$p" | cut -c1-140; done
 }
 
@@ -55,6 +93,7 @@ start_seat() {
   local D=$1 MOUSE=$2 KBD=$3 MODE=$4; shift 4
   local PORT=$((5900 + D)) CONF=/tmp/hvc-seat-$D.conf
   stop_seat "$D"
+  if [ "$MODE" = docker ]; then start_docker_seat "$D" "$MOUSE" "$KBD" "$@"; return; fi
   local inputs="" layout=""
   if [ -n "$MOUSE" ] && [ "$MOUSE" != none ]; then
     inputs+=$'Section "InputDevice"\n  Identifier "seat-mouse"\n  Driver "libinput"\n  Option "Device" "/dev/input/'"$MOUSE"$'"\nEndSection\n'
@@ -136,11 +175,7 @@ EOF
   # does not draw a separately sent cursor shape (the pointer would be invisible).
   env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 setsid x11vnc -display ":$D" -localhost -rfbport "$PORT" -nopw -viewonly \
     -forever -shared -cursor most -nocursorshape -cursorpos -wait 5 -defer 5 >"/tmp/hvc-vnc-$D.log" 2>&1 < /dev/null &
-  for i in $(seq 1 20); do timeout 1 bash -c "</dev/tcp/127.0.0.1/$PORT" 2>/dev/null && break; sleep 0.5; done
-  # Local link: uncompressed Raw encoding, no lossy JPEG (sharper image, lower latency).
-  DISPLAY=:0 setsid xtigervncviewer -ViewOnly -RemoteResize=0 -DesktopSize=1280x800 \
-    -AutoSelect=0 -PreferredEncoding=Raw -NoJPEG=1 -FullColor=1 \
-    -geometry 1280x800 "127.0.0.1:$PORT" >"/tmp/hvc-viewer-$D.log" 2>&1 < /dev/null &
+  start_viewer "$D"
   sleep 3
   status_seat "$D"
 }

@@ -75,7 +75,9 @@ async function runWsl(distro, bash, timeoutSec = 600) {
   } finally { try { fs.unlinkSync(file); } catch {} }
 }
 
-const seatCmd = 'tr -d "\\r" < ' + shq(`${WSL_SEAT_DIR}/seat.sh`) + ' > /usr/local/bin/hvc-seat && chmod +x /usr/local/bin/hvc-seat';
+const SEAT_IMAGE = 'hvc-seat-desktop';
+const DOCKER_CTX = `${WSL_SEAT_DIR}/docker`;
+const seatCmd ='tr -d "\\r" < ' + shq(`${WSL_SEAT_DIR}/seat.sh`) + ' > /usr/local/bin/hvc-seat && chmod +x /usr/local/bin/hvc-seat';
 
 function loadState() { try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); } catch { return {}; } }
 function saveState(s) { fs.mkdirSync(RUN_DIR, { recursive: true }); fs.writeFileSync(STATE_FILE, JSON.stringify(s, null, 2)); }
@@ -136,12 +138,14 @@ async function status() {
   return { ...devs, distros, distro, ready: !!distro && devs.usbipd && !missing.length, missing,
     browsers: check.filter(l => l.startsWith('browser:')).map(l => l.slice(8)),
     gateway: (check.find(l => l.startsWith('gateway:')) || '').slice(8),
+    docker: (check.find(l => l.startsWith('docker:')) || 'docker:missing').slice(7),   // active | inactive | missing
+    dockerImage: check.some(l => l === `image:${SEAT_IMAGE}`),
     running: check.filter(l => l.startsWith('running:')).map(l => +l.slice(8)), seats: st.seats || {} };
 }
 
 // Install usbipd-win (signed MSI) if missing, keep WSL off "mirrored" networking (usbipd cannot reach the
 // host from it here), allow usbipd through the firewall and install the Linux packages in the distro.
-async function prepare({ distro, chrome, edge } = {}) {
+async function prepare({ distro, chrome, edge, docker } = {}) {
   const log = [];
   if (!fs.existsSync(USBIPD)) {
     const r = await runPS(`[Net.ServicePointManager]::SecurityProtocol='Tls12'; ` +
@@ -160,7 +164,7 @@ async function prepare({ distro, chrome, edge } = {}) {
   const distros = await listDistros();
   if (!distro) distro = distros.find(d => /ubuntu/i.test(d)) || distros[0];
   if (!distro) throw new Error('No WSL distro for the signed-in user. Install one, e.g. "wsl --install -d Ubuntu", and create its user.');
-  const opts = [chrome && 'chrome', edge && 'edge'].filter(Boolean).join(' ');
+  const opts = [chrome && 'chrome', edge && 'edge', docker && shq(`docker=${DOCKER_CTX}`)].filter(Boolean).join(' ');
   const out = await runWsl(distro, `tr -d "\\r" < ${shq(WSL_SEAT_DIR + '/setup.sh')} | bash -s ${opts} 2>&1 | tail -5; ${seatCmd}`, 1800);
   log.push(out.trim());
   if (!/SETUP_OK/.test(out)) throw new Error('Linux package setup failed:\n' + out.trim());
@@ -169,7 +173,7 @@ async function prepare({ distro, chrome, edge } = {}) {
 }
 
 // Attach the chosen devices to WSL and start seat <display>.
-async function start({ display = 2, mouse, keyboard, mode, target, user, pass, browser, url }) {
+async function start({ display = 2, mouse, keyboard, mode, target, user, pass, browser, url, image }) {
   display = Number(display) || 2;
   const st = loadState();
   const { devices } = await listDevices();
@@ -178,6 +182,16 @@ async function start({ display = 2, mouse, keyboard, mode, target, user, pass, b
   for (const b of busids) if (!devices.find(d => d.busid === b)) throw new Error(`USB device ${b} not found`);
   const distro = st.distro || (await listDistros()).find(d => /ubuntu/i.test(d));
   if (!distro) throw new Error('Prepare the seat first (no WSL distro)');
+  // Docker mode: check Docker Engine and the image in the distro and install/build whatever is missing first.
+  let prepared = null;
+  if (mode === 'docker') {
+    const chk = await runWsl(distro, `${seatCmd}; hvc-seat check`, 120);
+    if (!/^docker:active$/m.test(chk) || !chk.includes(`image:${image || SEAT_IMAGE}`) || /^missing:/m.test(chk)) {
+      if ((image || SEAT_IMAGE) !== SEAT_IMAGE && /^docker:active$/m.test(chk))
+        throw new Error(`Docker image "${image}" not found in ${distro}`);
+      prepared = await prepare({ distro, docker: true });
+    }
+  }
   // Bind needs admin (this process); attach must run as the user that owns the WSL VM.
   for (const b of busids) {
     const d = devices.find(x => x.busid === b);
@@ -198,13 +212,16 @@ async function start({ display = 2, mouse, keyboard, mode, target, user, pass, b
   const mouseEv = pick(mouse, 'mouse'), kbdEv = pick(keyboard, 'keyboard');
   if (mouse && !mouseEv) throw new Error('Mouse not found in WSL after attach:\n' + devOut);
   if (keyboard && !kbdEv) throw new Error('Keyboard not found in WSL after attach:\n' + devOut);
-  const args = mode === 'rdp' ? ['rdp', target || 'host:13389', user, pass] : ['browser', browser || 'firefox', url];
-  const out = await runWsl(distro, `${seatCmd}; hvc-seat start ${display} ${mouseEv || 'none'} ${kbdEv || 'none'} ${args.map(shq).join(' ')} 2>/dev/null`, 120);
-  if (!/Xorg :\d/.test(out)) throw new Error('Seat did not start:\n' + out.trim());
+  const args = mode === 'rdp' ? ['rdp', target || 'host:13389', user, pass]
+    : mode === 'docker' ? ['docker', image || SEAT_IMAGE, DOCKER_CTX]
+    : ['browser', browser || 'firefox', url];
+  const out = await runWsl(distro, `${seatCmd}; hvc-seat start ${display} ${mouseEv || 'none'} ${kbdEv || 'none'} ${args.map(shq).join(' ')} 2>/dev/null`, 600);
+  if (!/Xorg :\d|container hvc-seat-\d/.test(out)) throw new Error('Seat did not start:\n' + out.trim());
   st.seats = st.seats || {};
-  st.seats[display] = { busids, mouse, keyboard, mouseEv, kbdEv, mode, target: mode === 'rdp' ? target : url, browser, started: new Date().toISOString() };
+  st.seats[display] = { busids, mouse, keyboard, mouseEv, kbdEv, mode, browser,
+    target: mode === 'rdp' ? target : mode === 'docker' ? (image || SEAT_IMAGE) : url, started: new Date().toISOString() };
   saveState(st);
-  return { ok: true, display, mouseEv, kbdEv, processes: out.trim().split('\n') };
+  return { ok: true, display, mouseEv, kbdEv, prepared: prepared?.log || null, processes: out.trim().split('\n') };
 }
 
 // Stop seat <display> and give its USB devices back to Windows.
