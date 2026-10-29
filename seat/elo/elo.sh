@@ -10,8 +10,17 @@ cd "$(dirname "$0")"
 ELO_TAG=${ELO_TAG:-v25-0.30.1}; ELO_SEARCH_TAG=${ELO_SEARCH_TAG:-v25-0.7}; REPO=${REPO:-repository}
 rnd() { tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16; }
 
+# License: LICENSE_FILE, elo-license.lic, or the ELO 25 private key (*.pk; ELO then fetches the license from
+# license.services.elo.cloud / license.elo.com, which must be reachable).
+license_file() {
+  if [ -n "${LICENSE_FILE:-}" ]; then echo "$LICENSE_FILE"; return; fi
+  [ -f elo-license.lic ] && { echo elo-license.lic; return; }
+  ls -t ELO_25*.pk 2>/dev/null | head -1
+}
+
 make_env() {
-  [ -f elo-license.lic ] || { echo "ERROR: put the ELO 25 license into $(pwd)/elo-license.lic"; exit 1; }
+  LIC=$(license_file)
+  [ -n "$LIC" ] && [ -f "$LIC" ] || { echo "ERROR: no license: put elo-license.lic or the ELO 25 .pk into $(pwd)"; exit 1; }
   if [ ! -f .env ]; then
     local svc; svc=$(rnd)
     command -v htpasswd >/dev/null || apt-get install -y -qq apache2-utils >/dev/null
@@ -33,7 +42,8 @@ EOF
     echo ".env created (ELO Administrator password: AUTH_ADMIN_PASSWORD in .env)"
   fi
   # The license goes in verbatim (multi-line); docker compose reads it from the environment.
-  export ELO_LIC; ELO_LIC=$(tr -d '\r' < elo-license.lic)
+  export ELO_LIC; ELO_LIC=$(tr -d '\r' < "$LIC")
+  echo "license: $LIC"
 }
 
 case "${1:-}" in

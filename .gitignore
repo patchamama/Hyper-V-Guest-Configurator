@@ -6,5 +6,7 @@ notes.txt
 .elo-credentials.json
 seat/elo/.env
 seat/elo/elo-license.lic
+seat/elo/*.pk
+seat/elo/*.txt
 # ELO partner documentation (proprietary)
 docs/
