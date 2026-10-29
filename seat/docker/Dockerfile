@@ -11,10 +11,10 @@ RUN set -e; \
       xfce)    P="xfce4 xfce4-terminal";                          S="startxfce4" ;; \
       mate)    P="mate-desktop-environment-core mate-terminal";   S="mate-session" ;; \
       kde)     P="kde-plasma-desktop konsole";                    S="startplasma-x11" ;; \
-      gnome)   P="gnome-session-flashback gnome-terminal";        S="gnome-session --builtin --session=gnome-flashback-metacity" ;; \
+      gnome)   P="gnome-session-flashback gnome-terminal";        S="sh -c 'export XDG_CURRENT_DESKTOP=GNOME-Flashback:GNOME; metacity --replace & gnome-flashback & exec gnome-panel'" ;; \
       lxqt)    P="lxqt-core openbox qterminal";                   S="startlxqt" ;; \
       lxde)    P="lxde-core lxterminal";                          S="startlxde" ;; \
-      openbox) P="openbox tint2 xterm";                           S="sh -c 'tint2 & exec openbox-session'" ;; \
+      openbox) P="openbox python3-xdg tint2 xterm";               S="sh -c 'tint2 & exec openbox-session'" ;; \
       icewm)   P="icewm xterm";                                   S="icewm-session" ;; \
       fluxbox) P="fluxbox xterm";                                 S="startfluxbox" ;; \
       jwm)     P="jwm xterm";                                     S="jwm" ;; \
@@ -23,10 +23,12 @@ RUN set -e; \
     esac; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-      xserver-xorg-core xserver-xorg-video-dummy xserver-xorg-input-libinput x11-xserver-utils x11-utils \
+      xserver-xorg-core xserver-xorg-video-dummy xserver-xorg-input-libinput x11-xserver-utils x11-utils xcvt \
       x11vnc dbus-x11 adwaita-icon-theme fonts-dejavu-core locales $P; \
     rm -rf /var/lib/apt/lists/*; \
     useradd -m -s /bin/bash seat; \
+    if [ "$DESKTOP" = i3 ]; then mkdir -p /home/seat/.config/i3 && cp /etc/i3/config /home/seat/.config/i3/config \
+      && chown -R seat:seat /home/seat/.config; fi; \
     echo "$S" > /etc/seat-session; echo "$DESKTOP" > /etc/seat-desktop
 COPY entrypoint.sh /entrypoint.sh
 RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh

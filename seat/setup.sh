@@ -35,7 +35,7 @@ for opt in "$@"; do
   esac
 done
 apt-get update -qq
-PKGS="xserver-xorg-core xserver-xorg-video-dummy xserver-xorg-input-libinput x11vnc tigervnc-viewer openbox
+PKGS="xserver-xorg-core xserver-xorg-video-dummy xserver-xorg-input-libinput xcvt x11vnc tigervnc-viewer openbox
       freerdp3-x11 x11-utils udev usbutils firefox"
 for opt in "$@"; do
   case "$opt" in
