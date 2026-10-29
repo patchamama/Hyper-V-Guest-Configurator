@@ -3566,6 +3566,7 @@ const VMPanel = {
           <button class="btn btn-p" style="padding:3px 10px;font-size:12px" onclick="VMPanel.openRdp()">&#128421; Open RDP now (no login)</button>
           <button class="btn btn-o" style="padding:3px 10px;font-size:12px" onclick="downloadRdp(VMPanel._rdpShare.host,VMPanel._rdpShare.port,VMPanel._rdpShare.user)">&#11015; .rdp file for teammates</button>
           <button class="btn btn-o" style="padding:3px 10px;font-size:12px" onclick="VMPanel.openWebRdp()" title="Apache Guacamole in Docker, reachable by anyone on the network at port 8080">&#127760; Web RDP (browser)</button>
+          <button class="btn btn-o" style="padding:3px 10px;font-size:12px" onclick="VMPanel.openSeat()" title="Dedicated USB mouse/keyboard for this VM (WSL seat)">&#128433; Dedicated seat (USB)</button>
         </div>
         <div id="vm-rdp-result" style="font-size:11px"></div></div>`;
     }
@@ -3593,6 +3594,16 @@ const VMPanel = {
       : r.loggedIn
         ? ` <span style="color:var(--green)">pgAdmin opened${r.installed?' (installed)':''} — server "${esc(r.serverName)}" as ${esc(r.user)}, connects without password. DBs: ${esc(r.databases.join(', '))}</span>`
         : ` <span style="color:var(--amber)">pgAdmin opened — default logins failed, it will ask for the password of "${esc(r.user)}" (${esc(r.loginError)})</span>`;
+  },
+
+  // Seat page pre-filled with this VM: RDP through the host's forwarded RDP port ("host" = Windows host seen from WSL).
+  openSeat() {
+    const vmUser = document.getElementById('vm-cred-user')?.value?.trim() || S.vmUser;
+    const vmPass = document.getElementById('vm-cred-pass')?.value || S.vmPass;
+    const share = this._rdpShare || {};
+    const user = /[\\@]/.test(vmUser||'') ? vmUser : `${share.guestName || '.'}\\${vmUser}`;
+    const qs = new URLSearchParams({ target: `host:${share.port || 3389}`, user, pass: vmPass });
+    window.open(`/seat/?${qs}`, '_blank');
   },
 
   async openWebRdp() {

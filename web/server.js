@@ -74,6 +74,9 @@ const wss    = new WebSocketServer({ server });
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+// Dedicated input seat (USB mouse/keyboard → RDP/kiosk in WSL); also available standalone: seat/app.js.
+app.use('/api/seat', require('../seat/seat-lib').router());
+app.use('/seat', express.static(path.join(SCRIPT_DIR, 'seat', 'public')));
 
 // ── Catalogues ────────────────────────────────────────────────────────────────
 

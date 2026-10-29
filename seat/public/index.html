@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dedicated Seat</title>
+<style>
+:root { --bg:#0d1117; --sur:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e; --accent:#58a6ff;
+  --green:#3fb950; --amber:#d29922; --red:#f85149; --mono:'Cascadia Code',Consolas,monospace; color-scheme: dark; }
+@media (prefers-color-scheme: light) { :root { --bg:#fff; --sur:#f5f5f5; --border:#ccc; --text:#1a1a1a; --muted:#666;
+  --accent:#0060a8; --green:#2e7d32; --amber:#9a7400; --red:#c62828; color-scheme: light; } }
+body { margin:0; background:var(--bg); color:var(--text); font:14px -apple-system,'Segoe UI',sans-serif; }
+main { max-width:760px; margin:0 auto; padding:20px 16px; }
+h1 { font-size:20px; margin:0 0 4px; } .sub { color:var(--muted); margin:0 0 16px; }
+.card { background:var(--sur); border:1px solid var(--border); border-radius:8px; padding:14px 16px; margin-bottom:14px; }
+.card h2 { font-size:15px; margin:0 0 10px; }
+label { display:block; font-size:12px; color:var(--muted); margin:8px 0 3px; }
+select, input[type=text], input[type=password] { width:100%; box-sizing:border-box; padding:6px 8px; background:var(--bg);
+  color:var(--text); border:1px solid var(--border); border-radius:5px; font-size:13px; }
+.row { display:flex; gap:10px; flex-wrap:wrap; } .row > div { flex:1 1 200px; }
+button { padding:6px 14px; border-radius:5px; border:1px solid var(--border); background:var(--bg); color:var(--text); cursor:pointer; font-size:13px; }
+button.primary { background:var(--accent); border-color:var(--accent); color:#fff; } button:disabled { opacity:.5; cursor:default; }
+.ok { color:var(--green); } .warn { color:var(--amber); } .err { color:var(--red); } .muted { color:var(--muted); font-size:12px; }
+.modes { display:flex; gap:16px; margin:4px 0 6px; } .modes label { display:inline; color:var(--text); font-size:13px; }
+pre { white-space:pre-wrap; font:12px var(--mono); margin:8px 0 0; color:var(--muted); max-height:180px; overflow:auto; }
+code { font-family:var(--mono); }
+[hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Dedicated Seat</h1>
+  <p class="sub">Assign a USB mouse and keyboard exclusively to a VM (RDP) or a kiosk browser. The devices leave Windows
+    and only control the seat window; the rest of Windows keeps its own keyboard/mouse. Runs in WSL (Xorg + view-only VNC).</p>
+
+  <div class="card">
+    <h2>Requirements</h2>
+    <div id="req">Checking usbipd-win, WSL and Linux packages…</div>
+    <div id="prep" hidden style="margin-top:8px">
+      <label><input type="checkbox" id="opt-chrome"> also install Google Chrome</label>
+      <label><input type="checkbox" id="opt-edge"> also install Microsoft Edge</label>
+      <button class="primary" onclick="prepare()" style="margin-top:8px">Install / repair requirements</button>
+    </div>
+    <pre id="req-log" hidden></pre>
+  </div>
+
+  <div class="card">
+    <h2>Devices</h2>
+    <div class="row">
+      <div><label for="mouse">Mouse</label><select id="mouse"></select></div>
+      <div><label for="keyboard">Keyboard</label><select id="keyboard"></select></div>
+    </div>
+    <p class="muted">USB devices only (usbipd). Built-in laptop devices and Bluetooth devices cannot be passed to WSL.</p>
+  </div>
+
+  <div class="card">
+    <h2>Session</h2>
+    <div class="modes">
+      <label><input type="radio" name="mode" value="rdp" checked onchange="modeUi()"> Remote Desktop (VM)</label>
+      <label><input type="radio" name="mode" value="browser" onchange="modeUi()"> Browser (kiosk)</label>
+    </div>
+    <div id="m-rdp" class="row">
+      <div><label for="target">Host:port <span class="muted">(<code>host</code> = this Windows machine)</span></label><input type="text" id="target" value="host:13389"></div>
+      <div><label for="user">User <span class="muted">(DOMAIN\user)</span></label><input type="text" id="user"></div>
+      <div><label for="pass">Password</label><input type="password" id="pass"></div>
+    </div>
+    <div id="m-browser" class="row" hidden>
+      <div style="flex:0 1 180px"><label for="browser">Browser</label><select id="browser"></select></div>
+      <div><label for="url">URL <span class="muted">(<code>host</code> = this Windows machine)</span></label><input type="text" id="url" value="http://host:9090/"></div>
+    </div>
+    <div style="margin-top:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+      <button class="primary" id="btn-start" onclick="startSeat()">Start seat</button>
+      <button id="btn-stop" onclick="stopSeat()">Stop seat &amp; return devices</button>
+      <span id="msg"></span>
+    </div>
+  </div>
+
+  <div class="card"><h2>Active seat</h2><div id="active" class="muted">—</div></div>
+</main>
+<script>
+const API = '/api/seat';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+let S = {};
+
+// Pre-fill from the URL (the configurator opens this page with the exposed VM's data).
+const qs = new URLSearchParams(location.search);
+for (const k of ['target','user','pass','url']) if (qs.get(k)) $(k).value = qs.get(k);
+if (qs.get('mode') === 'browser') document.querySelector('input[value=browser]').checked = true;
+
+function modeUi() {
+  const m = document.querySelector('input[name=mode]:checked').value;
+  $('m-rdp').hidden = m !== 'rdp'; $('m-browser').hidden = m !== 'browser';
+}
+
+async function load() {
+  S = await fetch(API + '/status').then(r => r.json()).catch(e => ({ error: e.message }));
+  const req = [];
+  if (S.error) req.push(`<span class="err">${esc(S.error)}</span>`);
+  req.push(S.usbipd ? '<span class="ok">● usbipd-win installed</span>' : '<span class="warn">● usbipd-win missing</span>');
+  req.push(S.distro ? `<span class="ok">● WSL distro: ${esc(S.distro)}</span>` : '<span class="warn">● no WSL distro for the signed-in user</span>');
+  req.push(S.missing?.length ? `<span class="warn">● missing in WSL: ${esc(S.missing.join(', '))}</span>` : (S.distro ? '<span class="ok">● Linux packages installed</span>' : ''));
+  $('req').innerHTML = req.filter(Boolean).join('<br>');
+  $('prep').hidden = !!S.ready;
+  const opt = (d, kind) => `<option value="${d.busid}">${esc(d.busid)} · ${esc(d.vidpid)} · ${esc(d.name)}${d.attached ? ' (in WSL)' : ''}</option>`;
+  const devs = S.devices || [];
+  $('mouse').innerHTML = '<option value="">— none —</option>' + devs.filter(d => d.mouse).map(d => opt(d)).join('');
+  $('keyboard').innerHTML = '<option value="">— none —</option>' + devs.filter(d => d.keyboard).map(d => opt(d)).join('');
+  $('browser').innerHTML = (S.browsers?.length ? S.browsers : ['firefox']).map(b => `<option>${esc(b)}</option>`).join('');
+  const seats = Object.entries(S.seats || {});
+  $('active').innerHTML = seats.length ? seats.map(([d, s]) =>
+    `Display :${esc(d)} — ${esc(s.mode === 'rdp' ? 'RDP ' + s.target : (s.browser + ' ' + s.target))}<br><span class="muted">devices ${esc((s.busids||[]).join(', '))} (${esc([s.mouseEv, s.kbdEv].filter(Boolean).join(', '))}) · since ${esc(new Date(s.started).toLocaleString())}</span>`).join('<br>') : '—';
+  const cur = seats[0]?.[1]; if (cur) { if (cur.mouse) $('mouse').value = cur.mouse; if (cur.keyboard) $('keyboard').value = cur.keyboard; }
+}
+
+async function call(path, body, busyText) {
+  $('msg').innerHTML = `<span class="muted">${esc(busyText)}</span>`;
+  for (const b of document.querySelectorAll('button')) b.disabled = true;
+  try { return await fetch(API + path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).then(r => r.json()); }
+  catch (e) { return { ok:false, error:e.message }; }
+  finally { for (const b of document.querySelectorAll('button')) b.disabled = false; }
+}
+
+async function prepare() {
+  $('req-log').hidden = false; $('req-log').textContent = 'Installing… (this can take several minutes)';
+  const r = await call('/prepare', { chrome: $('opt-chrome').checked, edge: $('opt-edge').checked }, 'Installing requirements…');
+  $('req-log').textContent = r.ok ? (r.log || []).join('\n') : r.error;
+  $('msg').innerHTML = r.ok ? '<span class="ok">Requirements ready</span>' : '<span class="err">Setup failed</span>';
+  load();
+}
+
+async function startSeat() {
+  const mode = document.querySelector('input[name=mode]:checked').value;
+  const body = { display: 2, mouse: $('mouse').value, keyboard: $('keyboard').value, mode,
+    target: $('target').value.trim(), user: $('user').value.trim(), pass: $('pass').value,
+    browser: $('browser').value, url: $('url').value.trim() };
+  if (!body.mouse && !body.keyboard) { $('msg').innerHTML = '<span class="err">Choose a mouse and/or a keyboard</span>'; return; }
+  const r = await call('/start', body, 'Attaching devices and starting the seat…');
+  $('msg').innerHTML = r.ok ? `<span class="ok">Seat started on display :${r.display} — use the TigerVNC window with the chosen devices</span>` : `<span class="err">${esc(r.error)}</span>`;
+  load();
+}
+
+async function stopSeat() {
+  const r = await call('/stop', { display: 2 }, 'Stopping and returning devices to Windows…');
+  $('msg').innerHTML = r.ok ? `<span class="ok">Stopped; devices returned: ${esc(r.released.join(', ') || 'none')}</span>` : `<span class="err">${esc(r.error)}</span>`;
+  load();
+}
+
+modeUi(); load();
+</script>
+</body>
+</html>
