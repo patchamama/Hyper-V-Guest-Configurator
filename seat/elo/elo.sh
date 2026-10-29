@@ -6,6 +6,8 @@
 #   elo.sh status          container states and ELO URLs
 #   elo.sh stats           memory/CPU per container (JSON lines)
 #   elo.sh stop|start|restart <service...>   manage single services (server, search, as, flows, tr2, ...)
+#   elo.sh enable|disable <as|flows|pgadmin> optional services (persisted in COMPOSE_PROFILES)
+#   elo.sh license [file]  apply a new license (re-runs ix-setup, restarts the server)
 #   elo.sh logs <service> [lines]
 #   elo.sh down [--volumes] stop the stack (--volumes also deletes the repository data)
 #
@@ -56,6 +58,8 @@ EOF
     chmod 600 .env
     echo ".env written"
   fi
+  # .env may have been edited on Windows: keep it LF-only so sed/compose read clean values.
+  sed -i 's/\r//g' .env
   # The license goes in verbatim (multi-line); docker compose reads it from the environment.
   export ELO_LIC; ELO_LIC=$(tr -d '\r' < "$LIC")
   echo "license: $LIC"
@@ -71,7 +75,20 @@ case "$cmd" in
            echo "Admin Console: http://localhost:9090/$REPO/plugin/de.elo.ix.plugin.proxy/ac/" ;;
   stats)   docker stats --no-stream --format '{{json .}}' $(docker compose ps -q) ;;
   stop|start|restart) make_env >/dev/null; docker compose "$cmd" "$@" ;;
+  # Optional services by profile (as | flows | pgadmin): enable = add to COMPOSE_PROFILES and start; disable = stop + remove.
+  enable)  make_env >/dev/null; p=$1; . ./.env
+           grep -q "^COMPOSE_PROFILES=.*\b$p\b" .env || sed -i "s/^COMPOSE_PROFILES=\(.*\)/COMPOSE_PROFILES=\1,$p/; s/^COMPOSE_PROFILES=,/COMPOSE_PROFILES=/; s/^COMPOSE_PROFILES=none,/COMPOSE_PROFILES=/" .env
+           docker compose --profile "$p" up -d --no-deps $(docker compose --profile "$p" config --services | grep -x -E "$p|$p-worker") ;;
+  disable) make_env >/dev/null; p=$1
+           sed -i "s/^\(COMPOSE_PROFILES=.*\)\b$p\b,\?/\1/; s/^\(COMPOSE_PROFILES=.*\),$/\1/" .env
+           for s in $(docker compose --profile "$p" config --services | grep -x -E "$p|$p-worker"); do docker compose --profile "$p" rm -sf "$s"; done ;;
+  # New license: re-run the ELO setup container with it (writes the license into the repository), then restart the server.
+  license) LICENSE_FILE=${1:-${LICENSE_FILE:-}} make_env >/dev/null
+           docker compose up -d --force-recreate --no-deps ix-setup
+           for i in $(seq 1 60); do s=$(docker inspect -f '{{.State.Status}}/{{.State.ExitCode}}' elo-ix-setup); case "$s" in exited/0) break ;; exited/*) docker logs --tail 30 elo-ix-setup; exit 1 ;; esac; sleep 5; done
+           docker logs elo-ix-setup 2>&1 | grep -i -E 'license|customer1' | tail -5
+           docker compose restart server ;;
   logs)    docker compose logs --no-color --tail "${2:-200}" "$1" ;;
   down)    if [ "${1:-}" = --volumes ]; then docker compose down -v; else docker compose down; fi ;;
-  *) echo "usage: elo.sh env|pull|up|status|stats|stop|start|restart|logs|down"; exit 2 ;;
+  *) echo "usage: elo.sh env|pull|up|status|stats|stop|start|restart|enable|disable|license|logs|down"; exit 2 ;;
 esac

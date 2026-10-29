@@ -10,7 +10,8 @@ const { inventory, fetchCliSecret } = require('../tools/registry-inventory');
 const { acceptEula, webClientCheck } = require('./eula');
 
 const PORT = Number(process.env.ELO_INSTALLER_PORT) || 3200;
-const ELO = x.ELO_DIR, ELO_L = x.toLinux(ELO);
+const ELO = x.ELO_DIR;
+const DOCS_DIR = path.join(ELO, '..', '..', 'docs');      // ELO partner documentation copied by the user (git-ignored)
 const PORTS = { server: 9090, as: 9060, flows: 9010, search: 9200, 'search-transport': 9204 };
 const session = { registry: null };          // { username, secret } kept in memory only
 const app = express();
@@ -19,21 +20,26 @@ app.use(express.static(path.join(__dirname, 'public')));
 const wrap = fn => async (req, res) => { try { res.json(await fn(req, res)); } catch (e) { res.json({ ok: false, error: e.message }); } };
 
 // Run elo.sh (CRLF-safe copy) with optional environment.
-const elo = (args, env = {}, t = 600) => x.sh(
-  `export ELO_DIR=${x.shq(ELO_L)}; ${Object.entries(env).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `export ${k}=${x.shq(v)}; `).join('')}` +
-  `tr -d '\\r' < "$ELO_DIR/elo.sh" > /tmp/elo.sh; bash /tmp/elo.sh ${args}`, t);
+const elo = async (args, env = {}, t = 600) => { await x.detect(); return x.sh(
+  `export ELO_DIR=${x.shq(x.eloDir())}; ${Object.entries(env).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `export ${k}=${x.shq(v)}; `).join('')}` +
+  `tr -d '\\r' < "$ELO_DIR/elo.sh" > /tmp/elo.sh; bash /tmp/elo.sh ${args}`, t); };
 
-function readEnv() {
-  try {
-    return Object.fromEntries(fs.readFileSync(path.join(ELO, '.env'), 'utf8').split(/\r?\n/)
-      .filter(l => /^[A-Z_]+=/.test(l)).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
-  } catch { return null; }
+// .env of the installation (local file; on an SSH target read remotely).
+async function readEnv() {
+  await x.detect();
+  let txt = null;
+  if (x.getMode() === 'ssh') txt = await x.sh(`cat ${x.REMOTE_DIR}/.env 2>/dev/null`, 30);
+  else { try { txt = fs.readFileSync(path.join(ELO, '.env'), 'utf8'); } catch {} }
+  if (!txt || !/=/.test(txt)) return null;
+  return Object.fromEntries(txt.replace(/\r/g, '').split('\n').filter(l => /^[A-Z_]+=/.test(l))
+    .map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
 }
 
-// Base URL to reach the published ports from where this backend runs (WSL IP on Windows).
+// Base URL to reach the published ports from where this backend runs (WSL IP on Windows, target host over SSH).
 async function baseUrl() {
   const { mode } = await x.detect();
   if (mode === 'linux') return 'http://localhost:9090';
+  if (mode === 'ssh') return `http://${x.getTarget().host}:9090`;
   const ip = (await x.sh('hostname -I | awk \'{print $1}\'', 60)).trim().split(/\s+/)[0];
   return `http://${ip}:9090`;
 }
@@ -155,9 +161,10 @@ app.post('/api/install', wrap(async req => {
   const env = Object.fromEntries(SETTINGS.map(k => [k, c[k]]));
   if (lic) env.LICENSE_FILE = lic;
   const exports = Object.entries(env).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `export ${k}=${x.shq(v)}`).join('\n');
+  await x.detect(); await x.deployRemote();
   return x.startJob('install', `
 set -e
-export ELO_DIR=${x.shq(ELO_L)}; cd "$ELO_DIR"; tr -d '\\r' < elo.sh > /tmp/elo.sh
+export ELO_DIR=${x.shq(x.eloDir())}; cd "$ELO_DIR"; tr -d '\\r' < elo.sh > /tmp/elo.sh
 ${exports}
 step() { echo "__STEP__ $*"; }
 ${c.fresh ? 'step "Removing the previous installation (containers and data volumes)"; bash /tmp/elo.sh down --volumes || true' : ''}
@@ -181,18 +188,19 @@ step "Done"`);
 
 // Stream a job log (Server-Sent Events) until "__EXIT__".
 app.get('/api/jobs/:id/stream', (req, res) => {
-  const log = path.join(x.RUN_DIR, `${path.basename(req.params.id)}.log`);
+  const job = path.basename(req.params.id);
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' }); res.flushHeaders();
-  let pos = 0, done = false;
-  const tick = () => {
+  let pos = 0, done = false, rest = '';
+  const tick = async () => {
     if (done) return;
-    let chunk = '';
-    try { const fd = fs.openSync(log, 'r'); const st = fs.fstatSync(fd); if (st.size > pos) { const b = Buffer.alloc(st.size - pos); fs.readSync(fd, b, 0, b.length, pos); pos = st.size; chunk = b.toString('utf8'); } fs.closeSync(fd); } catch {}
-    for (const line of chunk.split('\n').filter(Boolean)) {
+    const r = await x.readLog(job, pos).catch(() => ({ chunk: '', pos }));
+    pos = r.pos;
+    const lines = (rest + r.chunk).split('\n'); rest = lines.pop();   // keep a partial last line for the next read
+    for (const line of lines.filter(Boolean)) {
       res.write(`data: ${JSON.stringify(line)}\n\n`);
       if (line.startsWith('__EXIT__:')) { done = true; res.end(); return; }
     }
-    setTimeout(tick, 1000);
+    setTimeout(tick, x.getMode() === 'ssh' ? 2500 : 1000);
   };
   req.on('close', () => { done = true; });
   tick();
@@ -200,18 +208,18 @@ app.get('/api/jobs/:id/stream', (req, res) => {
 
 // ── Post-install: EULA and Web Client ───────────────────────────────────────
 app.post('/api/eula', wrap(async () => {
-  const e = readEnv(); if (!e) throw new Error('not installed');
+  const e = await readEnv(); if (!e) throw new Error('not installed');
   return acceptEula({ base: await baseUrl(), repo: e.REPO, user: e.AUTH_ADMIN_USERNAME || 'Administrator', pass: e.AUTH_ADMIN_PASSWORD });
 }));
 app.post('/api/webcheck', wrap(async () => {
-  const e = readEnv(); if (!e) throw new Error('not installed');
+  const e = await readEnv(); if (!e) throw new Error('not installed');
   return webClientCheck({ base: await baseUrl(), repo: e.REPO, user: e.AUTH_ADMIN_USERNAME || 'Administrator', pass: e.AUTH_ADMIN_PASSWORD });
 }));
 
 // ── Administration ──────────────────────────────────────────────────────────
 app.get('/api/status', wrap(async () => {
-  const e = readEnv();
-  const out = await x.sh(`cd ${x.shq(ELO_L)} 2>/dev/null; echo "__PS__"; docker ps -a --filter network=elo-network --format '{{json .}}' 2>/dev/null
+  const e = await readEnv();
+  const out = await x.sh(`cd ${x.shq(x.eloDir())} 2>/dev/null; echo "__PS__"; docker ps -a --filter network=elo-network --format '{{json .}}' 2>/dev/null
 echo "__STATS__"; docker stats --no-stream --format '{{json .}}' $(docker ps -q --filter network=elo-network) 2>/dev/null
 echo "__MEM__"; free -b | awk '/Mem/ {print $2, $3, $7}'; echo "__DOCKER__"; systemctl is-active docker 2>/dev/null || (pgrep dockerd >/dev/null && echo active)`, 120);
   const sect = n => (out.split(`__${n}__`)[1] || '').split(/__[A-Z]+__/)[0].split('\n').map(s => s.trim()).filter(Boolean);
@@ -229,12 +237,18 @@ echo "__MEM__"; free -b | awk '/Mem/ {print $2, $3, $7}'; echo "__DOCKER__"; sys
     urls: e ? {
       'Web Client': `${base}/${repo}/plugin/de.elo.ix.plugin.proxy/web/`,
       'Admin Console': `${base}/${repo}/plugin/de.elo.ix.plugin.proxy/ac/`,
+      'ELO WF (Web Forms)': `${base}/${repo}/plugin/de.elo.ix.plugin.proxy/wf/`,
       'Index Server status': `${base}/${repo}/ix?cmd=status`,
       'IX URL (Java Client / API)': `${base}/${repo}/ix`,
+      'Tomcat manager (server)': `${base}/manager/html`,
       'Automation Services': base.replace(':9090', ':9060') + '/',
       'Flows': base.replace(':9090', ':9010') + '/',
-      'Elasticsearch': base.replace('http:', 'https:').replace(':9090', ':9200') + '/_cluster/health',
+      'Elasticsearch (iSearch)': base.replace('http:', 'https:').replace(':9090', ':9200') + '/_cluster/health',
+      'pgAdmin': base.replace(':9090', ':5050') + '/',
+      'This installer': `http://localhost:${PORT}/`,
     } : {},
+    javaClient: e ? { ixUrl: `${base}/${repo}/ix`, user: e.AUTH_ADMIN_USERNAME || 'Administrator',
+      note: 'ELO Java Client: add a profile with this IX URL (download the client from the ELO partner portal; on Linux see the OpS letter "Installing ELO on Ubuntu").' } : null,
     // Shown in the local admin panel only.
     credentials: e ? {
       'ELO administrator': [e.AUTH_ADMIN_USERNAME || 'Administrator', e.AUTH_ADMIN_PASSWORD],
@@ -271,7 +285,8 @@ app.post('/api/engine', wrap(async req => {
 app.post('/api/backup', wrap(async req => {
   const images = (req.body?.images || []).filter(i => /^[\w./:-]+$/.test(i));
   if (!images.length) throw new Error('no images');
-  return x.startJob('backup', `set -e; d=${x.shq(ELO_L + '/backup')}; mkdir -p "$d"
+  await x.detect();
+  return x.startJob('backup', `set -e; d=${x.shq(x.eloDir() + '/backup')}; mkdir -p "$d"
 for i in ${images.map(x.shq).join(' ')}; do f="$d/$(echo "$i" | tr '/:' '__').tar"; echo "__STEP__ saving $i"; docker save -o "$f" "$i"; ls -lh "$f" | awk '{print "saved", $5, $9}'; done
 echo "__STEP__ Done"`);
 }));
@@ -286,6 +301,125 @@ app.post('/api/expose', wrap(async req => {
     `Remove-NetFirewallRule -DisplayName 'ELO-Docker-${p}' -EA SilentlyContinue; New-NetFirewallRule -DisplayName 'ELO-Docker-${p}' -Direction Inbound -Protocol TCP -LocalPort ${p} -Action Allow -Profile Any | Out-Null`).join('; ') + "; 'EXPOSED'");
   if (!/EXPOSED/.test(r.out)) throw new Error(r.err || 'portproxy failed (run the installer elevated)');
   return { ok: true, ip, ports, note: 'Ports now forward to ELO in WSL (any previous forwarding of these ports, e.g. to a Hyper-V VM, was replaced).' };
+}));
+
+// ── Installation target ─────────────────────────────────────────────────────
+// wsl (WSL2 + Docker Engine in the distro; Docker Desktop with WSL integration uses the same path), linux (native),
+// ssh (Hyper-V VM, Oracle VirtualBox VM or any Ubuntu/Debian server reachable over SSH with a key).
+const SSH_KEY = path.join(x.RUN_DIR, 'elo-installer-key');
+app.get('/api/target', wrap(async () => {
+  const env = await x.detect();
+  const pub = fs.existsSync(SSH_KEY + '.pub') ? fs.readFileSync(SSH_KEY + '.pub', 'utf8').trim() : null;
+  let desktop = false;
+  if (x.IS_WIN) desktop = fs.existsSync('C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe');
+  return { ok: true, ...env, publicKey: pub, keyPath: SSH_KEY, dockerDesktopInstalled: desktop };
+}));
+app.post('/api/target', wrap(async req => {
+  const { kind, host, port, user, key } = req.body || {};
+  if (kind !== 'ssh') { x.setTarget(null); return { ok: true, ...(await x.detect()) }; }
+  if (!host || !user) throw new Error('host and user required');
+  x.setTarget({ host, port, user, key: key || SSH_KEY });
+  const env = await x.detect();
+  const info = await x.sh(`. /etc/os-release; echo "$PRETTY_NAME | $(nproc) CPU | $(awk '/MemTotal/{printf "%.1f GB", $2/1048576}' /proc/meminfo) | docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo missing)"`, 60);
+  return { ok: true, ...env, info: info.trim() };
+}));
+// SSH key for the remote target (ed25519, no passphrase); its public part goes to ~/.ssh/authorized_keys on the VM.
+app.post('/api/target/key', wrap(async () => {
+  if (!fs.existsSync(SSH_KEY)) {
+    const r = await x.run('ssh-keygen', ['-t', 'ed25519', '-N', '', '-C', 'elo-installer', '-f', SSH_KEY], { timeoutMs: 30000 });
+    if (r.code !== 0) throw new Error('ssh-keygen failed: ' + r.err);
+  }
+  return { ok: true, publicKey: fs.readFileSync(SSH_KEY + '.pub', 'utf8').trim(), keyPath: SSH_KEY };
+}));
+// Docker Desktop (Windows): signed installer; afterwards enable "WSL integration" for the distro in its settings.
+app.post('/api/install-docker-desktop', wrap(async () => {
+  if (!x.IS_WIN) throw new Error('Windows only');
+  const r = await x.ps(`$f=Join-Path $env:TEMP 'DockerDesktopInstaller.exe'; Invoke-WebRequest 'https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe' -OutFile $f -UseBasicParsing; ` +
+    `if((Get-AuthenticodeSignature $f).Status -ne 'Valid'){ 'BADSIG'; exit }; Start-Process $f -ArgumentList 'install','--quiet','--accept-license' -Wait; 'DONE'`, 1800000);
+  if (/BADSIG/.test(r.out)) throw new Error('installer signature is not valid');
+  if (!/DONE/.test(r.out)) throw new Error(r.err || 'installation failed');
+  return { ok: true, note: 'Docker Desktop installed. Open it → Settings → Resources → WSL integration → enable your distro; then use the WSL target.' };
+}));
+
+// ── Help: documentation files and links ─────────────────────────────────────
+app.get('/api/docs', wrap(async () => {
+  const list = d => { try { return fs.readdirSync(d).filter(f => /\.(pdf|md|txt|html)$/i.test(f)); } catch { return []; } };
+  return { ok: true,
+    local: [
+      ...['README.md', 'elo-docker-list.md'].filter(f => fs.existsSync(path.join(ELO, f))).map(f => ({ name: f, url: `/help/elo/${encodeURIComponent(f)}`, where: 'project' })),
+      ...list(DOCS_DIR).map(f => ({ name: f, url: `/help/docs/${encodeURIComponent(f)}`, where: 'docs/' })),
+    ],
+    online: [
+      ['ELO registry (images)', 'https://registry.elo.com'],
+      ['ELO images for Docker (25 LTS)', 'https://docs.elo.com/ops/eck-images/25-lts/en-us/administration-docker/'],
+      ['Deploy a repository with docker-compose', 'https://docs.elo.com/ops/eck-images/25-lts/en-us/administration-docker/getting-started/docker-compose.html'],
+      ['ELO Cloud on Kubernetes', 'https://docs.elo.com/ops/eck/en-us/getting-started/'],
+      ['ELO system requirements', 'https://docs.elo.com/ops/requirements/pdf/en-us_ops-requirements_overview.pdf'],
+      ['pgAdmin documentation', 'https://www.pgadmin.org/docs/pgadmin4/latest/'],
+    ].map(([name, url]) => ({ name, url })) };
+}));
+app.use('/help/elo', express.static(ELO, { index: false, setHeaders: r => r.set('Content-Type', 'text/plain; charset=utf-8') }));
+app.use('/help/docs', express.static(DOCS_DIR, { index: false }));
+
+// ── Installed images ────────────────────────────────────────────────────────
+app.get('/api/images', wrap(async () => {
+  const out = await x.sh(`echo "__IMG__"; docker images --format '{{json .}}' 2>/dev/null
+echo "__USED__"; docker ps -a --format '{{.Image}}|{{.Names}}|{{.State}}' 2>/dev/null
+echo "__TAR__"; ls -l --time-style=+%F ${x.shq(x.eloDir() + '/backup')}/*.tar 2>/dev/null | awk '{print $5"|"$6"|"$7}'`, 120);
+  const sect = n => (out.split(`__${n}__`)[1] || '').split(/__[A-Z]+__/)[0].split('\n').map(s => s.trim()).filter(Boolean);
+  const used = {};
+  for (const l of sect('USED')) { const [img, name, st] = l.split('|'); (used[img] ||= []).push(`${name} (${st})`); }
+  const images = sect('IMG').map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean)
+    .filter(i => /registry\.elo\.com|postgres|pgadmin|hvc-seat|guacamole/.test(i.Repository))
+    .map(i => ({ ref: `${i.Repository}:${i.Tag}`, id: i.ID, size: i.Size, created: i.CreatedSince, usedBy: used[`${i.Repository}:${i.Tag}`] || [] }));
+  const backups = sect('TAR').map(l => { const [size, date, file] = l.split('|'); return { file: path.posix.basename(file), size: Number(size), date }; });
+  return { ok: true, images, backups };
+}));
+app.post('/api/images/remove', wrap(async req => {
+  const refs = (req.body?.refs || []).filter(r => /^[\w./:-]+$/.test(r));
+  return { ok: true, out: await x.sh(refs.map(r => `docker rmi ${x.shq(r)} 2>&1`).join('\n'), 300) };
+}));
+app.post('/api/images/load', wrap(async req => {
+  const file = path.posix.basename(String(req.body?.file || ''));
+  if (!/\.tar$/.test(file)) throw new Error('bad file');
+  await x.detect();
+  return x.startJob('load', `docker load -i ${x.shq(x.eloDir() + '/backup/' + file)}`);
+}));
+
+// ── License update on an existing installation ──────────────────────────────
+app.post('/api/license/apply', wrap(async () => {
+  const lic = ['elo-license.lic', 'uploaded-license.pk'].find(f => fs.existsSync(path.join(ELO, f)));
+  if (!lic) throw new Error('upload a license first');
+  await x.detect(); await x.deployRemote();
+  return x.startJob('license', `export ELO_DIR=${x.shq(x.eloDir())}; tr -d '\\r' < "$ELO_DIR/elo.sh" > /tmp/elo.sh
+echo "__STEP__ Applying ${lic} (re-running ix-setup)"; bash /tmp/elo.sh license ${x.shq(lic)}
+echo "__STEP__ Done"`);
+}));
+
+// ── Optional services (as | flows | pgadmin) ────────────────────────────────
+app.post('/api/optional', wrap(async req => {
+  const { name, enable } = req.body || {};
+  if (!['as', 'flows', 'pgadmin'].includes(name)) throw new Error('unknown optional service');
+  return { ok: true, out: await elo(`${enable ? 'enable' : 'disable'} ${name}`, {}, 900) };
+}));
+
+// ── Open folders: logs, archive files, data (Docker volumes) ────────────────
+app.post('/api/open', wrap(async req => {
+  const vol = { logs: 'logs', archive: 'repository-basis', system: 'repository-system', data: 'data-ix' }[req.body?.what];
+  if (!vol) throw new Error('unknown folder');
+  // Docker volume of the compose project; make it readable for the file manager (test environment).
+  const mp = (await x.sh(`v=$(docker volume ls -q | grep -E '_${vol}$' | head -1); m=$(docker volume inspect -f '{{.Mountpoint}}' "$v" 2>/dev/null); ` +
+    `[ -n "$m" ] && chmod o+x /var/lib/docker /var/lib/docker/volumes "$(dirname "$m")" 2>/dev/null; [ -n "$m" ] && chmod -R o+rX "$m" 2>/dev/null; echo "$m"`, 120)).trim().split('\n').pop();
+  if (!mp) throw new Error(`volume ${vol} not found`);
+  const mode = x.getMode();
+  if (mode === 'wsl' || mode === 'wsl-user') {
+    const win = `\\\\wsl.localhost\\${x.getDistro()}${mp.replace(/\//g, '\\')}`;
+    const cmd = `Start-Process explorer.exe -ArgumentList '${win.replace(/'/g, "''")}'`;
+    if (mode === 'wsl-user') await x.getSeatLib().runAsUser(cmd, 60); else await x.ps(cmd);
+    return { ok: true, path: win, linuxPath: mp };
+  }
+  if (mode === 'linux') { await x.sh(`(command -v xdg-open && sudo -u "\${SUDO_USER:-root}" xdg-open ${x.shq(mp)}) >/dev/null 2>&1 &`, 20); return { ok: true, linuxPath: mp }; }
+  return { ok: true, linuxPath: mp, note: `On the SSH target: ${mp}` };
 }));
 
 app.listen(PORT, () => console.log(`ELO installer: http://localhost:${PORT}`));
