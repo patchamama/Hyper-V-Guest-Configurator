@@ -3544,7 +3544,10 @@ const VMPanel = {
       const address = web ? link(url) : `<code>${hostIp}:${h}</code>`;
       const kind = port === 3389 ? 'RDP' : web ? x.scheme.toUpperCase() : 'TCP';
       const via = h !== port ? ` → VM ${port}` : '';
-      return `<div style="display:flex;gap:8px;align-items:center;margin:3px 0;flex-wrap:wrap"><span style="color:${x.online?'var(--green)':'var(--red)'}">● ${x.online?'ONLINE':'OFFLINE'}</span> ${address} <span style="color:var(--muted);font-size:10px">${kind} ${h}${via}</span></div>`;
+      const pgBtn = port === 5432 && x.online
+        ? ` <button class="hbtn" style="font-size:11px" onclick="VMPanel.openPgAdmin(${h})">&#128024; Open pgAdmin</button><span id="vm-pgadmin-result" style="font-size:11px"></span>` : '';
+      if (port === 5432 && x.online) shareLines.push(`PostgreSQL: host ${hostIp} port ${h} (e.g. user elodb)`);
+      return `<div style="display:flex;gap:8px;align-items:center;margin:3px 0;flex-wrap:wrap"><span style="color:${x.online?'var(--green)':'var(--red)'}">● ${x.online?'ONLINE':'OFFLINE'}</span> ${address} <span style="color:var(--muted);font-size:10px">${kind} ${h}${via}</span>${pgBtn}</div>`;
     }).join('');
 
     // Remote Desktop: open directly from this host (saved credential, no prompt) or hand the data to a teammate.
@@ -3575,6 +3578,23 @@ const VMPanel = {
       </details>`;
   },
 
+  // Opens pgAdmin on this host for the VM's PostgreSQL through its exposed host port. The server tries
+  // elodb/elo and elodb/elodb; with a working login pgAdmin connects without asking, otherwise it prompts.
+  async openPgAdmin(hostPort) {
+    const vmUser = document.getElementById('vm-cred-user')?.value?.trim() || S.vmUser;
+    const vmPass = document.getElementById('vm-cred-pass')?.value || S.vmPass;
+    const out = document.getElementById('vm-pgadmin-result');
+    if (out) out.textContent = ' Checking PostgreSQL login and pgAdmin (downloads pgAdmin if missing)…';
+    const r = await fetch('/api/pgadmin/open', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ vmName:S.vmName, vmUser, vmPass, port:hostPort }) })
+      .then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
+    const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    if (!out) return;
+    out.innerHTML = !r.ok ? ` <span style="color:var(--red)">${esc(r.error||'pgAdmin failed')}</span>`
+      : r.loggedIn
+        ? ` <span style="color:var(--green)">pgAdmin opened${r.installed?' (installed)':''} — server "${esc(r.serverName)}" as ${esc(r.user)}, connects without password. DBs: ${esc(r.databases.join(', '))}</span>`
+        : ` <span style="color:var(--amber)">pgAdmin opened — default logins failed, it will ask for the password of "${esc(r.user)}" (${esc(r.loginError)})</span>`;
+  },
+
   async openWebRdp() {
     const vmUser = document.getElementById('vm-cred-user')?.value?.trim() || S.vmUser;
     const vmPass = document.getElementById('vm-cred-pass')?.value || S.vmPass;
@@ -3582,7 +3602,10 @@ const VMPanel = {
     const out = document.getElementById('vm-rdp-result');
     // Open the tab synchronously (popup blockers), then point it at Guacamole once it is ready.
     const win = window.open('about:blank', '_blank');
-    if (out) out.textContent = 'Starting Web RDP (Guacamole in Docker; the first start can take a minute)…';
+    const st = await fetch('/api/webrdp/status').then(r=>r.json()).catch(()=>({}));
+    const todo = [!st.dockerInstalled && 'install Docker Desktop (several minutes)', st.wslMirrored && 'switch WSL networking to NAT (restarts WSL/Docker)',
+      st.dockerInstalled && !st.engineRunning && 'start Docker', !st.guacamoleReady && 'start Guacamole'].filter(Boolean);
+    if (out) out.textContent = todo.length ? `Preparing Web RDP: ${todo.join(', ')}…` : 'Opening Web RDP…';
     const r = await fetch('/api/webrdp/setup', { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ vmName:S.vmName, vmUser, vmPass, rdpPort: share.port || 3389, guestName: share.guestName || '' }) })
       .then(r=>r.json()).catch(e=>({ok:false,error:e.message}));

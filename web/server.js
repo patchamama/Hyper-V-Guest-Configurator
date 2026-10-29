@@ -972,6 +972,38 @@ function writeGuacMapping(entries) {
   fs.writeFileSync(path.join(GUAC_DIR, 'user-mapping.xml'), xml.join('\n'), 'utf8');
 }
 
+// Prerequisites for Guacamole, as a PowerShell fragment: Docker Desktop installed (downloaded and installed
+// silently if missing), WSL not in "mirrored" networking (Docker Desktop's published ports never reach
+// Windows in that mode; switched to "nat" with a backup), and the Docker engine running.
+const DOCKER_DESKTOP = 'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe';
+const GUAC_PREREQ_PS =
+  `$dd='${DOCKER_DESKTOP}'; ` +
+  `if(-not (Test-Path $dd)){ Write-Output 'STEP:Installing Docker Desktop'; ` +
+  `  $tmp=Join-Path $env:TEMP 'hvc-docker'; New-Item -ItemType Directory -Force $tmp | Out-Null; $inst=Join-Path $tmp 'DockerDesktopInstaller.exe'; ` +
+  `  Invoke-WebRequest 'https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe' -OutFile $inst -UseBasicParsing; ` +
+  `  if((Get-AuthenticodeSignature $inst).Status -ne 'Valid'){ 'ERROR:Docker Desktop installer signature is not valid'; exit }; ` +
+  `  Start-Process $inst -ArgumentList 'install','--quiet','--accept-license' -Wait; ` +
+  `  if(-not (Test-Path $dd)){ 'ERROR:Docker Desktop installation failed (a reboot may be required)'; exit } }; ` +
+  `$env:Path += ';C:\\Program Files\\Docker\\Docker\\resources\\bin'; ` +
+  `$wc=Join-Path $env:USERPROFILE '.wslconfig'; ` +
+  `if((Test-Path $wc) -and ((Get-Content $wc -Raw) -match '(?m)^\\s*networkingMode\\s*=\\s*mirrored')){ Write-Output 'STEP:Switching WSL networking from mirrored to nat'; ` +
+  `  Copy-Item $wc "$wc.bak-mirrored" -Force; [IO.File]::WriteAllText($wc, ((Get-Content $wc -Raw) -replace '(?m)^(\\s*networkingMode\\s*=\\s*)mirrored','$1nat')); ` +
+  `  Get-Process 'Docker Desktop','com.docker.backend' -EA SilentlyContinue | Stop-Process -Force; wsl --shutdown; Start-Sleep 5 }; ` +
+  `docker info --format '{{.ServerVersion}}' *> $null; if($LASTEXITCODE -ne 0){ Start-Process $dd; ` +
+  `  foreach($i in 1..48){ Start-Sleep 5; docker info --format '{{.ServerVersion}}' *> $null; if($LASTEXITCODE -eq 0){break} } }; ` +
+  `docker info --format '{{.ServerVersion}}' *> $null; if($LASTEXITCODE -ne 0){ 'ERROR:Docker engine is not running'; exit }; `;
+
+// Requirement check for the UI: what is installed/running and whether Guacamole answers.
+app.get('/api/webrdp/status', (_req, res) => {
+  runPS(`$wc=Join-Path $env:USERPROFILE '.wslconfig'; $env:Path += ';C:\\Program Files\\Docker\\Docker\\resources\\bin'; ` +
+    `$installed=Test-Path '${DOCKER_DESKTOP}'; docker info --format '{{.ServerVersion}}' *> $null; $engine=($LASTEXITCODE -eq 0); ` +
+    `$mirrored=(Test-Path $wc) -and ((Get-Content $wc -Raw) -match '(?m)^\\s*networkingMode\\s*=\\s*mirrored'); ` +
+    `$ct=@(); if($engine){ $ct=@(docker ps -a --filter name=hvc-guac --format '{{.Names}}={{.State}}') }; ` +
+    `$web=$false; try { $web=((Invoke-WebRequest 'http://127.0.0.1:${GUAC_PORT}/guacamole/' -UseBasicParsing -TimeoutSec 4).StatusCode -eq 200) } catch {}; ` +
+    `ConvertTo-Json -Compress -InputObject ([ordered]@{dockerInstalled=$installed;engineRunning=$engine;wslMirrored=$mirrored;containers=$ct;guacamoleReady=$web})`,
+    (out) => { try { res.json(JSON.parse(out.split(/\r?\n/).pop())); } catch { res.json({ error: out }); } });
+});
+
 app.post('/api/webrdp/setup', (req, res) => {
   const { vmName, vmUser, vmPass, rdpPort, guestName } = req.body || {};
   if (!vmName || !vmUser || !vmPass) return res.status(400).json({ ok: false, error: 'VM credentials required' });
@@ -985,11 +1017,8 @@ app.post('/api/webrdp/setup', (req, res) => {
     writeGuacMapping(entries);
   } catch (e) { return res.json({ ok: false, error: e.message }); }
   const home = GUAC_DIR.replace(/\\/g, '/');
-  // Idempotent: create the network/containers only if missing, start them if stopped.
-  runPS(`$ErrorActionPreference='Continue'; ` +
-    `docker info --format '{{.ServerVersion}}' *> $null; if($LASTEXITCODE -ne 0){ $dd='C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe'; if(Test-Path $dd){ Start-Process $dd }; ` +
-    `foreach($i in 1..36){ Start-Sleep 5; docker info --format '{{.ServerVersion}}' *> $null; if($LASTEXITCODE -eq 0){break} } }; ` +
-    `docker info --format '{{.ServerVersion}}' *> $null; if($LASTEXITCODE -ne 0){ 'ERROR:Docker is not running'; exit }; ` +
+  // Idempotent: install/repair prerequisites, create the network/containers only if missing, start them if stopped.
+  runPS(`$ErrorActionPreference='Continue'; ${GUAC_PREREQ_PS} ` +
     `if(-not (docker network ls -q -f name=^hvc-guac$)){ docker network create hvc-guac | Out-Null }; ` +
     `if(-not (docker ps -aq -f name=^hvc-guacd$)){ docker run -d --name hvc-guacd --network hvc-guac --restart unless-stopped guacamole/guacd:${GUAC_VERSION} | Out-Null } else { docker start hvc-guacd | Out-Null }; ` +
     `if(-not (docker ps -aq -f name=^hvc-guacamole$)){ docker run -d --name hvc-guacamole --network hvc-guac --restart unless-stopped -p ${GUAC_PORT}:8080 ` +
@@ -1004,6 +1033,80 @@ app.post('/api/webrdp/setup', (req, res) => {
         return res.json({ ok: true, port: GUAC_PORT, path: '/guacamole/', clientId, user: String(vmUser).replace(/^.*\\/, '') });
       }
       res.json({ ok: false, error: out.match(/ERROR:(.*)/)?.[1] || err || out || 'Web RDP setup failed' });
+    });
+});
+
+// ── pgAdmin for an exposed VM PostgreSQL ─────────────────────────────────────
+// Tests default ELO credentials (or the given ones) against the exposed port; on a pg_hba rejection it
+// applies /api/db/fix-pghba once and retries. Installs pgAdmin 4 if missing, registers the server in the
+// desktop config (with a passfile when a login worked, so it opens without asking; otherwise pgAdmin
+// prompts for the password) and launches it.
+const PG_DEFAULT_LOGINS = [['elodb', 'elo'], ['elodb', 'elodb']];
+
+async function tryPgLogins(host, port, logins) {
+  const { Client } = require('pg');
+  let hba = false, lastError = '';
+  for (const [user, password] of logins) {
+    const c = new Client({ host, port, user, password, database: 'postgres', connectionTimeoutMillis: 6000 });
+    try {
+      await c.connect();
+      const dbs = await c.query('SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY 1');
+      return { ok: true, user, password, databases: dbs.rows.map(r => r.datname) };
+    } catch (e) {
+      lastError = e.message;
+      if (/pg_hba/i.test(e.message)) hba = true;
+    } finally { await c.end().catch(() => {}); }
+  }
+  return { ok: false, hba, error: lastError };
+}
+
+app.post('/api/pgadmin/open', async (req, res) => {
+  const { vmName, vmUser, vmPass, dbUser, dbPass } = req.body || {};
+  const port = Number(req.body?.port) || 5432;
+  const host = '127.0.0.1';
+  const logins = dbUser ? [[dbUser, dbPass || '']] : PG_DEFAULT_LOGINS;
+  let login = await tryPgLogins(host, port, logins);
+  let hbaFixed = false;
+  if (!login.ok && login.hba && vmName && vmUser && vmPass) {
+    const fix = await fetch(`http://127.0.0.1:${PORT}/api/db/fix-pghba`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vmName, vmUser, vmPass }) }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }));
+    hbaFixed = !!fix.ok;
+    if (fix.ok) login = await tryPgLogins(host, port, logins);
+  }
+  const serverName = `${vmName || 'PostgreSQL'} (${host}:${port})`;
+  const params = { name: serverName, host, port, user: login.ok ? login.user : (dbUser || PG_DEFAULT_LOGINS[0][0]), password: login.ok ? login.password : '' };
+  const paramFile = path.join(os.tmpdir(), `hvc-pgadmin-${Date.now()}.json`);
+  fs.writeFileSync(paramFile, JSON.stringify(params), 'utf8');
+  const q = s => String(s).replace(/'/g, "''");
+  runPS(`$ErrorActionPreference='Stop'; $p=Get-Content '${q(paramFile)}' -Raw | ConvertFrom-Json; Remove-Item '${q(paramFile)}' -Force; ` +
+    `$dirs=@('C:\\Program Files\\pgAdmin 4', (Join-Path $env:LOCALAPPDATA 'Programs\\pgAdmin 4')) + @(Get-ChildItem 'C:\\Program Files\\PostgreSQL\\*\\pgAdmin 4' -Directory -EA SilentlyContinue | ForEach-Object FullName); ` +
+    `$pg=$dirs | Where-Object { Test-Path (Join-Path $_ 'runtime\\pgAdmin4.exe') } | Select-Object -First 1; ` +
+    `if(-not $pg){ Write-Output 'INSTALLING'; ` +
+    `  $base='https://ftp.postgresql.org/pub/pgadmin/pgadmin4/'; ` +
+    `  $ver=(Invoke-WebRequest $base -UseBasicParsing).Links.href | Where-Object { $_ -match '^v(\\d+\\.\\d+)/$' } | ForEach-Object { [version]($_ -replace '^v|/$','') } | Sort-Object | Select-Object -Last 1; ` +
+    `  $tmp=Join-Path $env:TEMP 'hvc-pgadmin'; New-Item -ItemType Directory -Force $tmp | Out-Null; $exe=Join-Path $tmp "pgadmin4-$ver-x64.exe"; ` +
+    `  Invoke-WebRequest "$($base)v$ver/windows/pgadmin4-$ver-x64.exe" -OutFile $exe -UseBasicParsing; ` +
+    `  if((Get-AuthenticodeSignature $exe).Status -ne 'Valid'){ throw 'pgAdmin installer signature is not valid' }; ` +
+    `  Start-Process $exe -ArgumentList '/VERYSILENT','/NORESTART','/ALLUSERS','/SP-' -Wait; $pg='C:\\Program Files\\pgAdmin 4'; ` +
+    `  if(-not (Test-Path (Join-Path $pg 'runtime\\pgAdmin4.exe'))){ throw 'pgAdmin installation failed' } }; ` +
+    `$env:PATH="$pg\\runtime;$env:PATH"; $py=Join-Path $pg 'python\\python.exe'; $setup=Join-Path $pg 'web\\setup.py'; ` +
+    `$cfg=Join-Path $env:APPDATA 'pgAdmin'; New-Item -ItemType Directory -Force $cfg | Out-Null; ` +
+    `if(-not (Test-Path (Join-Path $cfg 'pgadmin4.db'))){ & $py $setup setup-db *> $null }; ` +
+    // pgpass entries are kept per host:port so several exposed VMs can coexist.
+    `$pass=Join-Path $cfg 'hvc-pgpass.conf'; $key="$($p.host):$($p.port):*:"; ` +
+    `$lines=@(if(Test-Path $pass){ Get-Content $pass | Where-Object { -not $_.StartsWith($key) } }); ` +
+    `if($p.password){ $lines+="$key$($p.user):$($p.password -replace '\\\\','\\\\' -replace ':','\\:')" }; [IO.File]::WriteAllLines($pass, [string[]]$lines); ` +
+    `$dump=Join-Path $env:TEMP 'hvc-pgadmin-dump.json'; & $py $setup dump-servers $dump *> $null; ` +
+    `$exists=(Test-Path $dump) -and ((Get-Content $dump -Raw | ConvertFrom-Json).Servers.PSObject.Properties.Value | Where-Object { $_.Name -eq $p.name }); ` +
+    `if(-not $exists){ $srv=[ordered]@{ Name=$p.name; Group='Hyper-V'; Host=$p.host; Port=[int]$p.port; MaintenanceDB='postgres'; Username=$p.user; SSLMode='prefer' }; ` +
+    `  if($p.password){ $srv.PassFile=$pass.Replace('\\','/') }; $sf=Join-Path $env:TEMP 'hvc-pgadmin-servers.json'; ` +
+    `  [IO.File]::WriteAllText($sf, (@{ Servers=@{ '1'=$srv } } | ConvertTo-Json -Depth 4)); & $py $setup load-servers $sf *> $null; Remove-Item $sf -Force }; ` +
+    `Start-Process (Join-Path $pg 'runtime\\pgAdmin4.exe'); "OPENED:$pg"`,
+    (out, err) => {
+      const opened = out.match(/OPENED:(.*)/)?.[1];
+      if (!opened) return res.json({ ok: false, error: err || out || 'Could not open pgAdmin', login: { ok: login.ok } });
+      res.json({ ok: true, installed: /INSTALLING/.test(out), pgAdminDir: opened.trim(), serverName, hbaFixed,
+        loggedIn: login.ok, user: params.user, databases: login.databases || [], loginError: login.ok ? null : login.error });
     });
 });
 
