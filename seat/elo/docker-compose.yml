@@ -56,9 +56,11 @@ services:
     environment:
       <<: *auth
       AUTH_ADMIN_PASSWORD: ${AUTH_ADMIN_PASSWORD}
+  # Optional services: enabled through COMPOSE_PROFILES in .env (default "as,flows").
   as:
     image: registry.elo.com/eck-services/as:${ELO_TAG}
     container_name: elo-as
+    profiles: [as]
     environment: *auth
     ports: ["9060:9090"]
   search:
@@ -78,6 +80,7 @@ services:
   flows:
     image: registry.elo.com/eck-services/flows:${ELO_TAG}
     container_name: elo-flows
+    profiles: [flows]
     environment:
       <<: *auth
       AUTH_ADMIN_PASSWORD: ${AUTH_ADMIN_PASSWORD}
@@ -88,6 +91,7 @@ services:
   flows-worker:
     image: registry.elo.com/eck-services/flows-worker:${ELO_TAG}
     container_name: elo-flows-worker
+    profiles: [flows]
     environment:
       <<: *auth
       AUTH_KARAF_PASSWORD: ${AUTH_KARAF_PASSWORD}
