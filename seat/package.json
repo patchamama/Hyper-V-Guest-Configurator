@@ -1,0 +1,13 @@
+{
+  "name": "dedicated-seat",
+  "version": "0.1.0",
+  "description": "Dedicated keyboard/mouse seats: assign USB input devices exclusively to an RDP session or kiosk browser (Windows + WSL today).",
+  "main": "app.js",
+  "private": true,
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}
