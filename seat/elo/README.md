@@ -113,6 +113,23 @@ URL pública, servicios opcionales), instalación como trabajo en segundo plano 
 y credenciales, y **administración**: memoria por servicio, parar/arrancar/reiniciar servicios (Tomcats: server, as, flows,
 search, tr2…), parar/arrancar la pila o Docker, logs, copia de imágenes (`docker save`) y exposición de puertos a la red.
 
+Además:
+
+- **Destinos de instalación:** WSL2 + Docker Engine, Docker Desktop (descarga/instalación firmada; usa su integración
+  WSL), **VM de Hyper-V**, **VM de Oracle VirtualBox** o servidor Linux **por SSH** (clave ed25519 generada por el
+  instalador, `sudo` sin contraseña en la VM; los archivos de ELO se copian a `/opt/elo-docker` y el progreso se lee
+  por SSH), y Linux nativo.
+- **pgAdmin** (opción del asistente y de la administración): contenedor `dpage/pgadmin4` en modo escritorio (puerto
+  5050), sin login de pgAdmin y con el servidor "ELO (Docker)" y su contraseña ya configurados (`servers.json` +
+  passfile generados desde `.env`): abre directamente conectado a la base de datos.
+- **Ayuda:** documentos del proyecto, los de `docs/` y enlaces a la documentación de ELO.
+- **Imágenes instaladas:** tamaño, contenedores que las usan, copia `.tar`, restaurar desde `backup/`, borrar.
+- **Licencia:** subir una nueva y aplicarla (vuelve a ejecutar `ix-setup` con ella y reinicia el servidor).
+- **Enlaces:** Web Client, Admin Console, ELO WF, IX (estado / URL para Java Client y API), Tomcat manager, Automation
+  Services, Flows, iSearch, pgAdmin y el propio instalador; datos para el perfil del Java Client.
+- **Archivos en disco:** abrir en el explorador la carpeta de logs, el archivo de ELO (ficheros del repositorio), los
+  datos de sistema del archivo y los del Index Server (volúmenes de Docker; en Windows vía `\\wsl.localhost`).
+
 Diseño de los pasos (referencia):
 
 ### Pasos del asistente
