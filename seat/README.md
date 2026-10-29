@@ -70,6 +70,18 @@ La alternativa propia para Windows, sin WSL y con soporte de **Bluetooth**, es u
 - [ ] Limitación a resolver: Windows sigue entregando esa entrada también al sistema; habría que filtrarla con un hook de
       bajo nivel (`WH_KEYBOARD_LL` / `WH_MOUSE_LL`, que no indica el dispositivo) o con un driver de filtro.
 
+Proyectos libres para capturar y redirigir la entrada por dispositivo (a evaluar):
+
+| Plataforma | Proyecto | Uso |
+|---|---|---|
+| Windows | `oblitum/Interception` | Driver de filtro + librería: identifica cada teclado/ratón, bloquea sus eventos y permite reenviarlos. Licencia gratuita no comercial (comercial aparte). |
+| Windows | `evilC/AutoHotInterception` | AutoHotkey sobre Interception: suscribirse a un dispositivo, bloquearlo y enviar a una ventana (`ControlSend`/`ControlClick`). |
+| Windows | LuaMacros | Distingue teclados por dispositivo (macros); limitado con ratones. |
+| Linux | interception-tools, evsieve, keyd | Captura exclusiva (`EVIOCGRAB`) y reemisión por `uinput`. |
+| macOS | Karabiner-Elements | Reglas por dispositivo (open source). |
+| Multiplataforma | Kanata | Remapeo por dispositivo (en Windows con el driver Interception). |
+| Entre equipos | Input Leap (antes Barrier) | Compartir teclado/ratón entre máquinas. |
+
 ### 2. Varios puestos con varias pantallas
 
 Si se detectan varias pantallas, cada una puede ser un puesto:
@@ -104,8 +116,19 @@ Si se detectan varias pantallas, cada una puede ser un puesto:
 
 ### 4. Contenedores
 
-- [ ] Docker en la Ubuntu del usuario (no en Docker Desktop de otra cuenta: cada usuario tiene su propia VM de WSL).
-- [ ] Contenedor con escritorio para pruebas (`linuxserver/webtop`, Ubuntu + XFCE, accesible por navegador).
+- [x] Docker Engine dentro de la Ubuntu del usuario (no Docker Desktop de otra cuenta: cada usuario de Windows tiene su
+      propia VM de WSL y solo esa ve los USB conectados con usbipd). Incompatible con activar a la vez la integración de
+      Docker Desktop para esa distro.
+- [x] **Puesto de escritorio en Docker** (`docker/`): imagen `hvc-seat-desktop` (Ubuntu 24.04 + XFCE) con Xorg dummy que solo
+      usa los dispositivos pasados con `--device` y VNC de solo lectura en `VNC_PORT`:
+      ```
+      docker build -t hvc-seat-desktop seat/docker
+      docker run -d --name hvc-seat-docker --network host --device /dev/input/event0 --device /dev/input/event1 \
+        -v /run/udev:/run/udev:ro -e MOUSE=event0 -e KBD=event1 -e DISPLAY_NUM=3 -e VNC_PORT=5903 hvc-seat-desktop
+      DISPLAY=:0 xtigervncviewer -ViewOnly -PreferredEncoding=Raw -AutoSelect=0 127.0.0.1:5903
+      ```
+- [ ] Integrar el modo Docker en `seat-lib.js` / la interfaz (elegir imagen y arrancar/parar el contenedor).
+- [ ] Contenedor con escritorio accesible por navegador (`linuxserver/webtop`) como alternativa sin dispositivos dedicados.
 - [ ] Averiguar si existe una imagen de **ELO sobre Ubuntu**; si no, crear una.
 
 ### 5. Separar el proyecto
