@@ -50,24 +50,25 @@ La página puede abrirse con datos ya rellenados: `/?target=host:13389&user=SRV0
   mediante una tarea programada, aunque la app corra elevada con otra cuenta. Cada operación tarda 10-30 s por ello.
 - **Rendimiento:** la imagen pasa por VNC local; en modo navegador con Guacamole hay doble escritorio remoto. Para VMs
   conviene el modo RDP directo.
-- **Pendiente de investigar:** las órdenes lanzadas como el usuario interactivo dejaron de devolver salida
-  (`C:\ProgramData\hvc-run`), después de instalar MouseMux; revisar permisos de esa carpeta.
+- **Fallos transitorios:** en algún momento las órdenes lanzadas como el usuario interactivo no devolvieron salida; los
+  permisos de `C:\ProgramData\hvc-run` son correctos y volvió a funcionar sin cambios. Si se repite, reintentar.
 
 ## Pendiente / hoja de ruta
 
-### 1. Probar MouseMux para varios puestos en Windows
+### 1. Puestos en Windows sin software de terceros (descartado MouseMux)
 
-MouseMux V3 (instalado, 3.0.19) da a cada pareja ratón/teclado su propio cursor y foco ("usuario"), con bloqueo por
-usuario en modo `none | screen | rectangle | window`. A diferencia del puesto WSL, **admite ratones Bluetooth** y no saca
-los dispositivos de Windows.
+Se evaluó **MouseMux V3** (un cursor y foco por pareja ratón/teclado, bloqueo por ventana o pantalla). Se **descartó**:
+es software comercial (aviso de compra y 3 días de prueba; el bloqueo por ventana es función Pro) y no se quiere depender
+de él. Se desinstaló.
 
-- [ ] Abrir MouseMux en la sesión del usuario (sin elevación: una ventana elevada no recibe entrada de un proceso normal).
-- [ ] Comprobar qué permite la **edición gratuita**: 2 punteros, 2 teclados, sesiones de 45 min; la pantalla de bloqueo
-      (`ui_lock`) figura como `pro` en su configuración. Revisar también si la licencia gratuita permite uso en empresa.
-- [ ] Bloquear un usuario de MouseMux a una **ventana** (RDP, navegador kiosk) y a una **pantalla** completa.
-- [ ] Automatizarlo: el SDK web (`ws://localhost:41001`, requiere activar "SDK mode") lista usuarios/dispositivos y controla
-      ventanas, pero no documenta el bloqueo; explorar el protocolo de configuración (`lock.mode`, `mdev_clip_lock_set_ex`)
-      o el servidor MCP de su "Input Mapper" (local, desactivado por defecto).
+La alternativa propia para Windows, sin WSL y con soporte de **Bluetooth**, es un enrutador de entrada con Raw Input
+(ver "Universal" más abajo):
+
+- [ ] Leer la entrada con Raw Input (`RegisterRawInputDevices` + `WM_INPUT`), que identifica el dispositivo de cada evento.
+- [ ] Ventana a pantalla completa por puesto que reciba solo los eventos de sus dispositivos (un cliente RDP/VNC o un
+      navegador embebido dibujando en ella).
+- [ ] Limitación a resolver: Windows sigue entregando esa entrada también al sistema; habría que filtrarla con un hook de
+      bajo nivel (`WH_KEYBOARD_LL` / `WH_MOUSE_LL`, que no indica el dispositivo) o con un driver de filtro.
 
 ### 2. Varios puestos con varias pantallas
 
@@ -80,7 +81,7 @@ Si se detectan varias pantallas, cada una puede ser un puesto:
     (`xtigervncviewer -FullScreen -FullScreenMode=Selected -FullScreenSelectedMonitors=N`).
   - **Docker** — contenedor con Xorg/escritorio (p. ej. `linuxserver/webtop`) recibiendo los dispositivos (`--device`) en
     la misma VM de WSL del usuario (Docker dentro de su Ubuntu).
-  - **Escritorio nativo de Windows** — MouseMux bloqueando el usuario a ese monitor.
+  - **Escritorio nativo de Windows** — enrutador de entrada propio (Raw Input) limitado a ese monitor.
   - **Navegador** — Chrome/Edge/Firefox en `--kiosk` en ese monitor (Windows nativo o WSL).
   - **VM de Hyper-V** — RDP/VMConnect a pantalla completa en ese monitor (RDP con contraseña cifrada para el usuario, sesión
     nueva o existente).
@@ -97,7 +98,7 @@ Si se detectan varias pantallas, cada una puede ser un puesto:
       (`IOHIDManager` + `kIOHIDOptionsTypeSeizeDevice`) y los reenvíe a una sesión que dibuja a pantalla completa en un
       monitor (cliente RDP/VNC/navegador embebido).
 - [ ] **Windows sin WSL:** enrutador de entrada propio con Raw Input (identifica el dispositivo de cada evento) y una
-      ventana a pantalla completa por monitor; o MouseMux.
+      ventana a pantalla completa por monitor.
 - [ ] Núcleo común multiplataforma (Node/Electron o Tauri) con "backends" por sistema: `wsl`, `docker`, `native`,
       `browser`, `hyperv`, `virtualbox`, `logind`, `iokit`.
 
