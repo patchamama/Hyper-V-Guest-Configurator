@@ -6,7 +6,7 @@
 #   elo.sh status    container states and ELO URLs
 #   elo.sh down      stop the stack (volumes are kept)
 set -eu
-cd "$(dirname "$0")"
+cd "${ELO_DIR:-$(dirname "$0")}"   # ELO_DIR: when run from a copy (e.g. CRLF-stripped in /tmp)
 ELO_TAG=${ELO_TAG:-v25-0.30.1}; ELO_SEARCH_TAG=${ELO_SEARCH_TAG:-v25-0.7}; REPO=${REPO:-repository}
 rnd() { tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16; }
 
