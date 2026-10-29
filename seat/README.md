@@ -87,8 +87,14 @@ Proyectos libres para capturar y redirigir la entrada por dispositivo (a evaluar
 
 Si se detectan varias pantallas, cada una puede ser un puesto:
 
-- [ ] Detectar monitores y dispositivos de entrada; asistente: **pantalla → teclado + ratón → modo**.
-- [ ] Cada pantalla muestra su terminal **a pantalla completa en modo kiosk** (sin barra de tareas ni marcos).
+- [x] Detectar monitores (`seat.sh monitors`: los monitores de Windows tal como los expone WSLg) y elegir por puesto
+      **"Screen"**: ventana 1280×800 o **pantalla completa en un monitor**, con la pantalla virtual del puesto a la
+      resolución de ese monitor (modeline con `cvt`; también en el contenedor vía `SEAT_W`/`SEAT_H`).
+- [x] **Varios puestos a la vez** (Seat 2-5, display `:N`; los contenedores usan `:N+20`), cada uno con sus dispositivos;
+      un dispositivo solo puede pertenecer a un puesto. Detener por puesto.
+- [ ] Verificar con el usuario en qué monitor físico aparece cada índice de WSLg (la numeración de WSLg no coincide con
+      la de Windows) y etiquetarlos mejor.
+- [ ] Asistente guiado: **pantalla → teclado + ratón → modo** y perfiles guardados para arrancar varios puestos juntos.
 - [ ] Modos por puesto:
   - **WSL** — puesto Xorg actual; el visor a pantalla completa en el monitor elegido
     (`xtigervncviewer -FullScreen -FullScreenMode=Selected -FullScreenSelectedMonitors=N`).
@@ -132,8 +138,26 @@ Si se detectan varias pantallas, cada una puede ser un puesto:
       en la distro y, si falta algo, instala Docker Engine (repositorio oficial) y construye la imagen antes de arrancar
       el contenedor `hvc-seat-<display>`; al detener se elimina el contenedor y los dispositivos vuelven a Windows.
       También instalable desde "Install / repair requirements" (`setup.sh docker=<contexto>`).
+- [x] **Elección de escritorio** en el modo Docker: cada escritorio es una etiqueta `hvc-seat-desktop:<desktop>`
+      (`--build-arg DESKTOP=`), construida la primera vez que se usa:
+      | Tipo | Escritorios |
+      |---|---|
+      | Completos | XFCE, MATE, KDE Plasma, GNOME Flashback (GNOME Shell requiere 3D y la pantalla virtual no lo tiene) |
+      | Ligeros | LXQt, LXDE |
+      | Gestores de ventanas (muy ligeros) | Openbox + tint2, IceWM, Fluxbox, JWM, i3 (mosaico, por teclado) |
+      También se puede indicar una **imagen propia** (debe existir en la distro y usar el mismo contrato: `MOUSE`, `KBD`,
+      `DISPLAY_NUM`, `VNC_PORT`, `SEAT_W`, `SEAT_H`).
 - [ ] Contenedor con escritorio accesible por navegador (`linuxserver/webtop`) como alternativa sin dispositivos dedicados.
-- [ ] Averiguar si existe una imagen de **ELO sobre Ubuntu**; si no, crear una.
+- [ ] **Contenedor de ELO.** Lo averiguado:
+      - ELO publica **imágenes de contenedor oficiales** ("ELO Cloud on Kubernetes" / "ECK images"; documentación en
+        https://docs.elo.com/ops/eck-images/de-de/administration-docker/ y
+        https://docs.elo.com/ops/eck/de-de/getting-started/). Esa documentación, y presumiblemente el registro de imágenes,
+        **requiere cuenta de partner/cliente de ELO**.
+      - No hay imagen pública en Docker Hub.
+      - El servidor ELO corre en Linux (recomiendan SUSE; el ELO Server Setup incluye OpenJDK y Tomcat) y ELO tiene una guía
+        "ELO Installation auf Ubuntu Desktop Linux" (OpS-Letter).
+      - Siguiente paso: con los datos del registro (nombres de imagen, `docker login`, ejemplo `run`/`compose`) que aporte el
+        usuario desde su acceso de partner, añadir el contenedor de ELO; si no, construir una imagen Ubuntu + ELO propia.
 
 ### 5. Separar el proyecto
 

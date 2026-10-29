@@ -48,8 +48,9 @@ for opt in "$@"; do
   case "$opt" in docker=*)
     systemctl enable --now docker >/dev/null 2>&1
     usermod -aG docker "$(getent passwd 1000 | cut -d: -f1)"
-    docker image inspect hvc-seat-desktop >/dev/null 2>&1 || docker build -q -t hvc-seat-desktop "${opt#docker=}" >/dev/null
-    echo "docker $(docker version --format '{{.Server.Version}}'), image hvc-seat-desktop ready" ;;
+    # Default desktop image (XFCE); other desktops are built on first use.
+    docker image inspect hvc-seat-desktop:xfce >/dev/null 2>&1 || docker build -q --build-arg DESKTOP=xfce -t hvc-seat-desktop:xfce "${opt#docker=}" >/dev/null
+    echo "docker $(docker version --format '{{.Server.Version}}'), image hvc-seat-desktop:xfce ready" ;;
   esac
 done
 echo "SETUP_OK"

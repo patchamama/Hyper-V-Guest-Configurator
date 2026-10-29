@@ -2,3 +2,9 @@ softwares/
 deploy-state.json
 node_modules/
 notes.txt
+# Local credentials (never committed)
+.elo-credentials.json
+seat/elo/.env
+seat/elo/elo-license.lic
+# ELO partner documentation (proprietary)
+docs/
