@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ELO Docker Installer</title>
+<style>
+:root { --bg:#0f141b; --sur:#161d26; --sur2:#1d2632; --border:#2a3646; --text:#e7edf4; --muted:#8c9aab; --accent:#f28c1f;
+  --accent2:#3d8bfd; --green:#38c172; --amber:#e3a008; --red:#ef4444; --mono:'Cascadia Code',Consolas,monospace; color-scheme: dark; }
+@media (prefers-color-scheme: light) { :root { --bg:#f4f6f9; --sur:#fff; --sur2:#f0f3f7; --border:#d6dde6; --text:#1b2430;
+  --muted:#5d6b7c; --accent:#d9730d; --accent2:#1d6fe0; --green:#1f8f4e; --amber:#a86d00; --red:#c62828; color-scheme: light; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,'Segoe UI',Roboto,sans-serif; }
+header { display:flex; align-items:center; gap:14px; padding:14px 22px; border-bottom:1px solid var(--border); background:var(--sur); flex-wrap:wrap; }
+header .logo { width:30px; height:30px; background:linear-gradient(135deg,#f6a23a,#e2620c); clip-path:polygon(0 0,100% 0,100% 100%,0 100%); position:relative; border-radius:3px; }
+header h1 { font-size:17px; margin:0; } header .env { color:var(--muted); font-size:12px; margin-left:auto; }
+.tabs { display:flex; gap:4px; } .tabs button { background:none; border:0; color:var(--muted); padding:6px 12px; border-radius:6px; cursor:pointer; font-size:13px; }
+.tabs button.on { background:var(--sur2); color:var(--text); }
+main { display:grid; grid-template-columns:250px 1fr; gap:0; min-height:calc(100vh - 60px); }
+@media (max-width: 760px) { main { grid-template-columns:1fr; } nav.steps { display:flex; overflow-x:auto; border-right:0 !important; border-bottom:1px solid var(--border); } }
+nav.steps { border-right:1px solid var(--border); padding:16px 10px; background:var(--sur); }
+nav.steps div { display:flex; gap:10px; align-items:center; padding:8px 10px; border-radius:8px; cursor:pointer; color:var(--muted); white-space:nowrap; }
+nav.steps div.on { background:var(--sur2); color:var(--text); }
+nav.steps .n { width:24px; height:24px; border-radius:50%; display:grid; place-items:center; border:1px solid var(--border); font-size:12px; flex:none; }
+nav.steps div.done .n { background:var(--green); border-color:var(--green); color:#fff; } nav.steps div.on .n { border-color:var(--accent); color:var(--accent); }
+section.page { padding:22px 26px; max-width:1050px; }
+h2 { margin:0 0 4px; font-size:20px; } .lead { color:var(--muted); margin:0 0 18px; }
+.explain { background:var(--sur2); border-left:3px solid var(--accent2); padding:10px 14px; border-radius:6px; margin:0 0 16px; color:var(--muted); font-size:13px; }
+.card { background:var(--sur); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:14px; }
+.grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+input[type=text], input[type=password], select, textarea { width:100%; padding:8px 10px; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px; font-size:13px; }
+button.btn { padding:8px 16px; border-radius:6px; border:1px solid var(--border); background:var(--sur2); color:var(--text); cursor:pointer; font-size:13px; }
+button.primary { background:var(--accent); border-color:var(--accent); color:#fff; } button.small { padding:3px 9px; font-size:12px; }
+button:disabled { opacity:.5; cursor:default; }
+.row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; } .right { margin-left:auto; }
+.check { display:grid; grid-template-columns:22px 1fr auto; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); align-items:center; }
+.check:last-child { border-bottom:0; } .check .v { color:var(--muted); font-size:12px; text-align:right; }
+.dot { width:12px; height:12px; border-radius:50%; } .ok { background:var(--green); } .warn { background:var(--amber); } .bad { background:var(--red); } .idle { background:var(--border); }
+.tok { color:var(--green); } .twarn { color:var(--amber); } .tbad { color:var(--red); } .muted { color:var(--muted); font-size:12px; }
+table { width:100%; border-collapse:collapse; font-size:13px; } th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--border); }
+th { color:var(--muted); font-weight:600; font-size:12px; }
+.tablewrap { overflow-x:auto; }
+pre.log { background:#0a0e13; color:#cfd8e3; font:12px/1.45 var(--mono); padding:12px; border-radius:8px; max-height:320px; overflow:auto; white-space:pre-wrap; margin:0; }
+.progress { height:8px; background:var(--sur2); border-radius:4px; overflow:hidden; } .progress > div { height:100%; background:var(--accent); width:0; transition:width .4s; }
+.steplist div { padding:4px 0; } .steplist div::before { content:'○ '; color:var(--muted); } .steplist div.done::before { content:'● '; color:var(--green); } .steplist div.cur::before { content:'◐ '; color:var(--accent); }
+.bar { height:6px; background:var(--sur2); border-radius:3px; overflow:hidden; min-width:80px; } .bar > div { height:100%; background:var(--accent2); }
+.pw { font-family:var(--mono); } [hidden] { display:none !important; }
+.nav { display:flex; justify-content:space-between; margin-top:18px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"></div><h1>ELO on Docker — installer</h1>
+  <div class="tabs"><button id="tab-install" class="on" onclick="tab('install')">Install</button><button id="tab-admin" onclick="tab('admin')">Administration</button></div>
+  <div class="env" id="envinfo">…</div>
+</header>
+
+<main id="install-view">
+  <nav class="steps" id="steps"></nav>
+  <section class="page" id="page"></section>
+</main>
+
+<main id="admin-view" hidden style="grid-template-columns:1fr">
+  <section class="page" style="max-width:1200px">
+    <div class="row"><h2>Administration</h2><button class="btn small right" onclick="loadAdmin()">↻ Refresh</button></div>
+    <p class="lead">Running services, memory per component, start/stop, logs, access and credentials of the installed ELO stack.</p>
+    <div id="admin"></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+const api = async (u, body) => (await fetch('/api' + u, body === undefined ? {} : { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })).json().catch(e => ({ ok:false, error:e.message }));
+const gb = b => b == null ? '' : (b / 1e9).toFixed(2) + ' GB';
+const rnd = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), b => 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'[b % 56]).join('');
+
+// Wizard state (passwords stay in the browser until the install request).
+const W = { step: 0, done: new Set(), checks: null, inv: null, license: null,
+  cfg: { ELO_TAG: 'v25-0.30.1', ELO_SEARCH_TAG: 'v25-0.7', REPO: 'repository', ELO_DISPLAY_NAME: '', REPO_LANGUAGE: 'en', ELO_LICENSE_TYPE: '1',
+    AUTH_ADMIN_USERNAME: 'Administrator', AUTH_ADMIN_PASSWORD: rnd(), AUTH_SERVICE_USERNAME: 'ELO Service', AUTH_SERVICE_PASSWORD: rnd(),
+    DATABASE_USERNAME: 'elodb', DATABASE_PASSWORD: rnd(), IX_URL_PUBLIC: '', as: true, flows: true, fresh: true, eula: true } };
+
+const STEPS = [
+  ['Welcome', welcome], ['Requirements', requirements], ['Registry login', registry], ['Images', images],
+  ['License', license], ['Configuration', config], ['Install', install], ['Tests', tests], ['Access', access],
+];
+
+function tab(t) { $('tab-install').classList.toggle('on', t === 'install'); $('tab-admin').classList.toggle('on', t === 'admin');
+  $('install-view').hidden = t !== 'install'; $('admin-view').hidden = t !== 'admin'; if (t === 'admin') loadAdmin(); }
+function go(i) { W.step = i; render(); }
+function next() { W.done.add(W.step); go(Math.min(W.step + 1, STEPS.length - 1)); }
+function nav(canNext = true, label = 'Next →') {
+  return `<div class="nav"><button class="btn" ${W.step ? '' : 'disabled'} onclick="go(${W.step - 1})">← Back</button>
+    <button class="btn primary" ${canNext ? '' : 'disabled'} onclick="next()">${label}</button></div>`;
+}
+function render() {
+  $('steps').innerHTML = STEPS.map(([t], i) => `<div class="${i === W.step ? 'on' : ''} ${W.done.has(i) ? 'done' : ''}" onclick="go(${i})"><span class="n">${W.done.has(i) ? '✓' : i + 1}</span>${t}</div>`).join('');
+  STEPS[W.step][1]();
+}
+
+// 1 ─ Welcome
+function welcome() {
+  $('page').innerHTML = `<h2>Install ELO on Docker</h2><p class="lead">This assistant installs a working ELO environment from the official ELO container images.</p>
+  <div class="explain">What happens: the requirements are checked, you sign in to ELO's private registry (registry.elo.com), choose the
+  ELO version, upload your license and set repository, users and passwords. Then the images are downloaded, the stack is started
+  (Index Server, Web Client, Admin Console, iSearch, Textreader, optional Automation Services and Flows, PostgreSQL), the
+  repository is created and everything is tested. At the end you get the access URLs and credentials.</div>
+  <div class="card"><b>You need</b><ul>
+    <li>An ELO partner/customer account for <b>registry.elo.com</b> (user + CLI secret, or user + password).</li>
+    <li>An <b>ELO license</b> for the chosen version (text license or the <code>.pk</code> private key).</li>
+    <li>About <b>12–16 GB RAM</b> and <b>25 GB</b> of disk for the full stack.</li></ul>
+    <p class="muted">Linux (Ubuntu/Debian): runs natively on Docker. Windows: runs inside WSL2 (ELO images are Linux-only).</p></div>` + nav(true, 'Start →');
+}
+
+// 2 ─ Requirements
+async function requirements() {
+  $('page').innerHTML = `<h2>System requirements</h2><p class="lead">Programs, memory, disk, kernel setting and network access.</p>
+  <div class="explain">Checks Docker Engine and Compose in the Linux environment, free memory and disk, <code>vm.max_map_count</code>
+  (Elasticsearch needs ≥ 262144, set automatically on start), free ports and access to the ELO registry and license server.</div>
+  <div class="card" id="checks">Checking…</div>` + nav(false);
+  const r = await api('/checks'); W.checks = r;
+  if (!r.ok) { $('checks').innerHTML = `<span class="tbad">${esc(r.error)}</span>`; return; }
+  $('checks').innerHTML = r.items.map(c => `<div class="check"><span class="dot ${c.ok ? (c.warn ? 'warn' : 'ok') : 'bad'}"></span>
+    <div>${esc(c.label)}${!c.ok && c.fix === 'install' ? ' <button class="btn small" onclick="installDocker()">Install Docker</button>' : ''}</div><div class="v">${esc(c.value)}</div></div>`).join('') +
+    `<div id="dockerjob"></div><p class="muted">${r.installed ? 'An ELO installation already exists (' + (r.running ? 'running' : 'stopped') + ') — see the Administration tab.' : ''}</p>`;
+  const blocking = r.items.filter(c => !c.ok && ['linux', 'docker', 'compose', 'disk'].includes(c.id));
+  $('page').querySelector('.nav').outerHTML = nav(!blocking.length);
+}
+async function installDocker() {
+  const j = await api('/install-docker', {}); if (!j.id) return alert(j.error);
+  $('dockerjob').innerHTML = '<pre class="log" id="djlog"></pre>';
+  stream(j.id, line => { $('djlog').textContent += line + '\n'; }, () => requirements());
+}
+
+// 3 ─ Registry
+function registry() {
+  $('page').innerHTML = `<h2>ELO registry</h2><p class="lead">Sign in to <b>registry.elo.com</b> to list and download the images.</p>
+  <div class="explain">Docker needs your registry user and <b>CLI secret</b> (not your password). Get it at
+  <a href="https://registry.elo.com" target="_blank" style="color:var(--accent2)">registry.elo.com</a> → <i>Login via OIDC provider</i> →
+  your user (top right) → <i>User Profile</i> → <i>CLI secret</i> (copy). Or enter your ELO password and the assistant fetches the CLI secret
+  for you through ELO's login. Credentials stay in memory of the local installer and are not saved.</div>
+  <div class="card grid2">
+    <div><label>Registry user (e-mail)</label><input type="text" id="r-user" autocomplete="username"></div>
+    <div><label>CLI secret</label><input type="password" id="r-secret" autocomplete="off"></div>
+    <div><label>…or ELO password (fetch the CLI secret)</label><input type="password" id="r-pass" autocomplete="current-password"></div>
+    <div style="align-self:end"><button class="btn primary" onclick="regLogin()">Sign in</button> <span id="r-msg"></span></div>
+  </div>` + nav(!!W.inv || W.checks?.loggedIn);
+}
+async function regLogin() {
+  const user = $('r-user').value.trim(), secret = $('r-secret').value, pass = $('r-pass').value;
+  $('r-msg').innerHTML = '<span class="muted">signing in…</span>';
+  if (!secret && pass) { const s = await api('/registry/secret', { username: user, password: pass }); if (!s.ok) return $('r-msg').innerHTML = `<span class="tbad">${esc(s.error)}</span>`; }
+  const l = await api('/registry/login', { username: user, secret: secret || undefined });
+  if (!l.ok) return $('r-msg').innerHTML = `<span class="tbad">${esc(l.error)}</span>`;
+  $('r-msg').innerHTML = '<span class="tok">✓ docker login OK — loading the image list…</span>';
+  const inv = await api('/registry/inventory', {});
+  if (!inv.ok) return $('r-msg').innerHTML = `<span class="tbad">${esc(inv.error)}</span>`;
+  W.inv = inv; next();
+}
+
+// 4 ─ Images
+const CORE = ['server', 'ix-setup', 'ix-import', 'search', 'tr2', 'as', 'flows', 'flows-worker'];
+function images() {
+  if (!W.inv) { $('page').innerHTML = '<h2>Images</h2><p class="lead">Sign in to the registry first.</p>' + nav(false); return; }
+  const repo = n => W.inv.repos.find(r => r.name === n);
+  const tagsOf = n => (repo(n)?.tags || []).filter(t => /^v\d+-\d/.test(t.tag));
+  const opt = (n, sel) => tagsOf(n).map(t => `<option ${t.tag === sel ? 'selected' : ''} value="${t.tag}">${t.tag} — ${gb(t.size)} — ${t.pushed.slice(0, 10)}${t.local ? ' · local' : ''}${t.ix ? ' · IX ' + t.ix : ''}</option>`).join('');
+  $('page').innerHTML = `<h2>Choose the ELO version</h2><p class="lead">Live list from the registry (${esc(W.inv.generated.slice(0, 16).replace('T', ' '))} UTC).</p>
+  <div class="explain">All ELO services use the same version tag (e.g. <code>v25-0.30.1</code>); iSearch has its own (<code>v25-0.7</code>). Tags ending in
+  <code>-beta</code> are previews. The license must match the major version (ELO 25 license for v25 images). Optional services can be
+  turned off to save memory.</div>
+  <div class="card grid2">
+    <div><label>ELO version (server, setup, Textreader, AS, Flows)</label><select id="i-tag" onchange="W.cfg.ELO_TAG=this.value">${opt('server', W.cfg.ELO_TAG)}</select></div>
+    <div><label>iSearch (Elasticsearch) version</label><select id="i-stag" onchange="W.cfg.ELO_SEARCH_TAG=this.value">${opt('search', W.cfg.ELO_SEARCH_TAG)}</select></div>
+    <div><label><input type="checkbox" ${W.cfg.as ? 'checked' : ''} onchange="W.cfg.as=this.checked"> Automation Services (as, ~1 GB RAM)</label>
+      <label><input type="checkbox" ${W.cfg.flows ? 'checked' : ''} onchange="W.cfg.flows=this.checked"> ELO Flows (flows + flows-worker, ~1.4 GB RAM)</label></div>
+  </div>
+  <div class="card"><b>All images in the registry</b> <span class="muted">(${W.inv.repos.length})</span>
+    <div class="tablewrap"><table><tr><th>Image</th><th>Latest tag</th><th>Size</th><th>Updated</th><th>Base / OS</th><th>Pulls</th><th></th></tr>
+    ${W.inv.repos.slice().sort((a, b) => (b.pulls || 0) - (a.pulls || 0)).map(r => { const t = r.tags[0] || {}; return `<tr><td><b>${esc(r.name)}</b>${CORE.includes(r.name) ? ' <span class="muted">core</span>' : ''}</td>
+      <td>${esc(t.tag || '—')}</td><td>${gb(t.size)}</td><td>${esc((t.pushed || '').slice(0, 10))}</td><td>${esc((t.base || '') + ' ' + (t.os || ''))}</td><td>${r.pulls ?? ''}</td>
+      <td><a target="_blank" style="color:var(--accent2)" href="https://registry.elo.com/harbor/projects/2/repositories/${encodeURIComponent(r.name)}/artifacts-tab">registry ↗</a></td></tr>`; }).join('')}
+    </table></div></div>` + nav(true);
+}
+
+// 5 ─ License
+function license() {
+  const l = W.license;
+  $('page').innerHTML = `<h2>ELO license</h2><p class="lead">Upload the license for the chosen version.</p>
+  <div class="explain">Either a text license (<code>customer1=…</code>, <code>product=…</code>) or the ELO <b>private key</b> (<code>.pk</code>): with the key, the setup downloads the
+  license from ELO's license server (internet access needed). The license decides which clients work: the <b>Web Client needs Web Client server and user
+  licenses</b> in it. The license can be replaced later (re-run the setup with the new license).</div>
+  <div class="card"><input type="file" id="lic-file" onchange="uploadLicense(this.files[0])">
+    <div id="lic-info" style="margin-top:10px">${l ? licInfo(l) : ''}</div></div>` + nav(!!W.license);
+}
+const licInfo = l => `<span class="tok">✓ ${esc(l.name)}</span> — ${l.type === 'private-key' ? 'private key (license downloaded during setup)' : 'text license'}` +
+  (Object.keys(l.fields || {}).length ? `<table style="margin-top:8px">${Object.entries(l.fields).map(([k, v]) => `<tr><td class="muted">${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>` : '') +
+  (l.type === 'license-text' && !Object.keys(l.fields).some(k => /WEB/i.test(k)) ? '<p class="twarn">No Web Client module found in this license — the Web Client may be blocked.</p>' : '');
+async function uploadLicense(f) {
+  if (!f) return;
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(await f.arrayBuffer())));
+  const r = await api('/license', { name: f.name, content: b64 });
+  $('lic-info').innerHTML = r.ok ? licInfo(r) : `<span class="tbad">${esc(r.error)}</span>`;
+  if (r.ok) { W.license = r; $('page').querySelector('.nav').outerHTML = nav(true); }
+}
+
+// 6 ─ Configuration
+const FIELDS = [
+  ['REPO', 'Repository name (URL path and database)'], ['ELO_DISPLAY_NAME', 'Display name (optional)'],
+  ['REPO_LANGUAGE', 'Repository language (en, de, fr, es…)'], ['ELO_LICENSE_TYPE', 'License type (0 production, 1 test, 2 development)'],
+  ['AUTH_ADMIN_USERNAME', 'ELO administrator user'], ['AUTH_ADMIN_PASSWORD', 'ELO administrator password', 1],
+  ['AUTH_SERVICE_USERNAME', 'ELO service user'], ['AUTH_SERVICE_PASSWORD', 'Service user password', 1],
+  ['DATABASE_USERNAME', 'Database user (PostgreSQL)'], ['DATABASE_PASSWORD', 'Database password', 1],
+  ['IX_URL_PUBLIC', 'Public IX URL for external links (optional)'],
+];
+function config() {
+  $('page').innerHTML = `<h2>Configuration</h2><p class="lead">Repository, users and passwords (random passwords are proposed).</p>
+  <div class="explain">These values are passed to the ELO setup container (<code>ix-setup</code>) and the services. They are stored in the
+  installation's <code>.env</code> (only readable locally) and shown again in the Administration tab.</div>
+  <div class="card grid2">${FIELDS.map(([k, l, pw]) => `<div><label>${l}</label><div class="row" style="flex-wrap:nowrap">
+    <input type="text" class="${pw ? 'pw' : ''}" value="${esc(W.cfg[k])}" oninput="W.cfg['${k}']=this.value">${pw ? `<button class="btn small" title="new random password" onclick="W.cfg['${k}']=rnd();config()">↻</button>` : ''}</div></div>`).join('')}</div>
+  <div class="card">
+    <label><input type="checkbox" ${W.cfg.fresh ? 'checked' : ''} onchange="W.cfg.fresh=this.checked"> Fresh installation — <b>delete</b> an existing ELO installation and its data first</label>
+    <label><input type="checkbox" ${W.cfg.eula ? 'checked' : ''} onchange="W.cfg.eula=this.checked"> Accept the ELO end-user license agreement (EULA) automatically after installing (Admin Console, first login)</label>
+  </div>` + nav(true);
+}
+
+// 7 ─ Install
+function install() {
+  const c = W.cfg;
+  $('page').innerHTML = `<h2>Install</h2><p class="lead">Download the images, start the stack and create the repository.</p>
+  <div class="explain">Runs <code>elo.sh</code>: writes <code>.env</code>, <code>docker compose pull</code>, sets <code>vm.max_map_count</code>, <code>docker compose up -d</code>, then
+  waits until <code>ix-setup</code> has created the repository and the Index Server answers. First download: ~16 GB, 10–20 min; start: ~2 min.</div>
+  <div class="card"><div class="row"><b>ELO ${esc(c.ELO_TAG)}</b> · repository <b>${esc(c.REPO)}</b> · services: core${c.as ? ', as' : ''}${c.flows ? ', flows' : ''}
+    <button class="btn primary right" id="go" onclick="runInstall()">Install now</button></div></div>
+  <div class="card" id="inst" hidden><div class="progress"><div id="pbar"></div></div>
+    <div class="grid2" style="margin-top:12px"><div class="steplist" id="slist"></div><div id="live" class="muted"></div></div>
+    <pre class="log" id="ilog" style="margin-top:12px"></pre></div>` + nav(W.done.has(6));
+}
+async function runInstall() {
+  const c = W.cfg;
+  const body = Object.fromEntries(Object.entries(c).filter(([k]) => /^[A-Z_]+$/.test(k)));
+  body.COMPOSE_PROFILES = [c.as && 'as', c.flows && 'flows'].filter(Boolean).join(',') || 'none';
+  body.ELO_DISPLAY_NAME = c.ELO_DISPLAY_NAME || c.REPO; body.fresh = c.fresh;
+  $('go').disabled = true; $('inst').hidden = false;
+  const j = await api('/install', body); if (!j.id) { $('ilog').textContent = j.error; $('go').disabled = false; return; }
+  const steps = []; let pct = 3;
+  stream(j.id, line => {
+    if (line.startsWith('__STEP__ ')) { steps.push(line.slice(9)); pct = Math.min(95, pct + 14);
+      $('slist').innerHTML = steps.map((s, i) => `<div class="${i < steps.length - 1 ? 'done' : 'cur'}">${esc(s)}</div>`).join(''); $('pbar').style.width = pct + '%'; return; }
+    if (line.startsWith('__CHECK__ ')) { const k = JSON.parse(line.slice(10));
+      $('live').innerHTML = Object.entries(k).map(([a, b]) => `${a}: <b>${esc(b)}</b>`).join(' · '); return; }
+    if (line.startsWith('__EXIT__:')) { const ok = line.endsWith(':0'); $('pbar').style.width = '100%';
+      $('slist').innerHTML = steps.map(s => `<div class="done">${esc(s)}</div>`).join('');
+      $('live').innerHTML += ok ? '<p class="tok">✓ Installation finished</p>' : '<p class="tbad">✗ Installation failed — see the log</p>';
+      if (ok) { W.done.add(6); $('page').querySelector('.nav').outerHTML = nav(true); } $('go').disabled = false; return; }
+    $('ilog').textContent += line + '\n'; $('ilog').scrollTop = 1e9;
+  });
+}
+
+// 8 ─ Tests
+async function tests() {
+  $('page').innerHTML = `<h2>Tests</h2><p class="lead">Automatic checks of the running installation.</p>
+  <div class="explain">Checks every container, the Index Server, iSearch, signs in to the Admin Console as the ELO administrator
+  ${W.cfg.eula ? '(accepting the EULA on first login, as chosen) ' : ''}and opens the Web Client to verify the license allows it.</div>
+  <div class="card" id="t-out">Running…</div>` + nav(false);
+  const lines = [];
+  const show = () => $('t-out').innerHTML = lines.map(([s, l, v]) => `<div class="check"><span class="dot ${s}"></span><div>${l}</div><div class="v">${v}</div></div>`).join('');
+  const st = await api('/status');
+  for (const c of st.containers || []) lines.push([c.state === 'running' ? 'ok' : (/exited \(0\)/i.test(c.status) ? 'ok' : 'bad'), esc(c.name), esc(c.status)]);
+  show();
+  if (W.cfg.eula) { lines.push(['idle', 'Admin Console login + EULA', 'checking…']); show();
+    const e = await api('/eula', {}); lines[lines.length - 1] = [e.ok ? 'ok' : 'bad', 'Admin Console login + EULA', e.ok ? (e.accepted ? 'EULA accepted' : 'already accepted') : esc(e.error)]; show(); }
+  lines.push(['idle', 'Web Client', 'checking…']); show();
+  const w = await api('/webcheck', {});
+  lines[lines.length - 1] = [w.ok ? 'ok' : 'warn', 'Web Client', w.ok ? 'usable' : esc(w.message || w.error)]; show();
+  $('page').querySelector('.nav').outerHTML = nav(true);
+}
+
+// 9 ─ Access
+async function access() {
+  $('page').innerHTML = `<h2>Access</h2><p class="lead">URLs and credentials of the installation.</p><div id="acc">Loading…</div>` +
+    `<div class="nav"><button class="btn" onclick="go(${W.step - 1})">← Back</button><button class="btn primary" onclick="tab('admin')">Open administration →</button></div>`;
+  const st = await api('/status'); $('acc').innerHTML = accessHtml(st);
+}
+function accessHtml(st) {
+  return `<div class="card"><b>Services</b><table>${Object.entries(st.urls || {}).map(([k, u]) => `<tr><td>${esc(k)}</td><td><a target="_blank" style="color:var(--accent2)" href="${esc(u)}">${esc(u)}</a></td></tr>`).join('')}</table>
+    <p class="muted">From other computers: use "Expose to the network" in Administration (Windows) or the host IP (Linux).</p></div>
+  <div class="card"><div class="row"><b>Credentials</b><button class="btn small right" onclick="document.querySelectorAll('.secret').forEach(e=>e.textContent=e.dataset.v)">Show passwords</button></div>
+    <table>${Object.entries(st.credentials || {}).map(([k, [u, p]]) => `<tr><td>${esc(k)}</td><td>${esc(u)}</td><td class="pw secret" data-v="${esc(p)}">••••••••</td></tr>`).join('')}</table></div>`;
+}
+
+// ── Administration ─────────────────────────────────────────────────────────
+async function loadAdmin() {
+  $('admin').innerHTML = 'Loading…';
+  const st = await api('/status');
+  if (!st.ok) return $('admin').innerHTML = `<span class="tbad">${esc(st.error)}</span>`;
+  const m = st.memory || {}, usedPct = m.total ? Math.round((m.total - m.avail) / m.total * 100) : 0;
+  const memOf = s => { const v = (s.mem || '').split('/')[0].trim(); const n = parseFloat(v); return /GiB/.test(v) ? n * 1024 : /KiB/.test(v) ? n / 1024 : n || 0; };
+  const totalMem = st.containers.reduce((a, c) => a + memOf(c), 0);
+  $('admin').innerHTML = `
+  <div class="grid2">
+    <div class="card"><b>Memory (Linux side)</b><div class="progress" style="margin:8px 0"><div style="width:${usedPct}%"></div></div>
+      <span class="muted">${gb(m.total - m.avail)} used of ${gb(m.total)} · ELO containers ${(totalMem / 1024).toFixed(2)} GB</span></div>
+    <div class="card"><b>Engine</b> <span class="muted">Docker: ${esc(st.docker)}</span><div class="row" style="margin-top:8px">
+      <button class="btn small" onclick="engine('start-stack')">Start ELO stack</button><button class="btn small" onclick="engine('stop-stack')">Stop ELO stack</button>
+      <button class="btn small" onclick="engine('stop-docker')">Stop Docker</button><button class="btn small" onclick="engine('start-docker')">Start Docker</button></div></div>
+  </div>
+  <div class="card"><b>Services</b> <span class="muted">(each service runs its own Tomcat/JVM; stopping optional ones frees memory)</span>
+    <div class="tablewrap"><table><tr><th>Service</th><th>State</th><th>Memory</th><th></th><th>CPU</th><th></th></tr>
+    ${st.containers.map(c => `<tr><td><b>${esc(c.service)}</b><div class="muted">${esc(c.image.split('/').pop())}</div></td>
+      <td class="${c.state === 'running' ? 'tok' : 'muted'}">${esc(c.status)}</td><td>${esc(c.mem.split('/')[0] || '—')}</td>
+      <td><div class="bar"><div style="width:${totalMem ? Math.round(memOf(c) / totalMem * 100) : 0}%"></div></div></td><td>${esc(c.cpu)}</td>
+      <td class="row">${c.state === 'running'
+        ? `<button class="btn small" onclick="svc('stop','${c.service}')">Stop</button><button class="btn small" onclick="svc('restart','${c.service}')">Restart</button>`
+        : `<button class="btn small" onclick="svc('start','${c.service}')">Start</button>`}<button class="btn small" onclick="logs('${c.service}')">Logs</button></td></tr>`).join('')}
+    </table></div><pre class="log" id="adm-log" hidden style="margin-top:10px"></pre></div>
+  ${accessHtml(st)}
+  <div class="grid2">
+    <div class="card"><b>Settings of this installation</b><table>${Object.entries(st.settings || {}).map(([k, v]) => `<tr><td class="muted">${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table></div>
+    <div class="card"><b>Network & backup</b><p class="muted">Forward the ELO ports (9090, 9060, 9010, 9200, 9204) from this computer's network to the stack
+      (Windows/WSL; replaces any other forwarding of these ports, e.g. to a Hyper-V VM). Save the installed images as .tar files for offline use.</p>
+      <div class="row"><button class="btn small" onclick="expose()">Expose to the network</button><button class="btn small" onclick="backup(${esc(JSON.stringify(st.containers.map(c => c.image)))})">Back up images</button></div>
+      <pre class="log" id="adm-out" hidden style="margin-top:10px"></pre></div>
+  </div>`;
+}
+const admOut = t => { $('adm-out').hidden = false; $('adm-out').textContent = t; };
+async function svc(action, s) { const r = await api('/service', { action, services: [s] }); if (!r.ok) alert(r.error); loadAdmin(); }
+async function engine(action) { admOut('working…'); const r = await api('/engine', { action }); admOut(r.ok ? r.out : r.error); setTimeout(loadAdmin, 1500); }
+async function logs(s) { const r = await api('/logs/' + s); $('adm-log').hidden = false; $('adm-log').textContent = r.ok ? r.out : r.error; $('adm-log').scrollTop = 1e9; }
+async function expose() { admOut('forwarding ports…'); const r = await api('/expose', {}); admOut(r.ok ? `${r.note || ''}\n${r.ip ? 'WSL IP ' + r.ip + ' · ports ' + r.ports.join(', ') : ''}` : r.error); }
+async function backup(imgs) { const j = await api('/backup', { images: [...new Set(imgs)] }); if (!j.id) return admOut(j.error); admOut(''); stream(j.id, l => { $('adm-out').textContent += l + '\n'; }); }
+
+// Job log stream (SSE).
+function stream(id, onLine, onDone) {
+  const es = new EventSource(`/api/jobs/${id}/stream`);
+  es.onmessage = ev => { const line = JSON.parse(ev.data); onLine(line); if (line.startsWith('__EXIT__:')) { es.close(); onDone?.(line); } };
+  es.onerror = () => { es.close(); };
+}
+
+(async () => { const e = await api('/env'); $('envinfo').textContent = e.ok ? `${e.platform} · ${e.mode}${e.distro ? ' · ' + e.distro : ''}` : ''; render(); })();
+</script>
+</body>
+</html>

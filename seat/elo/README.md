@@ -81,10 +81,39 @@ node tools/inventory-md.js inventory.json elo-docker-list.md --readme README.md
   tamaños, fechas, SO/arquitectura y etiquetas OCI (versiones de IX, Web Client, Admin Console, plugins, JDK, Tomcat).
 - `tools/inventory-md.js`: genera `elo-docker-list.md` y el bloque de imágenes de este README.
 
-## Instalador web (a desarrollar)
+### Prueba real (ELO 25, `v25-0.30.1`, WSL2 + Docker Engine 29)
 
-Asistente moderno paso a paso (frontend web; backend Node, PowerShell o Python) que explica en cada paso qué hace y
-muestra el progreso de forma visual. Primero se valida todo con una instalación manual (ver "Estado actual").
+| Paso | Resultado |
+|---|---|
+| Descarga de 9 imágenes | 995 s, ~16 GB descomprimidas (tr2 5,4 GB, server 2,4 GB, ix-setup 2,1 GB) |
+| Arranque hasta repositorio operativo | ~2 min (`ix-setup` exit 0, IX 200) |
+| Licencia `.pk` | descargada del servidor de licencias por `ix-setup` |
+| Index Server, Admin Console, iSearch, Textreader | OK (Elasticsearch `yellow`, normal con un nodo) |
+| Login Administrador (Admin Console) | OK; EULA en el primer login |
+| Web Client | bloqueado si la licencia no incluye licencias de servidor/usuario del Web Client (`Missing Webclient Server License`) |
+| Memoria en uso | ~10,8 GB (search 4,8 GB, tr2 2,2 GB, server 1,5 GB, as 1 GB, flows ~1,3 GB) |
+
+## Instalador web (`installer/`)
+
+```
+installer\start-installer.bat        # Windows (elevado; la parte Linux corre en WSL2)
+installer/start-installer.sh         # Ubuntu/Debian (root; Docker nativo)
+```
+Abre http://localhost:3200. Backend Node (`server.js`, `exec.js`) + frontend de una página (`public/index.html`).
+
+**¿Sin WSL?** En **Linux (Ubuntu/Debian)** el instalador funciona directamente con Docker Engine y bash (sin VM): es la
+opción más eficiente. En **Windows** las imágenes de ELO (solo Linux) necesitan siempre una VM Linux: WSL2 con Docker
+Engine dentro de la distro (lo que usa el instalador), Docker Desktop (también WSL2/Hyper-V) o una VM Hyper-V con Ubuntu
+ejecutando el instalador en modo Linux.
+
+Implementado y probado contra la instalación real: requisitos, login al registro (CLI secret o contraseña → CLI secret),
+inventario en vivo, subida de licencia, configuración (repositorio, idioma, tipo de licencia, usuarios y contraseñas,
+URL pública, servicios opcionales), instalación como trabajo en segundo plano con progreso en vivo, pruebas (contenedores,
+**login en la Admin Console y aceptación automática del EULA con Playwright**, diagnóstico del Web Client), panel de acceso
+y credenciales, y **administración**: memoria por servicio, parar/arrancar/reiniciar servicios (Tomcats: server, as, flows,
+search, tr2…), parar/arrancar la pila o Docker, logs, copia de imágenes (`docker save`) y exposición de puertos a la red.
+
+Diseño de los pasos (referencia):
 
 ### Pasos del asistente
 

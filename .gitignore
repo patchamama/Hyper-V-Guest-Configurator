@@ -8,5 +8,7 @@ seat/elo/.env
 seat/elo/elo-license.lic
 seat/elo/*.pk
 seat/elo/*.txt
+seat/elo/backup/
+seat/elo/inventory.json
 # ELO partner documentation (proprietary)
 docs/
