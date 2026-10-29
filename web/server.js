@@ -86,8 +86,18 @@ app.get('/api/vms', (req, res) => {
     `Import-Module Hyper-V -ErrorAction SilentlyContinue; ` +
     `$raw = @(Get-VM -ErrorAction SilentlyContinue | ` +
     `Sort-Object @{E={if($_.State -eq "Running"){0}else{1}}},Name | ` +
-    `ForEach-Object { [PSCustomObject]@{Name=$_.Name;State="$($_.State)";MemGB=[math]::Round($_.MemoryAssigned/1GB,1)} }); ` +
-    `if ($raw.Count -gt 0) { ConvertTo-Json -InputObject $raw -Depth 2 } else { Write-Output "[]" }`;
+    `ForEach-Object { $drives=@(Get-VMHardDiskDrive -VMName $_.Name -ErrorAction SilentlyContinue | ForEach-Object { try { ` +
+    `$v=Get-VHD -Path $_.Path -ErrorAction Stop; $root=[IO.Path]::GetPathRoot($v.Path); ` +
+    `$hostDrive=Get-PSDrive -Name $root.Substring(0,1) -ErrorAction Stop; ` +
+    `[PSCustomObject]@{FileSize=[int64]$v.FileSize;Size=[int64]$v.Size;HostDrive=$root.Substring(0,2);HostFreeBytes=[int64]$hostDrive.Free} ` +
+    `} catch {} }); ` +
+    `$hostStorage=@($drives | Group-Object HostDrive | ForEach-Object { $g=$_.Group; ` +
+    `[PSCustomObject]@{Drive=$_.Name;UsedGB=[math]::Round((($g|Measure-Object FileSize -Sum).Sum)/1GB,1); ` +
+    `CapacityGB=[math]::Round((($g|Measure-Object Size -Sum).Sum)/1GB,1);FreeGB=[math]::Round($g[0].HostFreeBytes/1GB,1)} }); ` +
+    `[PSCustomObject]@{Name=$_.Name;State="$($_.State)";MemGB=[math]::Round($_.MemoryAssigned/1GB,1); ` +
+    `DiskReservedGB=[math]::Round((($drives | Measure-Object -Property FileSize -Sum).Sum)/1GB,1); ` +
+    `DiskCapacityGB=[math]::Round((($drives | Measure-Object -Property Size -Sum).Sum)/1GB,1);HostStorage=$hostStorage} }); ` +
+    `if ($raw.Count -gt 0) { ConvertTo-Json -InputObject $raw -Depth 4 } else { Write-Output "[]" }`;
   runPS(cmd, (out, err) => {
     if (!out && err) { console.error('[/api/vms]', err); return res.json({ error: err }); }
     try { res.json(JSON.parse(out || '[]')); }
@@ -599,7 +609,7 @@ app.post('/api/db/query', async (req, res) => {
 
 app.post('/api/db/search', async (req, res) => {
   const { type, host, port, database, user, password, query, tableList, sslMode,
-          rowLimit = 100, searchMeta = true } = req.body;
+          rowLimit = 25, searchMeta = true } = req.body;
   if (!query?.trim()) return res.json({ ok: false, error: 'No search term' });
 
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -619,7 +629,7 @@ app.post('/api/db/search', async (req, res) => {
   }
 
   const tables = tableList || [];
-  const limit  = Math.min(Math.max(1, +rowLimit || 100), 1000);
+  const limit  = Math.min(Math.max(1, +rowLimit || 25), 1000);
   const lq     = query.toLowerCase();
   send({ type: 'start', total: tables.length });
 
@@ -721,6 +731,206 @@ app.get('/api/vm/exposure-status', (req, res) => {
     `ConvertTo-Json -InputObject ([ordered]@{ports=@($rules|Sort-Object -Unique);hostIp="$hostIp"}) -Compress`,
     (out) => { try { res.json(JSON.parse(out || '{}')); } catch { res.json({ ports: [], hostIp: null }); } }
   );
+});
+
+// VM storage details from Hyper-V and the guest's mounted volumes.
+app.post('/api/vm/storage', (req, res) => {
+  const vmName = String(req.body?.vmName || '').trim();
+  const vmUser = String(req.body?.vmUser || '');
+  const vmPass = String(req.body?.vmPass || '');
+  if (!vmName) return res.status(400).json({ error: 'vmName required' });
+  const esc = s => s.replace(/'/g, "''");
+  const cmd = `$ErrorActionPreference='Stop'; Import-Module Hyper-V; ` +
+    `$vm=Get-VM -Name '${esc(vmName)}' -ErrorAction Stop; $disks=@(Get-VMHardDiskDrive -VMName '${esc(vmName)}' | ForEach-Object { ` +
+    `$v=Get-VHD -Path $_.Path; [PSCustomObject]@{Path=$v.Path;Controller="$($_.ControllerType) $($_.ControllerNumber):$($_.ControllerLocation)";SizeBytes=[int64]$v.Size;FileBytes=[int64]$v.FileSize;VhdType="$($v.VhdType)"} }); ` +
+    `$vols=@(); $guestError=''; ` +
+    `if($vm.State -ne 'Running'){$guestError='Guest volume details require the VM to be running.'} ` +
+    `elseif(-not '${esc(vmUser)}' -or -not '${esc(vmPass)}'){$guestError='Enter VM credentials and use Test Connection to read guest volume space.'} ` +
+    `else{try{$cred=New-Object PSCredential('${esc(vmUser)}',(ConvertTo-SecureString '${esc(vmPass)}' -AsPlainText -Force)); ` +
+    `$vols=@(Invoke-Command -VMName '${esc(vmName)}' -Credential $cred -ScriptBlock { Get-Volume | Where-Object DriveLetter | Select-Object DriveLetter,FileSystemLabel,FileSystem,Size,SizeRemaining } -ErrorAction Stop)} ` +
+    `catch{$guestError=$_.Exception.Message}}; ` +
+    `[PSCustomObject]@{State="$($vm.State)";Disks=$disks;Volumes=$vols;GuestError=$guestError} | ConvertTo-Json -Depth 5 -Compress`;
+  runPS(cmd, (out, err) => {
+    try { const d = JSON.parse(out); res.json({ ok: true, ...d }); }
+    catch { res.status(500).json({ ok: false, error: err || out || 'Unable to read VM storage' }); }
+  });
+});
+
+// Expand a selected VHD/VHDX. Guest partition growth is deliberately left to the guest OS.
+app.post('/api/vm/storage/expand', (req, res) => {
+  const { vmName, diskPath, sizeGB } = req.body || {};
+  const target = Number(sizeGB);
+  if (!vmName || !diskPath || !Number.isFinite(target) || target < 1 || target > 1048576)
+    return res.status(400).json({ ok: false, error: 'vmName, diskPath and a valid sizeGB are required' });
+  const esc = s => String(s).replace(/'/g, "''");
+  runPS(`$ErrorActionPreference='Stop'; $p='${esc(diskPath)}'; ` +
+    `$drive=Get-VMHardDiskDrive -VMName '${esc(vmName)}' -ErrorAction Stop | Where-Object { $_.Path -eq $p }; ` +
+    `if(-not $drive){throw 'Selected disk is not attached to this VM'}; ` +
+    `$vm=Get-VM -Name '${esc(vmName)}' -ErrorAction Stop; ` +
+    `if($vm.State -eq 'Running' -and ($drive.ControllerType -eq 'IDE' -or $p -notmatch '\\.vhdx$')){throw 'This disk cannot be resized online in its current configuration. Shut down the VM completely, then retry. Online expansion requires a VHDX connected to a SCSI controller.'}; ` +
+    `$v=Get-VHD -Path $p; ` +
+    `$bytes=[int64](${target}*1GB); if($bytes -le $v.Size){throw 'Target size must be larger than the current virtual disk size'}; ` +
+    `Resize-VHD -Path $p -SizeBytes $bytes -ErrorAction Stop; ` +
+    `Get-VHD -Path $p | Select-Object Path,Size,FileSize | ConvertTo-Json -Compress`, (out, err) => {
+      try { res.json({ ok: true, disk: JSON.parse(out), instructions: [
+        'In the guest Windows VM, sign in and open Disk Management (diskmgmt.msc) as administrator.',
+        'Choose Action > Rescan Disks if the new unallocated space does not appear.',
+        'Right-click the volume next to the unallocated space, choose Extend Volume, and use the maximum available size in the wizard.',
+        'The virtual disk capacity has been expanded; this guest-side step extends the partition and filesystem.',
+      ] }); }
+      catch { res.status(500).json({ ok: false, error: err || out || 'VHD expansion failed' }); }
+    });
+});
+
+// Enable SMB server access to the guest's administrative system-drive share (for example \\IP\C$).
+app.post('/api/vm/storage/smb', (req, res) => {
+  const { vmName, vmUser, vmPass } = req.body || {};
+  if (!vmName || !vmUser || !vmPass) return res.status(400).json({ ok: false, error: 'VM credentials required' });
+  const esc = s => String(s).replace(/'/g, "''");
+  const cmd = `$ErrorActionPreference='Stop'; $cred=New-Object PSCredential('${esc(vmUser)}',(ConvertTo-SecureString '${esc(vmPass)}' -AsPlainText -Force)); ` +
+    `Invoke-Command -VMName '${esc(vmName)}' -Credential $cred -ScriptBlock { ` +
+    `Set-Service LanmanServer -StartupType Automatic; Start-Service LanmanServer; ` +
+    `Remove-NetFirewallRule -DisplayName 'HyperV-Configurator-SMB' -ErrorAction SilentlyContinue; ` +
+    `New-NetFirewallRule -DisplayName 'HyperV-Configurator-SMB' -Direction Inbound -Protocol TCP -LocalPort 445 -Action Allow -Profile Any | Out-Null; ` +
+    // Local (non built-in) administrators get a filtered token over the network unless this is set, which makes C$ return "access denied".
+    `New-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' -Name LocalAccountTokenFilterPolicy -Value 1 -PropertyType DWord -Force | Out-Null; ` +
+    `if(-not (Get-SmbShare -Name 'C$' -ErrorAction SilentlyContinue)){throw 'The C$ administrative share is unavailable'}; "GUEST:$env:COMPUTERNAME" } -ErrorAction Stop; ` +
+    `$ip=@(Get-VMNetworkAdapter -VMName '${esc(vmName)}' | ForEach-Object IPAddresses | Where-Object {$_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$'})[0]; ` +
+    `if($ip){$ip}else{throw 'No IPv4 address found'}`;
+  runPS(cmd, (out, err) => {
+    const ip = out.trim().split(/\r?\n/).pop();
+    if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return res.json({ ok: false, error: err || out || 'Unable to configure SMB' });
+    const guestName = out.match(/GUEST:(\S+)/)?.[1] || vmName;
+    const account = /[\\@]/.test(vmUser) ? vmUser : `${guestName}\\${vmUser}`;
+    const net = require('net'); const sock = net.createConnection({ host: ip, port: 445 });
+    sock.setTimeout(2500);
+    const unc = `\\\\${ip}\\C$`;
+    const finish = online => {
+      sock.destroy();
+      if (!online) return res.json({ ok: true, ip, unc, online: false, mountError: 'SMB port 445 is not reachable from the host.' });
+      const q = s => String(s).replace(/'/g, "''");
+      // This server runs elevated (start.bat), and drive letters mapped from an elevated token are invisible to the
+      // user's normal Explorer. Map the drive from a one-shot scheduled task running with the interactive user's
+      // limited token; the task's exit code carries the drive letter (ASCII 65-90).
+      const taskScript = `$ErrorActionPreference='Stop'; $unc='${q(unc)}'; ` +
+        `$existing=Get-SmbMapping -ErrorAction SilentlyContinue | Where-Object { $_.RemotePath -eq $unc } | Select-Object -First 1; ` +
+        `if($existing){ exit [int][char]$existing.LocalPath.Substring(0,1).ToUpper() }; ` +
+        `$used=@(Get-PSDrive -PSProvider FileSystem | ForEach-Object Name) + @(Get-SmbMapping -ErrorAction SilentlyContinue | ForEach-Object { $_.LocalPath.Substring(0,1) }); ` +
+        `$letter=@('Z','Y','X','W','V','U','T','S','R','Q','P','O') | Where-Object { $_ -notin $used } | Select-Object -First 1; ` +
+        `if(-not $letter){ exit 1 }; ` +
+        `try { New-SmbMapping -LocalPath ($letter+':') -RemotePath $unc -UserName '${q(account)}' -Password '${q(vmPass)}' -Persistent $false | Out-Null; exit [int][char]$letter } catch { exit 2 }`;
+      const encoded = Buffer.from(taskScript, 'utf16le').toString('base64');
+      const mapCmd = `$ErrorActionPreference='Stop'; $unc='${q(unc)}'; ` +
+        // Store the credential so Explorer can also open the UNC path without prompting (fallback path).
+        `cmdkey /add:'${q(ip)}' /user:'${q(account)}' /pass:'${q(vmPass)}' | Out-Null; ` +
+        `$letter=$null; $taskErr=''; $name='HyperV-Configurator-SMB-'+[guid]::NewGuid().ToString('N'); ` +
+        `try { $user=(Get-CimInstance Win32_ComputerSystem).UserName; if(-not $user){throw 'No interactive user is signed in'}; ` +
+        `$action=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -EncodedCommand ${encoded}'; ` +
+        `$principal=New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited; ` +
+        `Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Force | Out-Null; Start-ScheduledTask -TaskName $name; ` +
+        // 267011 = task has not run yet, 267009 = task is still running.
+        `$deadline=(Get-Date).AddSeconds(25); do { Start-Sleep -Milliseconds 400; $code=(Get-ScheduledTaskInfo -TaskName $name).LastTaskResult } while(($code -eq 267011 -or $code -eq 267009) -and (Get-Date) -lt $deadline); ` +
+        `if($code -ge 65 -and $code -le 90){ $letter=[string][char]$code } elseif($code -eq 1){ $taskErr='No free drive letter is available (checked Z: through O:)' } else { $taskErr="Drive mapping failed in the user session (code $code)" } } ` +
+        `catch { $taskErr=$_.Exception.Message } finally { Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue }; ` +
+        `if($letter){ Start-Process -FilePath 'explorer.exe' -ArgumentList ($letter+':\\'); Write-Output "MAPPED:$letter" } ` +
+        `else { Start-Process -FilePath 'explorer.exe' -ArgumentList $unc; Write-Output "UNC_OPENED"; if($taskErr){ Write-Output "ERR:$taskErr" } }`;
+      runPS(mapCmd, (mapOut, mapErr) => {
+        const drive = mapOut.match(/MAPPED:([A-Z])/i)?.[1]?.toUpperCase();
+        const uncOpened = /UNC_OPENED/.test(mapOut);
+        const taskErr = mapOut.match(/ERR:(.*)/)?.[1]?.trim();
+        res.json({ ok: true, ip, unc, account, online: true, drive: drive ? `${drive}:` : null,
+          opened: !!drive || uncOpened, uncOpened,
+          mountError: drive ? null : (taskErr || mapErr || (uncOpened ? null : mapOut) || 'Could not create the SMB drive mapping.') });
+      });
+    };
+    sock.once('connect', () => finish(true)); sock.once('timeout', () => finish(false)); sock.once('error', () => finish(false));
+  });
+});
+
+// ELO web app links use repository folder names from C:\ELO\archive. ELO runs inside the guest, so read the
+// guest's folder (and its computer name, e.g. srv01) via PowerShell Direct; fall back to the host's folder.
+app.post('/api/elo/archive-repos', async (req, res) => {
+  const { vmName, vmUser, vmPass } = req.body || {};
+  const archiveDir = 'C:\\ELO\\archive';
+  const fromHost = async (guestError) => {
+    try {
+      const entries = await fs.promises.readdir(archiveDir, { withFileTypes: true });
+      const repos = entries.filter(e => e.isDirectory()).map(e => e.name).sort((a,b) => a.localeCompare(b));
+      res.json({ repos, hostName: os.hostname().split('.')[0], source: 'host', guestError });
+    } catch (e) {
+      res.json({ repos: [], hostName: os.hostname().split('.')[0], source: 'host', guestError,
+        error: e.code === 'ENOENT' ? 'Archive directory not found' : e.message });
+    }
+  };
+  if (!vmName || !vmUser || !vmPass) return fromHost('VM credentials not provided');
+  const esc = s => String(s).replace(/'/g, "''");
+  runPS(`$ErrorActionPreference='Stop'; $cred=New-Object PSCredential('${esc(vmUser)}',(ConvertTo-SecureString '${esc(vmPass)}' -AsPlainText -Force)); ` +
+    `Invoke-Command -VMName '${esc(vmName)}' -Credential $cred -ScriptBlock { ` +
+    `$d='C:\\ELO\\archive'; $r=@(); if(Test-Path $d){ $r=@(Get-ChildItem -Path $d -Directory | Sort-Object Name | ForEach-Object Name) }; ` +
+    `ConvertTo-Json -InputObject ([ordered]@{repos=$r;hostName=$env:COMPUTERNAME;found=(Test-Path $d)}) -Compress } -ErrorAction Stop`,
+    (out, err) => {
+      try {
+        const d = JSON.parse(out.trim().split(/\r?\n/).pop());
+        const repos = Array.isArray(d.repos) ? d.repos : (d.repos ? [d.repos] : []);
+        if (!repos.length && !d.found) return fromHost(`Archive directory not found in guest ${d.hostName}`);
+        res.json({ repos, hostName: d.hostName, source: 'guest' });
+      } catch { fromHost(err || out || 'Guest query failed'); }
+    });
+});
+
+// Probe forwarded URLs from the host after Expose Now finishes. Online ports are also classified as
+// https / http / tcp so the UI can link every web service, not just well-known ports.
+app.post('/api/vm/probe', (req, res) => {
+  const ports = [...new Set((Array.isArray(req.body?.ports) ? req.body.ports : []).map(Number).filter(p => p > 0 && p < 65536))];
+  const net = require('net'), tls = require('tls');
+  const tcpOpen = port => new Promise(resolve => {
+    const sock = net.createConnection({ host: '127.0.0.1', port });
+    sock.setTimeout(1800);
+    const done = online => { sock.destroy(); resolve(online); };
+    sock.once('connect', () => done(true)); sock.once('timeout', () => done(false)); sock.once('error', () => done(false));
+  });
+  const isTls = port => new Promise(resolve => {
+    const sock = tls.connect({ host: '127.0.0.1', port, rejectUnauthorized: false, servername: 'localhost' });
+    sock.setTimeout(2500);
+    const done = ok => { sock.destroy(); resolve(ok); };
+    sock.once('secureConnect', () => done(true)); sock.once('timeout', () => done(false)); sock.once('error', () => done(false));
+  });
+  const isHttp = port => new Promise(resolve => {
+    const sock = net.createConnection({ host: '127.0.0.1', port });
+    let buf = '';
+    sock.setTimeout(2500);
+    const done = ok => { sock.destroy(); resolve(ok); };
+    sock.once('connect', () => sock.write('HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n'));
+    sock.on('data', d => { buf += d.toString('latin1'); if (buf.length >= 5) done(buf.startsWith('HTTP/')); });
+    sock.once('timeout', () => done(false)); sock.once('error', () => done(false)); sock.once('end', () => done(buf.startsWith('HTTP/')));
+  });
+  Promise.all(ports.map(async port => {
+    if (!await tcpOpen(port)) return { port, online: false, scheme: null };
+    const scheme = await isTls(port) ? 'https' : await isHttp(port) ? 'http' : 'tcp';
+    return { port, online: true, scheme };
+  })).then(results => res.json({ results }));
+});
+
+// Open the exposed VM in the host's Remote Desktop client without a login prompt: the credential is stored
+// for TERMSRV/<target> and the .rdp disables CredSSP so mstsc sends it directly (NLA is turned off by Expose).
+app.post('/api/vm/rdp/open', (req, res) => {
+  const { vmName, vmUser, vmPass, target } = req.body || {};
+  if (!vmName || !vmUser || !vmPass) return res.status(400).json({ ok: false, error: 'VM credentials required' });
+  const q = s => String(s).replace(/'/g, "''");
+  const rdpFile = path.join(os.tmpdir(), `hvc-${String(vmName).replace(/[^\w-]/g, '_')}.rdp`);
+  runPS(`$ErrorActionPreference='Stop'; ` +
+    `$ip=@(Get-VMNetworkAdapter -VMName '${q(vmName)}' | ForEach-Object IPAddresses | Where-Object {$_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$'})[0]; ` +
+    `if(-not $ip){throw 'No IPv4 address found for the VM'}; ` +
+    `$target='${q(target || '')}'; if(-not $target){$target=$ip}; ` +
+    `$user='${q(vmUser)}'; if($user -notmatch '[\\\\@]'){ $user='.\\'+$user }; ` +
+    `cmdkey /generic:"TERMSRV/$target" /user:"$user" /pass:'${q(vmPass)}' | Out-Null; ` +
+    `$rdp=@("full address:s:$target","username:s:$user","prompt for credentials:i:0","enablecredsspsupport:i:0","authentication level:i:0",` +
+    `"redirectclipboard:i:1","screen mode id:i:2","dynamic resolution:i:1") -join [Environment]::NewLine; ` +
+    `[IO.File]::WriteAllText('${q(rdpFile)}', $rdp); Start-Process mstsc.exe -ArgumentList '"${q(rdpFile)}"'; "OPENED:$target"`,
+    (out, err) => {
+      const t = out.match(/OPENED:(\S+)/)?.[1];
+      res.json(t ? { ok: true, target: t } : { ok: false, error: err || out || 'Could not start Remote Desktop' });
+    });
 });
 
 // Returns TCP ports listening on the local host machine (simple list)
@@ -860,15 +1070,29 @@ app.post('/api/vm/expose', (req, res) => {
   if (mode === 'full') {
     lines.push(
       `Write-Output 'STEP:Enabling RDP in VM'`,
-      `Invoke-Command -VMName '${esc(vmName)}' -Credential $cred -ScriptBlock {`,
+      `$guestName = Invoke-Command -VMName '${esc(vmName)}' -Credential $cred -ScriptBlock {`,
+      `  $env:COMPUTERNAME`,
       `  Set-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server' fDenyTSConnections -Value 0 -Type DWord`,
+      // NLA off: lets mstsc log in directly with saved credentials (CredSSP refuses saved creds for non-domain targets).
+      `  Set-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp' UserAuthentication -Value 0 -Type DWord`,
       `  Set-Service TermService -StartupType Automatic -EA SilentlyContinue; Start-Service TermService -EA SilentlyContinue`,
       `  Get-NetFirewallRule -DisplayGroup 'Remote Desktop' -EA SilentlyContinue | Set-NetFirewallRule -Profile Any -Enabled True`,
+      `}`,
+      `Write-Output 'STEP:Allowing all inbound traffic in the VM firewall'`,
+      `Invoke-Command -VMName '${esc(vmName)}' -Credential $cred -ScriptBlock {`,
+      `  Remove-NetFirewallRule -DisplayName 'VM-AllowAll-TCP','VM-AllowAll-UDP','VM-AllowAll-ICMP' -EA SilentlyContinue`,
+      `  New-NetFirewallRule -DisplayName 'VM-AllowAll-TCP' -Direction Inbound -Protocol TCP -Action Allow -Profile Any | Out-Null`,
+      `  New-NetFirewallRule -DisplayName 'VM-AllowAll-UDP' -Direction Inbound -Protocol UDP -Action Allow -Profile Any | Out-Null`,
+      `  New-NetFirewallRule -DisplayName 'VM-AllowAll-ICMP' -Direction Inbound -Protocol ICMPv4 -Action Allow -Profile Any | Out-Null`,
+      `  Set-NetFirewallProfile -Profile Domain,Private,Public -DefaultInboundAction Allow`,
+      // Explicit block rules override allow rules; disable them so nothing inbound stays blocked.
+      `  $blocked = @(Get-NetFirewallRule -Direction Inbound -Action Block -Enabled True -EA SilentlyContinue)`,
+      `  if ($blocked.Count) { $blocked | Disable-NetFirewallRule; "Disabled $($blocked.Count) inbound block rule(s)" }`,
       `}`,
       `Write-Output 'STEP:Scanning VM listening ports'`,
       `$ex = @(135,139,445,2179,5985,47001)`,
       `$vmPorts = @(Invoke-Command -VMName '${esc(vmName)}' -Credential $cred -ScriptBlock {`,
-      `  Get-NetTCPConnection -State Listen | Where-Object { $_.LocalAddress -ne '127.0.0.1' -and $_.LocalPort -notin $using:ex -and $_.LocalPort -lt 49000 } | Select-Object -ExpandProperty LocalPort | Sort-Object -Unique`,
+      `  Get-NetTCPConnection -State Listen | Where-Object { $_.LocalAddress -notin '127.0.0.1','::1' -and $_.LocalPort -notin $using:ex -and $_.LocalPort -lt 49000 } | Select-Object -ExpandProperty LocalPort | Sort-Object -Unique`,
       `})`,
       `if (3389 -notin $vmPorts) { $vmPorts = @(3389) + @($vmPorts) }`,
       `Write-Output "PORTS:$($vmPorts -join ',')"`,
@@ -900,7 +1124,7 @@ app.post('/api/vm/expose', (req, res) => {
     `  New-NetFirewallRule -DisplayName $rn -Direction Inbound -Protocol TCP -LocalPort $port -Action Allow -Profile Any | Out-Null`,
     `}`,
     `$hostIp = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | Sort-Object @{E={$a=$_.InterfaceAlias;if($a -match 'WLAN|Wi-Fi'){1}elseif($a -match 'Ethernet'){2}else{3}}} | Select-Object -First 1).IPAddress`,
-    `$json = [ordered]@{ vmName='${esc(vmName)}'; vmIp=$vmIp; hostIp=$hostIp; rdp=(3389 -in $vmPorts); ports=@($vmPorts|ForEach-Object{[int]$_}); timestamp=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') } | ConvertTo-Json -Compress`,
+    `$json = [ordered]@{ vmName='${esc(vmName)}'; vmIp=$vmIp; hostIp=$hostIp; guestName="$guestName"; rdpUser='${esc(vmUser)}'; rdp=(3389 -in $vmPorts); ports=@($vmPorts|ForEach-Object{[int]$_}); timestamp=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') } | ConvertTo-Json -Compress`,
     `$utf8 = New-Object System.Text.UTF8Encoding $false`,
     `[System.IO.File]::WriteAllText('C:\\ollama-ssl\\vm-exposure.json', $json, $utf8)`,
     `Write-Output "DONE:$hostIp"`
