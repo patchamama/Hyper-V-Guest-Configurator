@@ -1,0 +1,449 @@
+erDiagram
+    Kundenakte {
+        character Kundennr PK
+        character Kundenname
+    }
+    activity {
+        character_varying filename
+    }
+    actopt {
+        character_varying project
+    }
+    alerts {
+        integer destination
+    }
+    arcsync {
+        character_varying hostname
+    }
+    asp_0 {
+        integer objid
+    }
+    asp_1 {
+        character_varying i_name2
+    }
+    asp_2 {
+        character_varying i_description
+    }
+    asp_3 {
+        character_varying i_customer_name
+    }
+    asp_4 {
+        integer objid
+    }
+    asp_5 {
+        character_varying i_article_description
+    }
+    asp_6 {
+        character_varying i_companyname
+    }
+    aspectassoc {
+        character_varying name
+    }
+    aspectlines {
+        character_varying linenametrkey
+    }
+    aspects {
+        integer id PK
+        character_varying name
+    }
+    asphistory_0 {
+        character_varying objhistguid
+    }
+    asphistory_1 {
+        character_varying i_name2
+    }
+    asphistory_2 {
+        character_varying i_description
+    }
+    asphistory_3 {
+        character_varying i_customer_name
+    }
+    asphistory_4 {
+        character_varying objhistguid
+    }
+    asphistory_5 {
+        character_varying i_article_description
+    }
+    asphistory_6 {
+        character_varying i_companyname
+    }
+    configurations {
+        bigint cfgid PK
+    }
+    destman {
+        character_varying dmguid
+    }
+    dochistory {
+        integer objectid PK
+    }
+    docmaskinherit {
+        integer parentmaskid
+    }
+    docmasklinetemplate {
+        integer mlineno
+    }
+    docmasks {
+        integer maskno PK
+        character_varying maskname
+    }
+    documentfeed {
+        character_varying feedguid
+    }
+    elocolor {
+        integer colorno PK
+        character_varying colorname
+    }
+    elodmbackupprofile {
+        integer profileid PK
+        character_varying profilename
+    }
+    elodmcrypt {
+        integer cryptno PK
+        character_varying cryptname
+    }
+    elodmdocpath {
+        integer docid PK
+    }
+    elodmdocs {
+        integer docid PK
+    }
+    elodmopt {
+        character_varying instancename PK
+    }
+    elodmpath {
+        integer pathid PK
+        character_varying pathname
+    }
+    elodmpreview {
+        integer docid
+    }
+    eloftopt {
+        integer optid
+    }
+    eloftrel {
+        bigint wordid
+    }
+    eloftstop {
+        character_varying stopword
+    }
+    eloftswords {
+        bigint wordid
+    }
+    eloftwords {
+        bigint wordid
+    }
+    eloixopt {
+        character_varying ixid PK
+        character_varying optname
+    }
+    feedaction {
+        character_varying actionguid
+    }
+    feedactionhist {
+        character_varying actionguid
+    }
+    haftnotiz {
+        integer parentid
+    }
+    hashtagrelations {
+        character_varying hashtagguid
+    }
+    hashtags {
+        character_varying hstgname
+    }
+    healthcheck {
+        integer ixid
+    }
+    komfloorplan {
+        character_varying planname
+    }
+    kommovement {
+        integer reqid
+    }
+    komrequest {
+        integer reqid
+    }
+    map_formdata {
+        character_varying mapid
+    }
+    map_objekte {
+        character_varying mapid
+    }
+    map_wfactive {
+        character_varying mapid
+    }
+    map_wffinished {
+        character_varying mapid
+    }
+    mapdomain {
+        character_varying mapdname
+    }
+    maph_formdata {
+        character_varying maphistguid
+    }
+    maph_objekte {
+        character_varying maphistguid
+    }
+    maph_wfactive {
+        character_varying maphistguid
+    }
+    maph_wffinished {
+        character_varying maphistguid
+    }
+    maphead_formdata {
+        character_varying mapid
+    }
+    maphead_objekte {
+        character_varying mapid
+    }
+    maphead_wfactive {
+        character_varying mapid
+    }
+    maphead_wffinished {
+        character_varying mapid
+    }
+    maphhead_formdata {
+        character_varying mapusername
+    }
+    maphhead_objekte {
+        character_varying mapusername
+    }
+    maphhead_wfactive {
+        character_varying mapusername
+    }
+    maphhead_wffinished {
+        character_varying mapusername
+    }
+    masklines {
+        integer maskno
+    }
+    notification {
+        character_varying userguid
+    }
+    objekte {
+        integer objid PK
+        character_varying packagename
+    }
+    objhistkeys {
+        character_varying okeyname
+    }
+    objhistory {
+        character_varying username
+    }
+    objkeys {
+        integer parentid PK
+        character_varying okeyname
+    }
+    objlinks {
+        character_varying objguidparent
+    }
+    objreplsetcombis {
+        bytea combiid
+    }
+    objreplsets {
+        integer objid
+    }
+    objspaces {
+        integer objid
+    }
+    package {
+        character_varying pkguid PK
+        character_varying pkname
+    }
+    packagelevel {
+        character_varying guid PK
+        character_varying name
+    }
+    physdel {
+        character_varying pdguid
+    }
+    profileopts {
+        integer userid PK
+    }
+    publicdownloads {
+        character_varying fname
+    }
+    relation {
+        integer parentid PK
+    }
+    replihist {
+        integer rhrowid
+    }
+    replsetnames {
+        character_varying rsname
+    }
+    report {
+        integer acttime PK
+    }
+    serverstat {
+        integer actionid
+    }
+    sol_accounting_costcenter {
+        character_varying company_code PK
+        character_varying name
+    }
+    sol_accounting_costobject {
+        character_varying company_code PK
+        character_varying name
+    }
+    sol_accounting_gl_account {
+        character_varying company_code PK
+        character_varying name
+    }
+    sol_business_area {
+        character_varying company_code PK
+        character_varying name
+    }
+    sol_common_fx {
+        character_varying currency_code PK
+        character_varying currency_description
+    }
+    sol_common_fx_history {
+        character_varying currency_code PK
+    }
+    sol_company {
+        character_varying code PK
+        character_varying name
+    }
+    sol_inbox_register {
+        character_varying pos PK
+        character_varying doctype_name
+    }
+    sol_internal_order {
+        character_varying company_code PK
+        character_varying name
+    }
+    sol_invoice_item {
+        character_varying company_code PK
+        character_varying unit_name
+    }
+    sol_invoice_po_line {
+        character_varying company_code PK
+        character_varying item_description
+    }
+    sol_profit_center {
+        character_varying company_code PK
+        character_varying name
+    }
+    sol_project {
+        character_varying company_code PK
+        character_varying name
+    }
+    sol_special_gl_indicator {
+        character_varying company_code PK
+        character_varying description
+    }
+    sol_tax_code {
+        character_varying company_code PK
+        character_varying description
+    }
+    sol_trade_charge {
+        character_varying code PK
+        character_varying description
+    }
+    sol_units {
+        character_varying code PK
+        character_varying description
+    }
+    sol_vat_rates {
+        character_varying country PK
+    }
+    sol_vendor {
+        character_varying company_code PK
+        character_varying name
+    }
+    sol_vendor_terms_of_payment {
+        character_varying company_code PK
+        character_varying vendor_no
+    }
+    sol_wbs_element {
+        character_varying company_code PK
+        character_varying name
+    }
+    sordtype {
+        integer id PK
+        character_varying name
+    }
+    subscription {
+        character_varying userguid
+    }
+    swl {
+        character_varying groupid PK
+    }
+    swlgrp {
+        character_varying swlgroupid PK
+        character_varying packagename
+    }
+    thesaurus {
+        integer groupid PK
+    }
+    translations {
+        character_varying guid
+    }
+    uniquearcpath {
+        integer parentid
+    }
+    vtdocs {
+        integer vtcode
+    }
+    wiedervorlage {
+        integer wvident
+    }
+    workflowactivedoc {
+        integer wf_flowid PK
+        character_varying wf_flow_name
+    }
+    workflowcompletiondoc {
+        integer wf_flowid PK
+        character_varying wf_flow_name
+    }
+    workflowhead {
+        integer wftype
+    }
+    workflowhistory {
+        character_varying wf_username
+    }
+    workflowtempl {
+        integer wf_flowid PK
+        character_varying wf_flow_name
+    }
+    workflowhead ||--o{ workflowactivedoc : "wf_flowid"
+    objekte ||--o{ workflowactivedoc : "wf_eloobjid"
+    sol_company ||--o{ sol_invoice_item : "company_code"
+    sol_units ||--o{ sol_invoice_item : "unit_name"
+    sol_accounting_costcenter ||--o{ sol_invoice_item : "cost_center_no"
+    sol_accounting_costobject ||--o{ sol_invoice_item : "cost_object_no"
+    sol_accounting_gl_account ||--o{ sol_invoice_item : "gl_account_no"
+    sol_vendor ||--o{ sol_invoice_item : "vendor_no"
+    sol_company ||--o{ sol_wbs_element : "company_code"
+    objekte ||--o{ workflowcompletiondoc : "wf_eloobjid"
+    sol_company ||--o{ sol_profit_center : "company_code"
+    sol_company ||--o{ sol_vendor_terms_of_payment : "company_code"
+    sol_vendor ||--o{ sol_vendor_terms_of_payment : "vendor_no"
+    aspects ||--o{ aspectlines : "aspectid"
+    sol_company ||--o{ sol_project : "company_code"
+    sol_company ||--o{ sol_accounting_costcenter : "company_code"
+    sol_company ||--o{ sol_vendor : "company_code"
+    objekte ||--o{ objkeys : "parentid"
+    sol_common_fx ||--o{ sol_company : "standard_currency_code"
+    sol_company ||--o{ sol_special_gl_indicator : "company_code"
+    sol_company ||--o{ sol_accounting_gl_account : "company_code"
+    sol_company ||--o{ sol_internal_order : "company_code"
+    sol_common_fx ||--o{ sol_common_fx_history : "currency_code"
+    sol_common_fx ||--o{ sol_common_fx_history : "base_currency_code"
+    objekte ||--o{ relation : "parentid"
+    objekte ||--o{ relation : "objectid"
+    sol_company ||--o{ sol_tax_code : "company_code"
+    aspects ||--o{ aspectassoc : "aspectid"
+    sol_company ||--o{ Kundenakte : "company_code"
+    sol_company ||--o{ sol_accounting_costobject : "company_code"
+    objekte ||--o{ objekte : "objparent"
+    objekte ||--o{ objekte : "objrefid"
+    sol_company ||--o{ sol_business_area : "company_code"
+    sol_company ||--o{ sol_invoice_po_line : "company_code"
+    sol_vendor ||--o{ sol_invoice_po_line : "vendor_no"
+    sol_accounting_costcenter ||--o{ sol_invoice_po_line : "cost_center_no"
+    sol_accounting_costobject ||--o{ sol_invoice_po_line : "cost_object_no"
+    sol_accounting_gl_account ||--o{ sol_invoice_po_line : "gl_account_no"
+    sol_units ||--o{ sol_invoice_po_line : "quantity_unit"
+    sol_common_fx ||--o{ sol_invoice_po_line : "currency_code"

@@ -1,0 +1,416 @@
+erDiagram
+  objekte ||--o{ objkeys : "parentid"
+  objekte ||--o{ objekte : "objparent"
+  docmasks ||--o{ objekte : "objmask"
+  sordtype ||--o{ objekte : "objtype"
+  elodmdocs ||--o| objekte : "objdoc"
+  objekte ||--o{ dochistory : "objectid"
+  elodmdocs ||--o| dochistory : "documentid"
+  elodmpath ||--o{ elodmdocs : "pathid"
+  objekte ||--o{ relation : "parentid"
+  objekte ||--o{ relation : "objectid"
+  objekte ||--o{ haftnotiz : "parentid"
+  objekte ||--o{ objhistory : "objguid"
+  objhistory ||--o{ objhistkeys : "objhistguid"
+  objekte ||--o{ objreplsets : "objid"
+  objekte ||--o| documentfeed : "objguid"
+  documentfeed ||--o{ feedaction : "feedguid"
+  feedaction ||--o{ feedaction : "parentguid"
+  feedaction ||--o{ hashtagrelations : "actionguid"
+  hashtags ||--o{ hashtagrelations : "hashtagguid"
+  docmasks ||--o{ masklines : "maskno"
+  docmasks ||--o{ docmaskinherit : "parentmaskid"
+  docmasks ||--o{ docmaskinherit : "childmaskid"
+  docmasks ||--o{ aspectassoc : "maskid"
+  aspects ||--o{ aspectlines : "aspectid"
+  swlgrp ||--o{ aspectlines : "swlgroupid"
+  swlgrp ||--o{ swl : "groupid"
+  objekte ||--o{ asp_3 : "objid"
+  docmasks ||--o{ asp_3 : "maskid"
+  objekte ||--o{ asp_4 : "objid"
+  workflowhead ||--o{ workflowactivedoc : "wf_flowid"
+  workflowhead ||--o{ workflowcompletiondoc : "wf_flowid"
+  workflowhead ||--o{ workflowhistory : "wfguid"
+  objekte ||--o{ workflowactivedoc : "wf_eloobjid"
+  objekte ||--o{ workflowcompletiondoc : "wf_eloobjid"
+  workflowhead ||--o{ workflowhead : "wfparent"
+  objekte ||--o{ map_objekte : "mapid"
+  objekte ||--o{ maphead_objekte : "mapid"
+  workflowhead ||--o{ map_wfactive : "mapid"
+  workflowhead ||--o{ map_wffinished : "mapid"
+  sol_common_fx ||--o{ sol_company : "standard_currency_code"
+  sol_common_fx ||--o{ sol_common_fx_history : "currency_code"
+  sol_common_fx ||--o{ sol_common_fx_history : "base_currency_code"
+  sol_company ||--o{ sol_vendor : "company_code"
+  sol_company ||--o{ sol_invoice_item : "company_code"
+  sol_company ||--o{ sol_invoice_po_line : "company_code"
+  sol_vendor ||--o{ sol_invoice_po_line : "vendor_no"
+  sol_common_fx ||--o{ sol_invoice_po_line : "currency_code"
+  sol_company ||--o{ sol_accounting_costcenter : "company_code"
+  sol_company ||--o{ sol_accounting_costobject : "company_code"
+  sol_company ||--o{ sol_accounting_gl_account : "company_code"
+  sol_company ||--o{ sol_business_area : "company_code"
+  sol_company ||--o{ sol_profit_center : "company_code"
+  sol_company ||--o{ sol_project : "company_code"
+  sol_company ||--o{ sol_internal_order : "company_code"
+  sol_company ||--o{ sol_wbs_element : "company_code"
+  sol_company ||--o{ sol_special_gl_indicator : "company_code"
+  sol_company ||--o{ sol_tax_code : "company_code"
+  sol_company ||--o{ sol_vendor_terms_of_payment : "company_code"
+  sol_vendor ||--o{ sol_vendor_terms_of_payment : "vendor_no"
+
+  objekte {
+    integer objid PK
+    varchar objshort
+    integer objparent FK
+    integer objmask FK
+    integer objtype FK
+    integer objdoc FK
+    varchar objguid
+    integer deletedate
+  }
+  objkeys {
+    integer parentid PK_FK
+    integer okeyno PK
+    varchar okeyname
+    varchar okeydata
+  }
+  docmasks {
+    integer maskno PK
+    varchar maskname
+  }
+  masklines {
+    integer maskno FK
+    integer mlineno
+    varchar linebez
+  }
+  elodmdocs {
+    integer docid PK
+    bigint docsize
+    varchar ext
+    integer pathid FK
+  }
+  elodmpath {
+    integer pathid PK
+    varchar pathname
+  }
+  dochistory {
+    integer objectid PK_FK
+    integer documentid PK_FK
+    varchar histversion
+  }
+  workflowhead {
+    integer wfflowid PK
+    varchar wfguid
+    integer wftype
+    integer wfparent FK
+  }
+  workflowactivedoc {
+    integer wf_flowid PK_FK
+    integer wf_nodeid PK
+    varchar wf_flow_name
+    integer wf_eloobjid FK
+  }
+  workflowcompletiondoc {
+    integer wf_flowid PK_FK
+    integer wf_nodeid PK
+    integer wf_eloobjid FK
+  }
+  workflowhistory {
+    varchar wfguid FK
+    integer wf_nodeid
+    varchar wf_username
+  }
+  documentfeed {
+    varchar feedguid PK
+    varchar objguid FK
+  }
+  feedaction {
+    varchar actionguid PK
+    varchar feedguid FK
+    varchar parentguid FK
+    varchar actiontext
+  }
+  hashtags {
+    varchar hstgguid PK
+    varchar hstgname
+  }
+  hashtagrelations {
+    varchar hashtagguid FK
+    varchar actionguid FK
+  }
+  sordtype {
+    integer id PK
+    varchar name
+  }
+  sol_company {
+    varchar code PK
+    varchar name
+    varchar standard_currency_code FK
+  }
+  sol_vendor {
+    varchar company_code PK_FK
+    varchar no PK
+    varchar name
+  }
+  sol_invoice_po_line {
+    varchar company_code PK_FK
+    varchar vendor_no PK_FK
+    varchar purchase_order_no PK
+    varchar line_no PK
+  }
+  sol_common_fx {
+    varchar currency_code PK
+    varchar currency_description
+  }
+  sol_common_fx_history {
+    varchar currency_code PK_FK
+    varchar time PK
+    varchar base_currency_code FK
+  }
+  Kundenakte {
+    character Kundennr
+  }
+  activity {
+    character_varying actguid
+  }
+  activityobjekte {
+    character_varying actguid
+  }
+  actopt {
+    character_varying project
+  }
+  alerts {
+    integer destination
+  }
+  arcpaths2 {
+    integer id1
+  }
+  arcsync {
+    character_varying arcguid
+  }
+  asp_0 {
+    integer objid
+  }
+  asp_1 {
+    integer objid
+  }
+  asp_2 {
+    integer objid
+  }
+  asp_5 {
+    integer objid
+  }
+  asp_6 {
+    integer objid
+  }
+  asphistory_0 {
+    character_varying objhistguid
+  }
+  asphistory_1 {
+    character_varying objhistguid
+  }
+  asphistory_2 {
+    character_varying objhistguid
+  }
+  asphistory_3 {
+    character_varying objhistguid
+  }
+  asphistory_4 {
+    character_varying objhistguid
+  }
+  asphistory_5 {
+    character_varying objhistguid
+  }
+  asphistory_6 {
+    character_varying objhistguid
+  }
+  configurations {
+    bigint cfgid
+  }
+  destman {
+    character_varying dmguid
+  }
+  docmasklinetemplate {
+    integer mlineno
+  }
+  elocolor {
+    integer colorno
+  }
+  elodmbackupprofile {
+    integer profileid
+  }
+  elodmcrypt {
+    integer cryptno
+  }
+  elodmdocpath {
+    integer docid
+  }
+  elodmopt {
+    character_varying instancename
+  }
+  elodmpreview {
+    integer docid
+  }
+  eloftopt {
+    integer optid
+  }
+  eloftrel {
+    bigint wordid
+  }
+  eloftstop {
+    character_varying stopword
+  }
+  eloftswords {
+    bigint wordid
+  }
+  eloftwords {
+    bigint wordid
+  }
+  eloixopt {
+    character_varying ixid
+  }
+  feedactionhist {
+    character_varying actionguid
+  }
+  fulltextctrl8 {
+    integer ftobjid
+  }
+  fulltextctrl9 {
+    integer ftobjid
+  }
+  healthcheck {
+    integer ixid
+  }
+  komfloorplan {
+    character_varying planname
+  }
+  kommovement {
+    integer reqid
+  }
+  komrequest {
+    integer reqid
+  }
+  map_formdata {
+    character_varying mapid
+  }
+  mapdomain {
+    character_varying mapdname
+  }
+  maph_formdata {
+    character_varying maphistguid
+  }
+  maph_objekte {
+    character_varying maphistguid
+  }
+  maph_wfactive {
+    character_varying maphistguid
+  }
+  maph_wffinished {
+    character_varying maphistguid
+  }
+  maphead_formdata {
+    character_varying mapid
+  }
+  maphead_wfactive {
+    character_varying mapid
+  }
+  maphead_wffinished {
+    character_varying mapid
+  }
+  maphhead_formdata {
+    character_varying maphistguid
+  }
+  maphhead_objekte {
+    character_varying maphistguid
+  }
+  maphhead_wfactive {
+    character_varying maphistguid
+  }
+  maphhead_wffinished {
+    character_varying maphistguid
+  }
+  notification {
+    character_varying userguid
+  }
+  objlinks {
+    character_varying objguidparent
+  }
+  objreplsetcombis {
+    bytea combiid
+  }
+  objspaces {
+    integer objid
+  }
+  package {
+    character_varying pkguid
+  }
+  packagelevel {
+    character_varying guid
+  }
+  physdel {
+    character_varying pdguid
+  }
+  profileopts {
+    integer userid
+  }
+  publicdownloads {
+    character_varying guid
+  }
+  refpaths2 {
+    integer id1
+  }
+  replihist {
+    integer rhrowid
+  }
+  replsetnames {
+    integer rsid
+  }
+  report {
+    integer actionno
+  }
+  serverstat {
+    integer actionid
+  }
+  shobjkeys {
+    integer parentid
+  }
+  shobjkeys3 {
+    integer parentid
+  }
+  sol_inbox_register {
+    character_varying pos
+  }
+  sol_trade_charge {
+    character_varying code
+  }
+  sol_units {
+    character_varying code
+  }
+  sol_vat_rates {
+    character_varying country
+  }
+  spacefeedaction2 {
+    character_varying actionguid
+  }
+  subscription {
+    character_varying userguid
+  }
+  thesaurus {
+    integer groupid
+  }
+  translations {
+    character_varying guid
+  }
+  uniquearcpath {
+    integer parentid
+  }
+  vtdocs {
+    integer objid
+  }
+  wiedervorlage {
+    integer wvident
+  }
+  workflowtempl {
+    integer wf_flowid
+  }

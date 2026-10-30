@@ -1,0 +1,7971 @@
+{
+  "declaredFKs": 0,
+  "tables": {
+    "Kundenakte": {
+      "columns": [
+        {
+          "name": "Kundennr",
+          "type": "character(10)",
+          "nullable": false
+        },
+        {
+          "name": "Kundenname",
+          "type": "character(50)",
+          "nullable": true
+        },
+        {
+          "name": "Adresse",
+          "type": "character(50)",
+          "nullable": true
+        },
+        {
+          "name": "Plz",
+          "type": "character(10)",
+          "nullable": true
+        },
+        {
+          "name": "Ort",
+          "type": "character(50)",
+          "nullable": true
+        },
+        {
+          "name": "Tel",
+          "type": "character(20)",
+          "nullable": true
+        },
+        {
+          "name": "Mail",
+          "type": "character(30)",
+          "nullable": true
+        },
+        {
+          "name": "company_code",
+          "type": "character(10)",
+          "nullable": true
+        },
+        {
+          "name": "company_name",
+          "type": "character(50)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "Kundennr"
+      ],
+      "approxRows": 0
+    },
+    "activity": {
+      "columns": [
+        {
+          "name": "actguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "docguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "acttstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "project",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "transmitid",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "revvers",
+          "type": "character varying(10)",
+          "nullable": true
+        },
+        {
+          "name": "owner",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "creator",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "prio",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "shortdesc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "destination",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "sentat",
+          "type": "character varying(16)",
+          "nullable": true
+        },
+        {
+          "name": "sentmode",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "duedate",
+          "type": "character varying(16)",
+          "nullable": true
+        },
+        {
+          "name": "backat",
+          "type": "character varying(16)",
+          "nullable": true
+        },
+        {
+          "name": "backmode",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "actcomment",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "filename",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud0",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud1",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud2",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud3",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud4",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud5",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud6",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud7",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud8",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud9",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "acttstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "activityobjekte": {
+      "columns": [
+        {
+          "name": "actguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "docguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "acttstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "project",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "revvers",
+          "type": "character varying(10)",
+          "nullable": true
+        },
+        {
+          "name": "owner",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "creator",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "prio",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "shortdesc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "destination",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "sentat",
+          "type": "character varying(16)",
+          "nullable": true
+        },
+        {
+          "name": "sentmode",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "duedate",
+          "type": "character varying(16)",
+          "nullable": true
+        },
+        {
+          "name": "backat",
+          "type": "character varying(16)",
+          "nullable": true
+        },
+        {
+          "name": "backmode",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "actcomment",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "filename",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud0",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud1",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud2",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud3",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud4",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud5",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud6",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud7",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud8",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ud9",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "transmitid",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objtype",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objstatus",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "acttstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "actopt": {
+      "columns": [
+        {
+          "name": "project",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "major",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "minor",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "optvalue",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 15
+    },
+    "alerts": {
+      "columns": [
+        {
+          "name": "destination",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "source",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "alerttype",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "extra1",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "extra2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "alertid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "alertmemo",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "alerttime",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "arcpaths2": {
+      "columns": [
+        {
+          "name": "id1",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid1",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name1",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl1",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status1",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid2",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name2",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl2",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id3",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid3",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name3",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl3",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status3",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id4",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid4",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name4",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl4",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status4",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id5",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid5",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name5",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl5",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status5",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id6",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid6",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name6",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl6",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status6",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id7",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid7",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name7",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl7",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status7",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id8",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid8",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name8",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl8",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status8",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id9",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid9",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name9",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl9",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status9",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id10",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid10",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name10",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl10",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status10",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "arcsync": {
+      "columns": [
+        {
+          "name": "arcguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "tsupdate",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "tslastrun",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "tslastend",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "hostname",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "arcname",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "syncuser",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "amurl",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "amlogin",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ampwd",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "replset",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "version",
+          "type": "character varying(16)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "asp_0": {
+      "columns": [
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "assoc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "ordinal",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "regionobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "i_template_guid",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 1
+    },
+    "asp_1": {
+      "columns": [
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "assoc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "ordinal",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "regionobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "i_adress",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_name2",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "asp_2": {
+      "columns": [
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "assoc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "ordinal",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "regionobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "i_date",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_description",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_number",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "asp_3": {
+      "columns": [
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "assoc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "ordinal",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "regionobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "i_customer_name",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_customer_number",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 50
+    },
+    "asp_4": {
+      "columns": [
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "assoc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "ordinal",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "regionobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "i_invoice_number",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "i_status",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_total_amount",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "i_invoice_date",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 312
+    },
+    "asp_5": {
+      "columns": [
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "assoc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "ordinal",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "regionobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "i_article_amount",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "i_article_no",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_article_description",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_article_description1",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_article_description2",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_article_no2",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_article_no1",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_article_amount1",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_article_amount2",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "asp_6": {
+      "columns": [
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "assoc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "ordinal",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "regionobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "i_companyno",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_companyname",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "aspectassoc": {
+      "columns": [
+        {
+          "name": "maskid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "translationkey",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "aspectid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "cardinality",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "acl",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "assocflags",
+          "type": "integer",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "aspectlines": {
+      "columns": [
+        {
+          "name": "aspectid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "linetype",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "linekey",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "lineflags",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "lineext",
+          "type": "character varying(200)",
+          "nullable": true
+        },
+        {
+          "name": "linedefault",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "linenametrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "linecomment",
+          "type": "character varying(400)",
+          "nullable": true
+        },
+        {
+          "name": "allowedrefmaskids",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "dynkeywordreference",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "subtype",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "linecommenttrkey",
+          "type": "character varying(400)",
+          "nullable": true
+        },
+        {
+          "name": "swlgroupid",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "maxtextlength",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "aspects": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "lockid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "translationkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "guid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "packagename",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "id"
+      ],
+      "approxRows": 0
+    },
+    "asphistory_0": {
+      "columns": [
+        {
+          "name": "objhistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "assoc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "ordinal",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "regionobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "i_template_guid",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "asphistory_1": {
+      "columns": [
+        {
+          "name": "objhistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "assoc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "ordinal",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "regionobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "i_adress",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_name2",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "asphistory_2": {
+      "columns": [
+        {
+          "name": "objhistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "assoc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "ordinal",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "regionobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "i_date",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_description",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_number",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "asphistory_3": {
+      "columns": [
+        {
+          "name": "objhistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "assoc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "ordinal",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "regionobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "i_customer_name",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_customer_number",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 50
+    },
+    "asphistory_4": {
+      "columns": [
+        {
+          "name": "objhistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "assoc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "ordinal",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "regionobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "i_invoice_number",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "i_status",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_total_amount",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "i_invoice_date",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 100
+    },
+    "asphistory_5": {
+      "columns": [
+        {
+          "name": "objhistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "assoc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "ordinal",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "regionobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "i_article_amount",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "i_article_no",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_article_description",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_article_description1",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_article_description2",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_article_no2",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_article_no1",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_article_amount1",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_article_amount2",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "asphistory_6": {
+      "columns": [
+        {
+          "name": "objhistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "assoc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "ordinal",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "regionobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "i_companyno",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "i_companyname",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "configurations": {
+      "columns": [
+        {
+          "name": "cfgid",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "cfgpackage",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "cfgcomponent",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "cfgkey",
+          "type": "character varying(1000)",
+          "nullable": false
+        },
+        {
+          "name": "cfglevel",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "cfggroup",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "cfginstance",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "cfgvalue",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "cfgvalueblob",
+          "type": "bytea",
+          "nullable": true
+        },
+        {
+          "name": "cfgacl",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "cfgstatus",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "cfgid"
+      ],
+      "approxRows": 204
+    },
+    "destman": {
+      "columns": [
+        {
+          "name": "dmguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "userid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskno",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "usagecount",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "utilisation",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "lastusage",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "path",
+          "type": "character varying(250)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "dochistory": {
+      "columns": [
+        {
+          "name": "objectid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "documentid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "userid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "createdate",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "histid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "histcomment",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "histversion",
+          "type": "character varying(16)",
+          "nullable": true
+        },
+        {
+          "name": "docmd5",
+          "type": "character varying(36)",
+          "nullable": true
+        },
+        {
+          "name": "docguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "doctstamp",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "docflags",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "docstatus",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "docsignature",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "deletedate",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "nbofvalidsignatures",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "doctype",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "doctstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "language",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "documentid",
+        "objectid"
+      ],
+      "approxRows": 14769
+    },
+    "docmaskinherit": {
+      "columns": [
+        {
+          "name": "parentmaskid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "childmaskid",
+          "type": "integer",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "docmasklinetemplate": {
+      "columns": [
+        {
+          "name": "mlineno",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "linetype",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "linebez",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "linekey",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "linelock",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "linemin",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "linemax",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "linelkey",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "lineflags",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "linecomment",
+          "type": "character varying(400)",
+          "nullable": true
+        },
+        {
+          "name": "lineext",
+          "type": "character varying(200)",
+          "nullable": true
+        },
+        {
+          "name": "lineacl",
+          "type": "character varying(200)",
+          "nullable": true
+        },
+        {
+          "name": "linedefault",
+          "type": "character varying(200)",
+          "nullable": true
+        },
+        {
+          "name": "linescript",
+          "type": "character varying(100)",
+          "nullable": true
+        },
+        {
+          "name": "linebeztrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "linecommenttrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "linetstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "linetstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "validateexpression",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "allowedrefmaskids",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "lineguid",
+          "type": "character varying(40)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "docmasks": {
+      "columns": [
+        {
+          "name": "maskno",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "maskname",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "maskindex",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "maskbarcode",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "maskkey",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskdpath",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskdkind",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskdkey",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "masklock",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskflags",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskflowid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskflowid2",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "maskdacl",
+          "type": "character varying(242)",
+          "nullable": true
+        },
+        {
+          "name": "lifetime",
+          "type": "character varying(16)",
+          "nullable": true
+        },
+        {
+          "name": "masktext",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "masktstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "maskposinfo",
+          "type": "character varying(2048)",
+          "nullable": true
+        },
+        {
+          "name": "maskposinfo2",
+          "type": "character varying(2048)",
+          "nullable": true
+        },
+        {
+          "name": "maskposinfo3",
+          "type": "character varying(2048)",
+          "nullable": true
+        },
+        {
+          "name": "maskguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "maskstatus",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "maskacl",
+          "type": "character varying(200)",
+          "nullable": true
+        },
+        {
+          "name": "masktstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "masknametrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "masktexttrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "linebeztrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "linecommenttrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "dataorg",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sordtype",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maskidsforchildentries",
+          "type": "character varying(1000)",
+          "nullable": true
+        },
+        {
+          "name": "encryptionset",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "packagename",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "deletiondeadline",
+          "type": "character varying(16)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "maskno"
+      ],
+      "approxRows": 0
+    },
+    "documentfeed": {
+      "columns": [
+        {
+          "name": "feedguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "createdateiso",
+          "type": "character varying(14)",
+          "nullable": false
+        },
+        {
+          "name": "feedtstamp",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "objguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "feedtstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 65
+    },
+    "elocolor": {
+      "columns": [
+        {
+          "name": "colorno",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "colorname",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "colorid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "colortstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "colortstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "colorguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "colorstatus",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "colorflags",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "packagename",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "trankey",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "colorno"
+      ],
+      "approxRows": 0
+    },
+    "elodmbackupprofile": {
+      "columns": [
+        {
+          "name": "profileid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "profilename",
+          "type": "character varying(128)",
+          "nullable": false
+        },
+        {
+          "name": "pathid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "backupslot",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "buildesw",
+          "type": "character varying(5)",
+          "nullable": false
+        },
+        {
+          "name": "docselstmt",
+          "type": "character varying(999)",
+          "nullable": true
+        },
+        {
+          "name": "rowlimit",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "retention",
+          "type": "integer",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "profileid"
+      ],
+      "approxRows": 0
+    },
+    "elodmcrypt": {
+      "columns": [
+        {
+          "name": "cryptno",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "cryptname",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "cryptpwd",
+          "type": "character varying(256)",
+          "nullable": true
+        },
+        {
+          "name": "cryptversion",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "cryptuser",
+          "type": "character varying(512)",
+          "nullable": true
+        },
+        {
+          "name": "cryptsystem",
+          "type": "character varying(512)",
+          "nullable": true
+        },
+        {
+          "name": "ivuser",
+          "type": "character varying(256)",
+          "nullable": true
+        },
+        {
+          "name": "ivsystem",
+          "type": "character varying(256)",
+          "nullable": true
+        },
+        {
+          "name": "systemuserid",
+          "type": "integer",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "cryptno"
+      ],
+      "approxRows": 0
+    },
+    "elodmdocpath": {
+      "columns": [
+        {
+          "name": "docid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "pathindex",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "pathid",
+          "type": "integer",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "docid",
+        "pathindex"
+      ],
+      "approxRows": 0
+    },
+    "elodmdocs": {
+      "columns": [
+        {
+          "name": "docid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "docguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "docsize",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "docsizeorig",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "previewsize",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "md5",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "pathid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "pathid2",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "pathid3",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "pathid4",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "pathid5",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "createdate",
+          "type": "character varying(16)",
+          "nullable": true
+        },
+        {
+          "name": "lastaccess",
+          "type": "character varying(16)",
+          "nullable": true
+        },
+        {
+          "name": "lastupdate",
+          "type": "character varying(16)",
+          "nullable": true
+        },
+        {
+          "name": "owner",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "ext",
+          "type": "character varying(256)",
+          "nullable": true
+        },
+        {
+          "name": "extorig",
+          "type": "character varying(256)",
+          "nullable": true
+        },
+        {
+          "name": "previewext",
+          "type": "character varying(256)",
+          "nullable": true
+        },
+        {
+          "name": "cryptno",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "fclip",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "activatorid",
+          "type": "character varying(32)",
+          "nullable": true
+        },
+        {
+          "name": "relfilepath",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ftsize",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "fttstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "extrapathid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "ftext",
+          "type": "character varying(256)",
+          "nullable": true
+        },
+        {
+          "name": "previewextorig",
+          "type": "character varying(256)",
+          "nullable": true
+        },
+        {
+          "name": "deldate",
+          "type": "character varying(16)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "docid"
+      ],
+      "approxRows": 14770
+    },
+    "elodmopt": {
+      "columns": [
+        {
+          "name": "instancename",
+          "type": "character varying(100)",
+          "nullable": false
+        },
+        {
+          "name": "optno",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "optval",
+          "type": "character varying(250)",
+          "nullable": true
+        },
+        {
+          "name": "remark",
+          "type": "character varying(80)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "optno",
+        "instancename"
+      ],
+      "approxRows": 0
+    },
+    "elodmpath": {
+      "columns": [
+        {
+          "name": "pathid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "pathname",
+          "type": "character varying(16)",
+          "nullable": true
+        },
+        {
+          "name": "scatterinfo",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "createdate",
+          "type": "character varying(16)",
+          "nullable": true
+        },
+        {
+          "name": "lastupdate",
+          "type": "character varying(16)",
+          "nullable": true
+        },
+        {
+          "name": "pathflags",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "fullpath",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "previewpath",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "ftpath",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "cloudtype",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "endpoint",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "accesskey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "secretkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "bucket",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "region",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "encryptionkey",
+          "type": "character varying(512)",
+          "nullable": true
+        },
+        {
+          "name": "retentionmode",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "pathid"
+      ],
+      "approxRows": 0
+    },
+    "elodmpreview": {
+      "columns": [
+        {
+          "name": "docid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "isodate",
+          "type": "character varying(16)",
+          "nullable": false
+        },
+        {
+          "name": "docpath",
+          "type": "character varying(290)",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "eloftopt": {
+      "columns": [
+        {
+          "name": "optid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "optval",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "remark",
+          "type": "character varying(80)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "eloftrel": {
+      "columns": [
+        {
+          "name": "wordid",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "docid",
+          "type": "integer",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "eloftstop": {
+      "columns": [
+        {
+          "name": "stopword",
+          "type": "character varying(64)",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "eloftswords": {
+      "columns": [
+        {
+          "name": "wordid",
+          "type": "bigint",
+          "nullable": true
+        },
+        {
+          "name": "word",
+          "type": "character varying(64)",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "eloftwords": {
+      "columns": [
+        {
+          "name": "wordid",
+          "type": "bigint",
+          "nullable": true
+        },
+        {
+          "name": "word",
+          "type": "character varying(64)",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "eloixopt": {
+      "columns": [
+        {
+          "name": "ixid",
+          "type": "character varying(255)",
+          "nullable": false
+        },
+        {
+          "name": "optname",
+          "type": "character varying(255)",
+          "nullable": false
+        },
+        {
+          "name": "optval",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "ixid",
+        "optname"
+      ],
+      "approxRows": 58
+    },
+    "feedaction": {
+      "columns": [
+        {
+          "name": "actionguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "createdateiso",
+          "type": "character varying(14)",
+          "nullable": false
+        },
+        {
+          "name": "updatedateiso",
+          "type": "character varying(14)",
+          "nullable": true
+        },
+        {
+          "name": "actiontstamp",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "actiontstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "actiontype",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "feedguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "parentguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "userguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "changecounter",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "actiontext",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "docversionguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "workflowguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "actionacl",
+          "type": "character varying(4000)",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 170
+    },
+    "feedactionhist": {
+      "columns": [
+        {
+          "name": "actionguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "createdateiso",
+          "type": "character varying(14)",
+          "nullable": false
+        },
+        {
+          "name": "actiontext",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "actionhisttstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "fulltextctrl8": {
+      "columns": [
+        {
+          "name": "ftobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "ftobjguid",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "fttstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "ftotype",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "fulltextctrl9": {
+      "columns": [
+        {
+          "name": "ftobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "ftobjguid",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "fttstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "ftotype",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "haftnotiz": {
+      "columns": [
+        {
+          "name": "parentid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "pageno",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "xpos",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "ypos",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "userid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "notetype",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "hlock",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "noteid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "createdate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pidesc",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "noteguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "notetstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "notestatus",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "width",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "height",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "color",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "noteacl",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "deletedate",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "notetstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 2
+    },
+    "hashtagrelations": {
+      "columns": [
+        {
+          "name": "hashtagguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "actionguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "tstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 6
+    },
+    "hashtags": {
+      "columns": [
+        {
+          "name": "hstgguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "hstgname",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "createdateiso",
+          "type": "character varying(14)",
+          "nullable": false
+        },
+        {
+          "name": "lastusediso",
+          "type": "character varying(14)",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "tstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "healthcheck": {
+      "columns": [
+        {
+          "name": "ixid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "timestamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "hour",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "hcisblob",
+          "type": "bytea",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 21
+    },
+    "komfloorplan": {
+      "columns": [
+        {
+          "name": "planname",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "updatecounter",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "planowner",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "officelist",
+          "type": "character varying(2000)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "kommovement": {
+      "columns": [
+        {
+          "name": "reqid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "reqstatus",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "reqdate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "duedate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "returndate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "owner",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sender",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "reqprio",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "komrequest": {
+      "columns": [
+        {
+          "name": "reqid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "reqstatus",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "reqdate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "duedate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "returndate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "owner",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sender",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "reqprio",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "map_formdata": {
+      "columns": [
+        {
+          "name": "mapid",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapvalue",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapblob",
+          "type": "bytea",
+          "nullable": true
+        },
+        {
+          "name": "mapcontenttype",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 7
+    },
+    "map_objekte": {
+      "columns": [
+        {
+          "name": "mapid",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapvalue",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapblob",
+          "type": "bytea",
+          "nullable": true
+        },
+        {
+          "name": "mapcontenttype",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 88436
+    },
+    "map_wfactive": {
+      "columns": [
+        {
+          "name": "mapid",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapvalue",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapblob",
+          "type": "bytea",
+          "nullable": true
+        },
+        {
+          "name": "mapcontenttype",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 29
+    },
+    "map_wffinished": {
+      "columns": [
+        {
+          "name": "mapid",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapvalue",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapblob",
+          "type": "bytea",
+          "nullable": true
+        },
+        {
+          "name": "mapcontenttype",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 1208
+    },
+    "mapdomain": {
+      "columns": [
+        {
+          "name": "mapdname",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapdflags",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 4
+    },
+    "maph_formdata": {
+      "columns": [
+        {
+          "name": "maphistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "mapkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapvalue",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapblob",
+          "type": "bytea",
+          "nullable": true
+        },
+        {
+          "name": "mapcontenttype",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 2
+    },
+    "maph_objekte": {
+      "columns": [
+        {
+          "name": "maphistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "mapkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapvalue",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapblob",
+          "type": "bytea",
+          "nullable": true
+        },
+        {
+          "name": "mapcontenttype",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 829
+    },
+    "maph_wfactive": {
+      "columns": [
+        {
+          "name": "maphistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "mapkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapvalue",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapblob",
+          "type": "bytea",
+          "nullable": true
+        },
+        {
+          "name": "mapcontenttype",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 209
+    },
+    "maph_wffinished": {
+      "columns": [
+        {
+          "name": "maphistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "mapkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapvalue",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapblob",
+          "type": "bytea",
+          "nullable": true
+        },
+        {
+          "name": "mapcontenttype",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 434
+    },
+    "maphead_formdata": {
+      "columns": [
+        {
+          "name": "mapid",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "mapobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maplockid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maptstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "maptstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 196
+    },
+    "maphead_objekte": {
+      "columns": [
+        {
+          "name": "mapid",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "mapobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maplockid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maptstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "maptstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 4063
+    },
+    "maphead_wfactive": {
+      "columns": [
+        {
+          "name": "mapid",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "mapobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maplockid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maptstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "maptstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 21
+    },
+    "maphead_wffinished": {
+      "columns": [
+        {
+          "name": "mapid",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "mapguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "mapobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maplockid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maptstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "maptstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 49
+    },
+    "maphhead_formdata": {
+      "columns": [
+        {
+          "name": "maphistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "maphistts",
+          "type": "character varying(25)",
+          "nullable": true
+        },
+        {
+          "name": "maphiststatus",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "mapguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "mapuser",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "mapusername",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "maphistsrc",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maphistlocts",
+          "type": "character varying(25)",
+          "nullable": true
+        },
+        {
+          "name": "maphistwks",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "maphisttssync",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 2
+    },
+    "maphhead_objekte": {
+      "columns": [
+        {
+          "name": "maphistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "maphistts",
+          "type": "character varying(25)",
+          "nullable": true
+        },
+        {
+          "name": "maphiststatus",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "mapguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "mapuser",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "mapusername",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "maphistsrc",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maphistlocts",
+          "type": "character varying(25)",
+          "nullable": true
+        },
+        {
+          "name": "maphistwks",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "maphisttssync",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 66
+    },
+    "maphhead_wfactive": {
+      "columns": [
+        {
+          "name": "maphistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "maphistts",
+          "type": "character varying(25)",
+          "nullable": true
+        },
+        {
+          "name": "maphiststatus",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "mapguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "mapuser",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "mapusername",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "maphistsrc",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maphistlocts",
+          "type": "character varying(25)",
+          "nullable": true
+        },
+        {
+          "name": "maphistwks",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "maphisttssync",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 90
+    },
+    "maphhead_wffinished": {
+      "columns": [
+        {
+          "name": "maphistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "maphistts",
+          "type": "character varying(25)",
+          "nullable": true
+        },
+        {
+          "name": "maphiststatus",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "mapguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "mapuser",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "mapusername",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "maphistsrc",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "maphistlocts",
+          "type": "character varying(25)",
+          "nullable": true
+        },
+        {
+          "name": "maphistwks",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "maphisttssync",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 136
+    },
+    "masklines": {
+      "columns": [
+        {
+          "name": "maskno",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "mlineno",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "linetype",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "linebez",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "linekey",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "linemin",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "linemax",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "linelkey",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "lineflags",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "linecomment",
+          "type": "character varying(400)",
+          "nullable": true
+        },
+        {
+          "name": "lineext",
+          "type": "character varying(200)",
+          "nullable": true
+        },
+        {
+          "name": "lineacl",
+          "type": "character varying(200)",
+          "nullable": true
+        },
+        {
+          "name": "linedefault",
+          "type": "character varying(200)",
+          "nullable": true
+        },
+        {
+          "name": "linetab",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "linescript",
+          "type": "character varying(100)",
+          "nullable": true
+        },
+        {
+          "name": "linebeztrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "linecommenttrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "validateexpression",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "allowedrefmaskids",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "notification": {
+      "columns": [
+        {
+          "name": "userguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "watchguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "createdateiso",
+          "type": "character varying(14)",
+          "nullable": false
+        },
+        {
+          "name": "prio",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "what",
+          "type": "integer",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 131
+    },
+    "objekte": {
+      "columns": [
+        {
+          "name": "objtype",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "objflags",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objshort",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "objsreg",
+          "type": "character varying(16)",
+          "nullable": true
+        },
+        {
+          "name": "objidate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objxdate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objkey",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objkind",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objpath",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objinfo",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objmask",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objdoc",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objattach",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objakey1",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objakey2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objlkey1",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objlkey2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objuser",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objlock",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objparent",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objstatus",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objhistcount",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objdesc",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "objchildcount",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objdeldate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objsyncdateloc",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objsyncdaterem",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objvtrep",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objacl",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "replset",
+          "type": "character varying(22)",
+          "nullable": true
+        },
+        {
+          "name": "objguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "objtstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "objtstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "deletedate",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "doclock",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objtstampacl",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "objtstampaclsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "deleteuser",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "encryptionset",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "spaceguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "objtstamplocal",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "packagename",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "regionid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objrefid",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "objexternalid",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "objid"
+      ],
+      "approxRows": 29090
+    },
+    "objhistkeys": {
+      "columns": [
+        {
+          "name": "objhistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "okeyno",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "okeyname",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "okeydata",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "objdesc",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 1544
+    },
+    "objhistory": {
+      "columns": [
+        {
+          "name": "objhistguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "objhistts",
+          "type": "character varying(25)",
+          "nullable": true
+        },
+        {
+          "name": "objhisttssync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "objhiststatus",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "objuser",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "username",
+          "type": "character varying(250)",
+          "nullable": true
+        },
+        {
+          "name": "objhistsrc",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objhistlocts",
+          "type": "character varying(25)",
+          "nullable": true
+        },
+        {
+          "name": "objhistwks",
+          "type": "character varying(250)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 559
+    },
+    "objkeys": {
+      "columns": [
+        {
+          "name": "parentid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "okeyno",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "okeyname",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "okeydata",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "okeyudata",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "okeydouble",
+          "type": "double precision",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "parentid",
+        "okeyno"
+      ],
+      "approxRows": 157473
+    },
+    "objlinks": {
+      "columns": [
+        {
+          "name": "objguidparent",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "objguidtarget",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "linkguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "linktstamp",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "linktstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "linkflags",
+          "type": "integer",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "objreplsetcombis": {
+      "columns": [
+        {
+          "name": "combiid",
+          "type": "bytea",
+          "nullable": false
+        },
+        {
+          "name": "dw",
+          "type": "bytea",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "objreplsets": {
+      "columns": [
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "combiid",
+          "type": "bytea",
+          "nullable": false
+        },
+        {
+          "name": "combiidsynced",
+          "type": "bytea",
+          "nullable": true
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "tstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 174
+    },
+    "objspaces": {
+      "columns": [
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "spaceguid",
+          "type": "character varying(40)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "package": {
+      "columns": [
+        {
+          "name": "pkguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "pkname",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "pkdesc",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "icon",
+          "type": "bytea",
+          "nullable": true
+        },
+        {
+          "name": "pktstamp",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "lockid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "contenttype",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "maintainer",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "namespace",
+          "type": "character varying(40)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "pkguid"
+      ],
+      "approxRows": 0
+    },
+    "packagelevel": {
+      "columns": [
+        {
+          "name": "guid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "pkguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "pkglevel",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "name",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "guid"
+      ],
+      "approxRows": 0
+    },
+    "physdel": {
+      "columns": [
+        {
+          "name": "pdguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "pdtype",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pdtstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "pdtstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "profileopts": {
+      "columns": [
+        {
+          "name": "userid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "optkey",
+          "type": "character varying(255)",
+          "nullable": false
+        },
+        {
+          "name": "optvalue",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "userid",
+        "optkey"
+      ],
+      "approxRows": 3875
+    },
+    "publicdownloads": {
+      "columns": [
+        {
+          "name": "guid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "expiration",
+          "type": "character varying(16)",
+          "nullable": false
+        },
+        {
+          "name": "remaining",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "userid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "docid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "fname",
+          "type": "character varying(255)",
+          "nullable": false
+        },
+        {
+          "name": "acode",
+          "type": "character varying(10)",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "refpaths2": {
+      "columns": [
+        {
+          "name": "id1",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid1",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name1",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl1",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status1",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid2",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name2",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl2",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id3",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid3",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name3",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl3",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status3",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id4",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid4",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name4",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl4",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status4",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id5",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid5",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name5",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl5",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status5",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id6",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid6",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name6",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl6",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status6",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id7",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid7",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name7",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl7",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status7",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id8",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid8",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name8",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl8",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status8",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id9",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid9",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name9",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl9",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status9",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "id10",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "guid10",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "name10",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "acl10",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "status10",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "relation": {
+      "columns": [
+        {
+          "name": "parentid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "objectid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "ordinal",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "relstatus",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "reltstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "reltstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "relguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "reldeletedate",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "relmain",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "objectid",
+        "parentid"
+      ],
+      "approxRows": 33626
+    },
+    "replihist": {
+      "columns": [
+        {
+          "name": "rhrowid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "rhtsdate",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "rhimex",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "rhsucc",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "rharcguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "rharcshort",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "rharcdesc",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "rhtsbegin",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "rhtsend",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "rhpriolocal",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "rhprioremote",
+          "type": "integer",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "replsetnames": {
+      "columns": [
+        {
+          "name": "rsid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "rsimage",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "rsname",
+          "type": "character varying(80)",
+          "nullable": true
+        },
+        {
+          "name": "rsdesc",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "rststamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "rststampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "rsmobile",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "rsprio",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "report": {
+      "columns": [
+        {
+          "name": "actionno",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "userid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "acttime",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "docid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "extra1",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "extra2",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "sessionno",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "addtext",
+          "type": "character varying(250)",
+          "nullable": true
+        },
+        {
+          "name": "reportid",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "extra3",
+          "type": "bytea",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "reportid",
+        "acttime"
+      ],
+      "approxRows": 651398
+    },
+    "serverstat": {
+      "columns": [
+        {
+          "name": "actionid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "subkey",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "action",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "shobjkeys": {
+      "columns": [
+        {
+          "name": "parentid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "okeyno",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "okeyname",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "okeydata",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "shobjkeys3": {
+      "columns": [
+        {
+          "name": "parentid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "okeyno",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "okeyname",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "shokeydata",
+          "type": "character varying",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "sol_accounting_costcenter": {
+      "columns": [
+        {
+          "name": "company_code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "no",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "character varying(100)",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "company_code",
+        "no"
+      ],
+      "approxRows": 0
+    },
+    "sol_accounting_costobject": {
+      "columns": [
+        {
+          "name": "company_code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "no",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "character varying(100)",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "company_code",
+        "no"
+      ],
+      "approxRows": 0
+    },
+    "sol_accounting_gl_account": {
+      "columns": [
+        {
+          "name": "company_code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "no",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "character varying(100)",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "company_code",
+        "no"
+      ],
+      "approxRows": 0
+    },
+    "sol_business_area": {
+      "columns": [
+        {
+          "name": "company_code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "character varying(100)",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "company_code",
+        "code"
+      ],
+      "approxRows": 0
+    },
+    "sol_common_fx": {
+      "columns": [
+        {
+          "name": "currency_code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "currency_exchange_rate",
+          "type": "character varying(10)",
+          "nullable": false
+        },
+        {
+          "name": "currency_symbol",
+          "type": "character varying(10)",
+          "nullable": true
+        },
+        {
+          "name": "currency_description",
+          "type": "character varying(50)",
+          "nullable": true
+        },
+        {
+          "name": "time",
+          "type": "character varying(14)",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "currency_code"
+      ],
+      "approxRows": 32
+    },
+    "sol_common_fx_history": {
+      "columns": [
+        {
+          "name": "currency_code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "currency_exchange_rate",
+          "type": "character varying(10)",
+          "nullable": false
+        },
+        {
+          "name": "time",
+          "type": "character varying(14)",
+          "nullable": false
+        },
+        {
+          "name": "base_currency_code",
+          "type": "character varying(20)",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "currency_code",
+        "time"
+      ],
+      "approxRows": 197625
+    },
+    "sol_company": {
+      "columns": [
+        {
+          "name": "code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "character varying(150)",
+          "nullable": true
+        },
+        {
+          "name": "street",
+          "type": "character varying(150)",
+          "nullable": true
+        },
+        {
+          "name": "zipcode",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "city",
+          "type": "character varying(50)",
+          "nullable": true
+        },
+        {
+          "name": "country_code",
+          "type": "character varying(50)",
+          "nullable": true
+        },
+        {
+          "name": "gln",
+          "type": "character varying(15)",
+          "nullable": true
+        },
+        {
+          "name": "standard_currency_code",
+          "type": "character varying(10)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "code"
+      ],
+      "approxRows": 8
+    },
+    "sol_inbox_register": {
+      "columns": [
+        {
+          "name": "pos",
+          "type": "character varying(50)",
+          "nullable": false
+        },
+        {
+          "name": "main_register",
+          "type": "character varying(50)",
+          "nullable": true
+        },
+        {
+          "name": "register",
+          "type": "character varying(50)",
+          "nullable": true
+        },
+        {
+          "name": "doctype_name",
+          "type": "character varying(100)",
+          "nullable": true
+        },
+        {
+          "name": "doctype_id",
+          "type": "character varying(10)",
+          "nullable": true
+        },
+        {
+          "name": "workflow",
+          "type": "character varying(50)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "pos"
+      ],
+      "approxRows": 0
+    },
+    "sol_internal_order": {
+      "columns": [
+        {
+          "name": "company_code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "no",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "character varying(100)",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "company_code",
+        "no"
+      ],
+      "approxRows": 0
+    },
+    "sol_invoice_item": {
+      "columns": [
+        {
+          "name": "company_code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "no",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "description",
+          "type": "character varying(150)",
+          "nullable": false
+        },
+        {
+          "name": "unit_name",
+          "type": "character varying(50)",
+          "nullable": true
+        },
+        {
+          "name": "unit_price",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "cost_center_no",
+          "type": "character varying(50)",
+          "nullable": true
+        },
+        {
+          "name": "cost_object_no",
+          "type": "character varying(50)",
+          "nullable": true
+        },
+        {
+          "name": "gl_account_no",
+          "type": "character varying(50)",
+          "nullable": true
+        },
+        {
+          "name": "vendor_no",
+          "type": "character varying(50)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "company_code",
+        "no"
+      ],
+      "approxRows": 0
+    },
+    "sol_invoice_po_line": {
+      "columns": [
+        {
+          "name": "company_code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "vendor_no",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "purchase_order_no",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "line_no",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "item_no",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "item_description",
+          "type": "character varying(150)",
+          "nullable": true
+        },
+        {
+          "name": "cost_center_no",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "cost_object_no",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "gl_account_no",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "quantity",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "quantity_unit",
+          "type": "character varying(5)",
+          "nullable": true
+        },
+        {
+          "name": "unit_price",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "discount",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "line_amount",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "currency_code",
+          "type": "character varying(5)",
+          "nullable": true
+        },
+        {
+          "name": "delivery_note_no",
+          "type": "character varying(10)",
+          "nullable": true
+        },
+        {
+          "name": "delivery_note_date",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "received",
+          "type": "integer",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "company_code",
+        "vendor_no",
+        "purchase_order_no",
+        "line_no"
+      ],
+      "approxRows": 0
+    },
+    "sol_profit_center": {
+      "columns": [
+        {
+          "name": "company_code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "character varying(100)",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "company_code",
+        "code"
+      ],
+      "approxRows": 0
+    },
+    "sol_project": {
+      "columns": [
+        {
+          "name": "company_code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "no",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "character varying(100)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "company_code",
+        "no"
+      ],
+      "approxRows": 0
+    },
+    "sol_special_gl_indicator": {
+      "columns": [
+        {
+          "name": "company_code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "character varying(10)",
+          "nullable": false
+        },
+        {
+          "name": "language",
+          "type": "character varying(10)",
+          "nullable": false
+        },
+        {
+          "name": "description",
+          "type": "character varying(100)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "company_code",
+        "code",
+        "language"
+      ],
+      "approxRows": 0
+    },
+    "sol_tax_code": {
+      "columns": [
+        {
+          "name": "company_code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "character varying(10)",
+          "nullable": false
+        },
+        {
+          "name": "language",
+          "type": "character varying(10)",
+          "nullable": false
+        },
+        {
+          "name": "description",
+          "type": "character varying(100)",
+          "nullable": true
+        },
+        {
+          "name": "vat_rate",
+          "type": "numeric",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "company_code",
+        "code",
+        "language"
+      ],
+      "approxRows": 0
+    },
+    "sol_trade_charge": {
+      "columns": [
+        {
+          "name": "code",
+          "type": "character varying(10)",
+          "nullable": false
+        },
+        {
+          "name": "language",
+          "type": "character varying(10)",
+          "nullable": false
+        },
+        {
+          "name": "description",
+          "type": "character varying(100)",
+          "nullable": true
+        },
+        {
+          "name": "docxfield",
+          "type": "character varying(50)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "code",
+        "language"
+      ],
+      "approxRows": 0
+    },
+    "sol_units": {
+      "columns": [
+        {
+          "name": "code",
+          "type": "character varying(10)",
+          "nullable": false
+        },
+        {
+          "name": "language",
+          "type": "character varying(10)",
+          "nullable": false
+        },
+        {
+          "name": "description",
+          "type": "character varying(100)",
+          "nullable": true
+        },
+        {
+          "name": "symbol",
+          "type": "character varying(20)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "code",
+        "language"
+      ],
+      "approxRows": 0
+    },
+    "sol_vat_rates": {
+      "columns": [
+        {
+          "name": "country",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "start_date",
+          "type": "date",
+          "nullable": false
+        },
+        {
+          "name": "vat_rates",
+          "type": "character varying(100)",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "country",
+        "start_date",
+        "vat_rates"
+      ],
+      "approxRows": 0
+    },
+    "sol_vendor": {
+      "columns": [
+        {
+          "name": "company_code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "no",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "character varying(100)",
+          "nullable": true
+        },
+        {
+          "name": "street",
+          "type": "character varying(150)",
+          "nullable": true
+        },
+        {
+          "name": "zipcode",
+          "type": "character varying(10)",
+          "nullable": true
+        },
+        {
+          "name": "city",
+          "type": "character varying(50)",
+          "nullable": true
+        },
+        {
+          "name": "iban",
+          "type": "character varying(100)",
+          "nullable": true
+        },
+        {
+          "name": "bic",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "country_code",
+          "type": "character varying(10)",
+          "nullable": true
+        },
+        {
+          "name": "vat_id",
+          "type": "character varying(30)",
+          "nullable": true
+        },
+        {
+          "name": "due_days",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "tax_no",
+          "type": "character varying(30)",
+          "nullable": true
+        },
+        {
+          "name": "gln",
+          "type": "character varying(15)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "company_code",
+        "no"
+      ],
+      "approxRows": 0
+    },
+    "sol_vendor_terms_of_payment": {
+      "columns": [
+        {
+          "name": "company_code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "vendor_no",
+          "type": "character varying(10)",
+          "nullable": false
+        },
+        {
+          "name": "cash_discount_days",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "cash_discount_rate",
+          "type": "numeric",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "company_code",
+        "vendor_no",
+        "cash_discount_days"
+      ],
+      "approxRows": 0
+    },
+    "sol_wbs_element": {
+      "columns": [
+        {
+          "name": "company_code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "character varying(100)",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "company_code",
+        "code"
+      ],
+      "approxRows": 0
+    },
+    "sordtype": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "extensions",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "packagename",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "guid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "st_type",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "nametrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "id"
+      ],
+      "approxRows": 0
+    },
+    "spacefeedaction2": {
+      "columns": [
+        {
+          "name": "actionguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "createdateiso",
+          "type": "character varying(14)",
+          "nullable": true
+        },
+        {
+          "name": "updatedateiso",
+          "type": "character varying(14)",
+          "nullable": true
+        },
+        {
+          "name": "actiontstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "actiontstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "actiontype",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "feedguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "parentguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "userguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "changecounter",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "actiontext",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "docversionguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "workflowguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "actionacl",
+          "type": "character varying(4000)",
+          "nullable": true
+        },
+        {
+          "name": "vspaceguid",
+          "type": "character varying(40)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "subscription": {
+      "columns": [
+        {
+          "name": "userguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "watchguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "createdateiso",
+          "type": "character varying(14)",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 16
+    },
+    "swl": {
+      "columns": [
+        {
+          "name": "groupid",
+          "type": "character varying(128)",
+          "nullable": false
+        },
+        {
+          "name": "orderid",
+          "type": "character varying(32)",
+          "nullable": false
+        },
+        {
+          "name": "entry",
+          "type": "character varying(250)",
+          "nullable": true
+        },
+        {
+          "name": "texttrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "groupid",
+        "orderid"
+      ],
+      "approxRows": 0
+    },
+    "swlgrp": {
+      "columns": [
+        {
+          "name": "swlgroupid",
+          "type": "character varying(128)",
+          "nullable": false
+        },
+        {
+          "name": "swluser",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "swltstamp",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "swltstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "swlguid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "swlstatus",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "swllock",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "packagename",
+          "type": "character varying(250)",
+          "nullable": true
+        },
+        {
+          "name": "swlnametrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "swlgroupid"
+      ],
+      "approxRows": 0
+    },
+    "thesaurus": {
+      "columns": [
+        {
+          "name": "groupid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "prio",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "data",
+          "type": "character varying(250)",
+          "nullable": false
+        },
+        {
+          "name": "compare",
+          "type": "character varying(250)",
+          "nullable": true
+        },
+        {
+          "name": "listid",
+          "type": "integer",
+          "nullable": false
+        }
+      ],
+      "pk": [
+        "groupid",
+        "prio"
+      ],
+      "approxRows": 0
+    },
+    "translations": {
+      "columns": [
+        {
+          "name": "guid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "tstamp",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "tstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "lang1",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang2",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang3",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang4",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang5",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang6",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang7",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang8",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang9",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "trankey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "pack",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "tlevel",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "lang10",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang11",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang12",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang13",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang14",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang15",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang16",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang17",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang18",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang19",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang20",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang21",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang22",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang23",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang24",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang25",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang26",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang27",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang28",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang29",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "lang30",
+          "type": "character varying(2000)",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 305
+    },
+    "uniquearcpath": {
+      "columns": [
+        {
+          "name": "parentid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "objshort",
+          "type": "character varying(128)",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "vtdocs": {
+      "columns": [
+        {
+          "name": "objid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "objdoc",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "vtcode",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "retries",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "wiedervorlage": {
+      "columns": [
+        {
+          "name": "wvident",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "parentid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "userowner",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "userfrom",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wvdate",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "createdate",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "prio",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "parenttype",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "short",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "wvdesc",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "duedate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "action",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wvlock",
+          "type": "integer",
+          "nullable": false
+        }
+      ],
+      "pk": [],
+      "approxRows": 0
+    },
+    "workflowactivedoc": {
+      "columns": [
+        {
+          "name": "wf_flowid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_nodeid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_flow_name",
+          "type": "character varying(256)",
+          "nullable": false
+        },
+        {
+          "name": "wf_name",
+          "type": "character varying(256)",
+          "nullable": true
+        },
+        {
+          "name": "wf_node_type",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_succ_type",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_department",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_to",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_from_begin",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_wait",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_yesnocondition",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "wf_condition",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "wf_comment",
+          "type": "character varying(512)",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_0",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_1",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_3",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_4",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_5",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_6",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_7",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_8",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_9",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_10",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_11",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_12",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_13",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_14",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_15",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_16",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_17",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_18",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_19",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_locked",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pos_x",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pos_y",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_eloobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_locked_owner",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_is_next",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_activate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_terminate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_in_use_date",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_completion_date",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_ev_on_activate",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "wf_ev_on_terminate",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "wf_nodeflags",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_userterminate",
+          "type": "character varying(250)",
+          "nullable": true
+        },
+        {
+          "name": "wf_tag",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_designdepartment",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_dx",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_department2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_delaydays",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_duedate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_template",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_prio",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_user_delaydate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_to2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_wait2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_to3",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_wait3",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "nextserverid",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "wf_icon_guid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "wf_form_spec",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "wf_flownametrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "wf_nametrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "wf_commenttrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "wf_label",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "wf_labeltrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "wf_properties",
+          "type": "bytea",
+          "nullable": true
+        },
+        {
+          "name": "wf_departmentgroup",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_overtime",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_edges_ordinals",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "wf_sub_wf",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_retval",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_returnvalue",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "wf_sub_wf_templ",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_active_acl",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "wf_ev_on_enter_handle_rollback",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "wf_ev_on_exit_handle_rollback",
+          "type": "character varying(64)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "wf_flowid",
+        "wf_nodeid"
+      ],
+      "approxRows": 1553
+    },
+    "workflowcompletiondoc": {
+      "columns": [
+        {
+          "name": "wf_flowid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_nodeid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_flow_name",
+          "type": "character varying(256)",
+          "nullable": false
+        },
+        {
+          "name": "wf_name",
+          "type": "character varying(256)",
+          "nullable": true
+        },
+        {
+          "name": "wf_node_type",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_succ_type",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_department",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_to",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_from_begin",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_wait",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_yesnocondition",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "wf_condition",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "wf_comment",
+          "type": "character varying(512)",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_0",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_1",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_3",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_4",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_5",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_6",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_7",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_8",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_9",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_10",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_11",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_12",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_13",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_14",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_15",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_16",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_17",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_18",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_19",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_locked",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pos_x",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pos_y",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_eloobjid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_locked_owner",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_is_next",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_activate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_terminate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_in_use_date",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_completion_date",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_ev_on_activate",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "wf_ev_on_terminate",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "wf_nodeflags",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_userterminate",
+          "type": "character varying(250)",
+          "nullable": true
+        },
+        {
+          "name": "wf_tag",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_designdepartment",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_dx",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_department2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_delaydays",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_duedate",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_template",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_prio",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_to2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_wait2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_to3",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_wait3",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "nextserverid",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "wf_icon_guid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "wf_form_spec",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "wf_flownametrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "wf_nametrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "wf_commenttrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "wf_label",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "wf_labeltrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "wf_properties",
+          "type": "bytea",
+          "nullable": true
+        },
+        {
+          "name": "wf_departmentgroup",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_overtime",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_edges_ordinals",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "wf_sub_wf",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_retval",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_returnvalue",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "wf_sub_wf_templ",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_active_acl",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "wf_ev_on_enter_handle_rollback",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "wf_ev_on_exit_handle_rollback",
+          "type": "character varying(64)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "wf_flowid",
+        "wf_nodeid"
+      ],
+      "approxRows": 7396
+    },
+    "workflowhead": {
+      "columns": [
+        {
+          "name": "wftype",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wfflowid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wftstamp",
+          "type": "character varying(20)",
+          "nullable": false
+        },
+        {
+          "name": "wftstampsync",
+          "type": "character varying(20)",
+          "nullable": true
+        },
+        {
+          "name": "wfguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "wfstatus",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "actserverid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "wfparent",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "callnodeid",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 5246
+    },
+    "workflowhistory": {
+      "columns": [
+        {
+          "name": "wfhistguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "wfguid",
+          "type": "character varying(40)",
+          "nullable": false
+        },
+        {
+          "name": "wf_nodeid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_activate",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_terminate",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_user",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_username",
+          "type": "character varying(250)",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_0",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_1",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_3",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_4",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_5",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_6",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_7",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_8",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_9",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_10",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_11",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_12",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_13",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_14",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_15",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_16",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_17",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_18",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_19",
+          "type": "integer",
+          "nullable": true
+        }
+      ],
+      "pk": [],
+      "approxRows": 799
+    },
+    "workflowtempl": {
+      "columns": [
+        {
+          "name": "wf_flowid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_nodeid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_flow_name",
+          "type": "character varying(256)",
+          "nullable": false
+        },
+        {
+          "name": "wf_name",
+          "type": "character varying(256)",
+          "nullable": true
+        },
+        {
+          "name": "wf_node_type",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_succ_type",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_department",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_to",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_from_begin",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_wait",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_yesnocondition",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "wf_condition",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "wf_comment",
+          "type": "character varying(512)",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_0",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_1",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_3",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_4",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_5",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_6",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_7",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_8",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_9",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_10",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_11",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_12",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_13",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_14",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_15",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_16",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_17",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_18",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_19",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_locked",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pos_x",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pos_y",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_locked_owner",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_ev_on_activate",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "wf_ev_on_terminate",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "wf_nodeflags",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_userterminate",
+          "type": "character varying(250)",
+          "nullable": true
+        },
+        {
+          "name": "wf_tag",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_designdepartment",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_dx",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_department2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_delaydays",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_deleted",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_prio",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_version",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_version_name",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "wf_version_tag",
+          "type": "character varying(16)",
+          "nullable": true
+        },
+        {
+          "name": "wf_version_userid",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_version_createdate",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "wf_alert_to2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_wait2",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_to3",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_alert_wait3",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "nextserverid",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "wf_icon_guid",
+          "type": "character varying(40)",
+          "nullable": true
+        },
+        {
+          "name": "wf_form_spec",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "wf_flownametrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "wf_nametrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "wf_commenttrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "wf_label",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "wf_labeltrkey",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "wf_properties",
+          "type": "bytea",
+          "nullable": true
+        },
+        {
+          "name": "wf_departmentgroup",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_succ_overtime",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_edges_ordinals",
+          "type": "character varying(2000)",
+          "nullable": true
+        },
+        {
+          "name": "wf_sub_wf",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_retval",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_returnvalue",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "wf_sub_wf_templ",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wf_active_acl",
+          "type": "character varying(128)",
+          "nullable": true
+        },
+        {
+          "name": "packagename",
+          "type": "character varying(255)",
+          "nullable": true
+        },
+        {
+          "name": "wf_ev_on_enter_handle_rollback",
+          "type": "character varying(64)",
+          "nullable": true
+        },
+        {
+          "name": "wf_ev_on_exit_handle_rollback",
+          "type": "character varying(64)",
+          "nullable": true
+        }
+      ],
+      "pk": [
+        "wf_flowid",
+        "wf_nodeid",
+        "wf_version"
+      ],
+      "approxRows": 0
+    }
+  }
+}
