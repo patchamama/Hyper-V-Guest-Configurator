@@ -1,0 +1,1408 @@
+﻿Kundenakte|Kundennr|character|10||NO|YES
+Kundenakte|Kundenname|character|50||YES|NO
+Kundenakte|Adresse|character|50||YES|NO
+Kundenakte|Plz|character|10||YES|NO
+Kundenakte|Ort|character|50||YES|NO
+Kundenakte|Tel|character|20||YES|NO
+Kundenakte|Mail|character|30||YES|NO
+Kundenakte|company_code|character|10||YES|NO
+Kundenakte|company_name|character|50||YES|NO
+activity|actguid|character varying|40||YES|NO
+activity|docguid|character varying|40||YES|NO
+activity|acttstamp|character varying|20||YES|NO
+activity|project|character varying|20||YES|NO
+activity|transmitid|character varying|20||YES|NO
+activity|revvers|character varying|10||YES|NO
+activity|owner|integer||32|YES|NO
+activity|creator|integer||32|YES|NO
+activity|prio|integer||32|YES|NO
+activity|shortdesc|character varying|128||YES|NO
+activity|destination|character varying|20||YES|NO
+activity|sentat|character varying|16||YES|NO
+activity|sentmode|character varying|20||YES|NO
+activity|duedate|character varying|16||YES|NO
+activity|backat|character varying|16||YES|NO
+activity|backmode|character varying|20||YES|NO
+activity|actcomment|character varying|255||YES|NO
+activity|filename|character varying|255||YES|NO
+activity|ud0|character varying|255||YES|NO
+activity|ud1|character varying|255||YES|NO
+activity|ud2|character varying|255||YES|NO
+activity|ud3|character varying|255||YES|NO
+activity|ud4|character varying|255||YES|NO
+activity|ud5|character varying|255||YES|NO
+activity|ud6|character varying|255||YES|NO
+activity|ud7|character varying|255||YES|NO
+activity|ud8|character varying|255||YES|NO
+activity|ud9|character varying|255||YES|NO
+activity|acttstampsync|character varying|20||YES|NO
+activityobjekte|actguid|character varying|40||YES|NO
+activityobjekte|docguid|character varying|40||YES|NO
+activityobjekte|acttstamp|character varying|20||YES|NO
+activityobjekte|project|character varying|20||YES|NO
+activityobjekte|revvers|character varying|10||YES|NO
+activityobjekte|owner|integer||32|YES|NO
+activityobjekte|creator|integer||32|YES|NO
+activityobjekte|prio|integer||32|YES|NO
+activityobjekte|shortdesc|character varying|128||YES|NO
+activityobjekte|destination|character varying|20||YES|NO
+activityobjekte|sentat|character varying|16||YES|NO
+activityobjekte|sentmode|character varying|20||YES|NO
+activityobjekte|duedate|character varying|16||YES|NO
+activityobjekte|backat|character varying|16||YES|NO
+activityobjekte|backmode|character varying|20||YES|NO
+activityobjekte|actcomment|character varying|255||YES|NO
+activityobjekte|filename|character varying|255||YES|NO
+activityobjekte|ud0|character varying|255||YES|NO
+activityobjekte|ud1|character varying|255||YES|NO
+activityobjekte|ud2|character varying|255||YES|NO
+activityobjekte|ud3|character varying|255||YES|NO
+activityobjekte|ud4|character varying|255||YES|NO
+activityobjekte|ud5|character varying|255||YES|NO
+activityobjekte|ud6|character varying|255||YES|NO
+activityobjekte|ud7|character varying|255||YES|NO
+activityobjekte|ud8|character varying|255||YES|NO
+activityobjekte|ud9|character varying|255||YES|NO
+activityobjekte|transmitid|character varying|20||YES|NO
+activityobjekte|objid|integer||32|YES|NO
+activityobjekte|objtype|integer||32|YES|NO
+activityobjekte|objstatus|integer||32|YES|NO
+activityobjekte|acttstampsync|character varying|20||YES|NO
+actopt|project|character varying|20||YES|NO
+actopt|major|integer||32|YES|NO
+actopt|minor|integer||32|YES|NO
+actopt|optvalue|character varying|255||YES|NO
+alerts|destination|integer||32|NO|NO
+alerts|source|integer||32|NO|NO
+alerts|alerttype|integer||32|NO|NO
+alerts|objid|integer||32|YES|NO
+alerts|extra1|integer||32|YES|NO
+alerts|extra2|integer||32|YES|NO
+alerts|alertid|integer||32|NO|NO
+alerts|alertmemo|character varying|64||YES|NO
+alerts|alerttime|integer||32|YES|NO
+arcpaths2|id1|integer||32|YES|NO
+arcpaths2|guid1|character varying|40||YES|NO
+arcpaths2|name1|character varying|128||YES|NO
+arcpaths2|acl1|character varying|4000||YES|NO
+arcpaths2|status1|integer||32|YES|NO
+arcpaths2|id2|integer||32|YES|NO
+arcpaths2|guid2|character varying|40||YES|NO
+arcpaths2|name2|character varying|128||YES|NO
+arcpaths2|acl2|character varying|4000||YES|NO
+arcpaths2|status2|integer||32|YES|NO
+arcpaths2|id3|integer||32|YES|NO
+arcpaths2|guid3|character varying|40||YES|NO
+arcpaths2|name3|character varying|128||YES|NO
+arcpaths2|acl3|character varying|4000||YES|NO
+arcpaths2|status3|integer||32|YES|NO
+arcpaths2|id4|integer||32|YES|NO
+arcpaths2|guid4|character varying|40||YES|NO
+arcpaths2|name4|character varying|128||YES|NO
+arcpaths2|acl4|character varying|4000||YES|NO
+arcpaths2|status4|integer||32|YES|NO
+arcpaths2|id5|integer||32|YES|NO
+arcpaths2|guid5|character varying|40||YES|NO
+arcpaths2|name5|character varying|128||YES|NO
+arcpaths2|acl5|character varying|4000||YES|NO
+arcpaths2|status5|integer||32|YES|NO
+arcpaths2|id6|integer||32|YES|NO
+arcpaths2|guid6|character varying|40||YES|NO
+arcpaths2|name6|character varying|128||YES|NO
+arcpaths2|acl6|character varying|4000||YES|NO
+arcpaths2|status6|integer||32|YES|NO
+arcpaths2|id7|integer||32|YES|NO
+arcpaths2|guid7|character varying|40||YES|NO
+arcpaths2|name7|character varying|128||YES|NO
+arcpaths2|acl7|character varying|4000||YES|NO
+arcpaths2|status7|integer||32|YES|NO
+arcpaths2|id8|integer||32|YES|NO
+arcpaths2|guid8|character varying|40||YES|NO
+arcpaths2|name8|character varying|128||YES|NO
+arcpaths2|acl8|character varying|4000||YES|NO
+arcpaths2|status8|integer||32|YES|NO
+arcpaths2|id9|integer||32|YES|NO
+arcpaths2|guid9|character varying|40||YES|NO
+arcpaths2|name9|character varying|128||YES|NO
+arcpaths2|acl9|character varying|4000||YES|NO
+arcpaths2|status9|integer||32|YES|NO
+arcpaths2|id10|integer||32|YES|NO
+arcpaths2|guid10|character varying|40||YES|NO
+arcpaths2|name10|character varying|128||YES|NO
+arcpaths2|acl10|character varying|4000||YES|NO
+arcpaths2|status10|integer||32|YES|NO
+arcsync|arcguid|character varying|40||NO|NO
+arcsync|tsupdate|character varying|20||NO|NO
+arcsync|tslastrun|character varying|20||YES|NO
+arcsync|tslastend|character varying|20||YES|NO
+arcsync|hostname|character varying|255||YES|NO
+arcsync|arcname|character varying|255||YES|NO
+arcsync|syncuser|integer||32|YES|NO
+arcsync|amurl|character varying|255||YES|NO
+arcsync|amlogin|character varying|255||YES|NO
+arcsync|ampwd|character varying|255||YES|NO
+arcsync|replset|character varying|4000||YES|NO
+arcsync|version|character varying|16||YES|NO
+asp_0|objid|integer||32|NO|NO
+asp_0|assoc|character varying|128||YES|NO
+asp_0|ordinal|integer||32|NO|NO
+asp_0|regionobjid|integer||32|YES|NO
+asp_0|maskid|integer||32|NO|NO
+asp_0|tstamp|character varying|20||YES|NO
+asp_0|i_template_guid|text|||YES|NO
+asp_1|objid|integer||32|NO|NO
+asp_1|assoc|character varying|128||YES|NO
+asp_1|ordinal|integer||32|NO|NO
+asp_1|regionobjid|integer||32|YES|NO
+asp_1|maskid|integer||32|NO|NO
+asp_1|tstamp|character varying|20||YES|NO
+asp_1|i_adress|character varying|255||YES|NO
+asp_1|i_name2|character varying|255||YES|NO
+asp_2|objid|integer||32|NO|NO
+asp_2|assoc|character varying|128||YES|NO
+asp_2|ordinal|integer||32|NO|NO
+asp_2|regionobjid|integer||32|YES|NO
+asp_2|maskid|integer||32|NO|NO
+asp_2|tstamp|character varying|20||YES|NO
+asp_2|i_date|character varying|255||YES|NO
+asp_2|i_description|character varying|255||YES|NO
+asp_2|i_number|character varying|255||YES|NO
+asp_3|objid|integer||32|NO|NO
+asp_3|assoc|character varying|128||YES|NO
+asp_3|ordinal|integer||32|NO|NO
+asp_3|regionobjid|integer||32|YES|NO
+asp_3|maskid|integer||32|NO|NO
+asp_3|tstamp|character varying|20||YES|NO
+asp_3|i_customer_name|character varying|255||YES|NO
+asp_3|i_customer_number|integer||32|YES|NO
+asp_4|objid|integer||32|NO|NO
+asp_4|assoc|character varying|128||YES|NO
+asp_4|ordinal|integer||32|NO|NO
+asp_4|regionobjid|integer||32|YES|NO
+asp_4|maskid|integer||32|NO|NO
+asp_4|tstamp|character varying|20||YES|NO
+asp_4|i_invoice_number|integer||32|YES|NO
+asp_4|i_status|character varying|255||YES|NO
+asp_4|i_total_amount|double precision||53|YES|NO
+asp_4|i_invoice_date|character varying|255||YES|NO
+asp_5|objid|integer||32|NO|NO
+asp_5|assoc|character varying|128||YES|NO
+asp_5|ordinal|integer||32|NO|NO
+asp_5|regionobjid|integer||32|YES|NO
+asp_5|maskid|integer||32|NO|NO
+asp_5|tstamp|character varying|20||YES|NO
+asp_5|i_article_amount|integer||32|YES|NO
+asp_5|i_article_no|character varying|255||YES|NO
+asp_5|i_article_description|character varying|255||YES|NO
+asp_5|i_article_description1|character varying|255||YES|NO
+asp_5|i_article_description2|character varying|255||YES|NO
+asp_5|i_article_no2|character varying|255||YES|NO
+asp_5|i_article_no1|character varying|255||YES|NO
+asp_5|i_article_amount1|character varying|255||YES|NO
+asp_5|i_article_amount2|character varying|255||YES|NO
+asp_6|objid|integer||32|NO|NO
+asp_6|assoc|character varying|128||YES|NO
+asp_6|ordinal|integer||32|NO|NO
+asp_6|regionobjid|integer||32|YES|NO
+asp_6|maskid|integer||32|NO|NO
+asp_6|tstamp|character varying|20||YES|NO
+asp_6|i_companyno|character varying|255||YES|NO
+asp_6|i_companyname|character varying|255||YES|NO
+aspectassoc|maskid|integer||32|NO|NO
+aspectassoc|name|character varying|128||YES|NO
+aspectassoc|translationkey|character varying|128||YES|NO
+aspectassoc|aspectid|integer||32|NO|NO
+aspectassoc|cardinality|integer||32|NO|NO
+aspectassoc|acl|character varying|4000||YES|NO
+aspectassoc|assocflags|integer||32|NO|NO
+aspectlines|aspectid|integer||32|YES|NO
+aspectlines|linetype|integer||32|YES|NO
+aspectlines|linekey|character varying|40||YES|NO
+aspectlines|lineflags|integer||32|YES|NO
+aspectlines|lineext|character varying|200||YES|NO
+aspectlines|linedefault|character varying|2000||YES|NO
+aspectlines|linenametrkey|character varying|255||YES|NO
+aspectlines|linecomment|character varying|400||YES|NO
+aspectlines|allowedrefmaskids|character varying|255||YES|NO
+aspectlines|dynkeywordreference|character varying|255||YES|NO
+aspectlines|subtype|character varying|255||YES|NO
+aspectlines|linecommenttrkey|character varying|400||YES|NO
+aspectlines|swlgroupid|character varying|128||YES|NO
+aspectlines|maxtextlength|integer||32|YES|NO
+aspects|id|integer||32|NO|YES
+aspects|name|character varying|255||YES|NO
+aspects|lockid|integer||32|YES|NO
+aspects|translationkey|character varying|255||YES|NO
+aspects|guid|character varying|40||YES|NO
+aspects|tstamp|character varying|20||YES|NO
+aspects|status|integer||32|NO|NO
+aspects|tstampsync|character varying|20||YES|NO
+aspects|packagename|character varying|255||YES|NO
+asphistory_0|objhistguid|character varying|40||YES|NO
+asphistory_0|objid|integer||32|NO|NO
+asphistory_0|assoc|character varying|128||YES|NO
+asphistory_0|ordinal|integer||32|NO|NO
+asphistory_0|regionobjid|integer||32|YES|NO
+asphistory_0|maskid|integer||32|NO|NO
+asphistory_0|tstamp|character varying|20||YES|NO
+asphistory_0|i_template_guid|text|||YES|NO
+asphistory_1|objhistguid|character varying|40||YES|NO
+asphistory_1|objid|integer||32|NO|NO
+asphistory_1|assoc|character varying|128||YES|NO
+asphistory_1|ordinal|integer||32|NO|NO
+asphistory_1|regionobjid|integer||32|YES|NO
+asphistory_1|maskid|integer||32|NO|NO
+asphistory_1|tstamp|character varying|20||YES|NO
+asphistory_1|i_adress|character varying|255||YES|NO
+asphistory_1|i_name2|character varying|255||YES|NO
+asphistory_2|objhistguid|character varying|40||YES|NO
+asphistory_2|objid|integer||32|NO|NO
+asphistory_2|assoc|character varying|128||YES|NO
+asphistory_2|ordinal|integer||32|NO|NO
+asphistory_2|regionobjid|integer||32|YES|NO
+asphistory_2|maskid|integer||32|NO|NO
+asphistory_2|tstamp|character varying|20||YES|NO
+asphistory_2|i_date|character varying|255||YES|NO
+asphistory_2|i_description|character varying|255||YES|NO
+asphistory_2|i_number|character varying|255||YES|NO
+asphistory_3|objhistguid|character varying|40||YES|NO
+asphistory_3|objid|integer||32|NO|NO
+asphistory_3|assoc|character varying|128||YES|NO
+asphistory_3|ordinal|integer||32|NO|NO
+asphistory_3|regionobjid|integer||32|YES|NO
+asphistory_3|maskid|integer||32|NO|NO
+asphistory_3|tstamp|character varying|20||YES|NO
+asphistory_3|i_customer_name|character varying|255||YES|NO
+asphistory_3|i_customer_number|integer||32|YES|NO
+asphistory_4|objhistguid|character varying|40||YES|NO
+asphistory_4|objid|integer||32|NO|NO
+asphistory_4|assoc|character varying|128||YES|NO
+asphistory_4|ordinal|integer||32|NO|NO
+asphistory_4|regionobjid|integer||32|YES|NO
+asphistory_4|maskid|integer||32|NO|NO
+asphistory_4|tstamp|character varying|20||YES|NO
+asphistory_4|i_invoice_number|integer||32|YES|NO
+asphistory_4|i_status|character varying|255||YES|NO
+asphistory_4|i_total_amount|double precision||53|YES|NO
+asphistory_4|i_invoice_date|character varying|255||YES|NO
+asphistory_5|objhistguid|character varying|40||YES|NO
+asphistory_5|objid|integer||32|NO|NO
+asphistory_5|assoc|character varying|128||YES|NO
+asphistory_5|ordinal|integer||32|NO|NO
+asphistory_5|regionobjid|integer||32|YES|NO
+asphistory_5|maskid|integer||32|NO|NO
+asphistory_5|tstamp|character varying|20||YES|NO
+asphistory_5|i_article_amount|integer||32|YES|NO
+asphistory_5|i_article_no|character varying|255||YES|NO
+asphistory_5|i_article_description|character varying|255||YES|NO
+asphistory_5|i_article_description1|character varying|255||YES|NO
+asphistory_5|i_article_description2|character varying|255||YES|NO
+asphistory_5|i_article_no2|character varying|255||YES|NO
+asphistory_5|i_article_no1|character varying|255||YES|NO
+asphistory_5|i_article_amount1|character varying|255||YES|NO
+asphistory_5|i_article_amount2|character varying|255||YES|NO
+asphistory_6|objhistguid|character varying|40||YES|NO
+asphistory_6|objid|integer||32|NO|NO
+asphistory_6|assoc|character varying|128||YES|NO
+asphistory_6|ordinal|integer||32|NO|NO
+asphistory_6|regionobjid|integer||32|YES|NO
+asphistory_6|maskid|integer||32|NO|NO
+asphistory_6|tstamp|character varying|20||YES|NO
+asphistory_6|i_companyno|character varying|255||YES|NO
+asphistory_6|i_companyname|character varying|255||YES|NO
+configurations|cfgid|bigint||64|NO|YES
+configurations|cfgpackage|character varying|255||YES|NO
+configurations|cfgcomponent|character varying|255||YES|NO
+configurations|cfgkey|character varying|1000||NO|NO
+configurations|cfglevel|integer||32|YES|NO
+configurations|cfggroup|character varying|255||YES|NO
+configurations|cfginstance|character varying|255||YES|NO
+configurations|cfgvalue|character varying|2000||YES|NO
+configurations|cfgvalueblob|bytea|||YES|NO
+configurations|cfgacl|character varying|4000||YES|NO
+configurations|cfgstatus|integer||32|YES|NO
+destman|dmguid|character varying|40||YES|NO
+destman|userid|integer||32|YES|NO
+destman|maskno|integer||32|YES|NO
+destman|usagecount|integer||32|YES|NO
+destman|utilisation|integer||32|YES|NO
+destman|lastusage|integer||32|YES|NO
+destman|path|character varying|250||YES|NO
+dochistory|objectid|integer||32|NO|YES
+dochistory|documentid|integer||32|NO|YES
+dochistory|userid|integer||32|NO|NO
+dochistory|createdate|integer||32|NO|NO
+dochistory|histid|integer||32|NO|NO
+dochistory|histcomment|character varying|255||YES|NO
+dochistory|histversion|character varying|16||YES|NO
+dochistory|docmd5|character varying|36||YES|NO
+dochistory|docguid|character varying|40||NO|NO
+dochistory|doctstamp|character varying|40||YES|NO
+dochistory|docflags|integer||32|NO|NO
+dochistory|docstatus|integer||32|NO|NO
+dochistory|docsignature|integer||32|NO|NO
+dochistory|deletedate|integer||32|NO|NO
+dochistory|nbofvalidsignatures|integer||32|YES|NO
+dochistory|doctype|integer||32|YES|NO
+dochistory|doctstampsync|character varying|20||YES|NO
+dochistory|language|character varying|20||YES|NO
+docmaskinherit|parentmaskid|integer||32|NO|NO
+docmaskinherit|childmaskid|integer||32|NO|NO
+docmasklinetemplate|mlineno|integer||32|YES|NO
+docmasklinetemplate|linetype|integer||32|YES|NO
+docmasklinetemplate|linebez|character varying|40||YES|NO
+docmasklinetemplate|linekey|character varying|40||YES|NO
+docmasklinetemplate|linelock|integer||32|YES|NO
+docmasklinetemplate|linemin|integer||32|YES|NO
+docmasklinetemplate|linemax|integer||32|YES|NO
+docmasklinetemplate|linelkey|integer||32|YES|NO
+docmasklinetemplate|lineflags|integer||32|YES|NO
+docmasklinetemplate|linecomment|character varying|400||YES|NO
+docmasklinetemplate|lineext|character varying|200||YES|NO
+docmasklinetemplate|lineacl|character varying|200||YES|NO
+docmasklinetemplate|linedefault|character varying|200||YES|NO
+docmasklinetemplate|linescript|character varying|100||YES|NO
+docmasklinetemplate|linebeztrkey|character varying|255||YES|NO
+docmasklinetemplate|linecommenttrkey|character varying|255||YES|NO
+docmasklinetemplate|linetstamp|character varying|20||YES|NO
+docmasklinetemplate|linetstampsync|character varying|20||YES|NO
+docmasklinetemplate|validateexpression|character varying|255||YES|NO
+docmasklinetemplate|allowedrefmaskids|character varying|255||YES|NO
+docmasklinetemplate|lineguid|character varying|40||YES|NO
+docmasks|maskno|integer||32|NO|YES
+docmasks|maskname|character varying|255||YES|NO
+docmasks|maskindex|character varying|255||YES|NO
+docmasks|maskbarcode|character varying|255||YES|NO
+docmasks|maskkey|integer||32|YES|NO
+docmasks|maskdpath|integer||32|YES|NO
+docmasks|maskdkind|integer||32|YES|NO
+docmasks|maskdkey|integer||32|YES|NO
+docmasks|masklock|integer||32|YES|NO
+docmasks|maskflags|integer||32|YES|NO
+docmasks|maskflowid|integer||32|YES|NO
+docmasks|maskflowid2|integer||32|NO|NO
+docmasks|maskdacl|character varying|242||YES|NO
+docmasks|lifetime|character varying|16||YES|NO
+docmasks|masktext|character varying|255||YES|NO
+docmasks|masktstamp|character varying|20||YES|NO
+docmasks|maskposinfo|character varying|2048||YES|NO
+docmasks|maskposinfo2|character varying|2048||YES|NO
+docmasks|maskposinfo3|character varying|2048||YES|NO
+docmasks|maskguid|character varying|40||YES|NO
+docmasks|maskstatus|integer||32|NO|NO
+docmasks|maskacl|character varying|200||YES|NO
+docmasks|masktstampsync|character varying|20||YES|NO
+docmasks|masknametrkey|character varying|255||YES|NO
+docmasks|masktexttrkey|character varying|255||YES|NO
+docmasks|linebeztrkey|character varying|255||YES|NO
+docmasks|linecommenttrkey|character varying|255||YES|NO
+docmasks|dataorg|integer||32|YES|NO
+docmasks|sordtype|integer||32|YES|NO
+docmasks|maskidsforchildentries|character varying|1000||YES|NO
+docmasks|encryptionset|integer||32|YES|NO
+docmasks|packagename|character varying|255||YES|NO
+docmasks|deletiondeadline|character varying|16||YES|NO
+documentfeed|feedguid|character varying|40||NO|NO
+documentfeed|createdateiso|character varying|14||NO|NO
+documentfeed|feedtstamp|character varying|20||NO|NO
+documentfeed|objguid|character varying|40||NO|NO
+documentfeed|feedtstampsync|character varying|20||YES|NO
+elocolor|colorno|integer||32|NO|YES
+elocolor|colorname|character varying|255||YES|NO
+elocolor|colorid|integer||32|YES|NO
+elocolor|colortstamp|character varying|20||YES|NO
+elocolor|colortstampsync|character varying|20||YES|NO
+elocolor|colorguid|character varying|40||YES|NO
+elocolor|colorstatus|integer||32|NO|NO
+elocolor|colorflags|integer||32|NO|NO
+elocolor|packagename|character varying|255||YES|NO
+elocolor|trankey|character varying|255||YES|NO
+elodmbackupprofile|profileid|integer||32|NO|YES
+elodmbackupprofile|profilename|character varying|128||NO|NO
+elodmbackupprofile|pathid|integer||32|NO|NO
+elodmbackupprofile|backupslot|integer||32|NO|NO
+elodmbackupprofile|buildesw|character varying|5||NO|NO
+elodmbackupprofile|docselstmt|character varying|999||YES|NO
+elodmbackupprofile|rowlimit|integer||32|NO|NO
+elodmbackupprofile|retention|integer||32|NO|NO
+elodmcrypt|cryptno|integer||32|NO|YES
+elodmcrypt|cryptname|character varying|64||YES|NO
+elodmcrypt|cryptpwd|character varying|256||YES|NO
+elodmcrypt|cryptversion|character varying|64||YES|NO
+elodmcrypt|cryptuser|character varying|512||YES|NO
+elodmcrypt|cryptsystem|character varying|512||YES|NO
+elodmcrypt|ivuser|character varying|256||YES|NO
+elodmcrypt|ivsystem|character varying|256||YES|NO
+elodmcrypt|systemuserid|integer||32|NO|NO
+elodmdocpath|docid|integer||32|NO|YES
+elodmdocpath|pathindex|integer||32|NO|YES
+elodmdocpath|pathid|integer||32|NO|NO
+elodmdocs|docid|integer||32|NO|YES
+elodmdocs|docguid|character varying|40||YES|NO
+elodmdocs|docsize|bigint||64|NO|NO
+elodmdocs|docsizeorig|bigint||64|NO|NO
+elodmdocs|previewsize|bigint||64|NO|NO
+elodmdocs|md5|character varying|40||YES|NO
+elodmdocs|pathid|integer||32|NO|NO
+elodmdocs|pathid2|integer||32|NO|NO
+elodmdocs|pathid3|integer||32|NO|NO
+elodmdocs|pathid4|integer||32|NO|NO
+elodmdocs|pathid5|integer||32|NO|NO
+elodmdocs|createdate|character varying|16||YES|NO
+elodmdocs|lastaccess|character varying|16||YES|NO
+elodmdocs|lastupdate|character varying|16||YES|NO
+elodmdocs|owner|integer||32|NO|NO
+elodmdocs|ext|character varying|256||YES|NO
+elodmdocs|extorig|character varying|256||YES|NO
+elodmdocs|previewext|character varying|256||YES|NO
+elodmdocs|cryptno|integer||32|NO|NO
+elodmdocs|fclip|character varying|128||YES|NO
+elodmdocs|activatorid|character varying|32||YES|NO
+elodmdocs|relfilepath|character varying|255||YES|NO
+elodmdocs|ftsize|bigint||64|NO|NO
+elodmdocs|fttstamp|character varying|20||YES|NO
+elodmdocs|extrapathid|integer||32|NO|NO
+elodmdocs|ftext|character varying|256||YES|NO
+elodmdocs|previewextorig|character varying|256||YES|NO
+elodmdocs|deldate|character varying|16||YES|NO
+elodmopt|instancename|character varying|100||NO|YES
+elodmopt|optno|integer||32|NO|YES
+elodmopt|optval|character varying|250||YES|NO
+elodmopt|remark|character varying|80||YES|NO
+elodmpath|pathid|integer||32|NO|YES
+elodmpath|pathname|character varying|16||YES|NO
+elodmpath|scatterinfo|integer||32|NO|NO
+elodmpath|createdate|character varying|16||YES|NO
+elodmpath|lastupdate|character varying|16||YES|NO
+elodmpath|pathflags|integer||32|NO|NO
+elodmpath|fullpath|character varying|255||YES|NO
+elodmpath|previewpath|character varying|255||YES|NO
+elodmpath|ftpath|character varying|255||YES|NO
+elodmpath|cloudtype|integer||32|YES|NO
+elodmpath|endpoint|character varying|255||YES|NO
+elodmpath|accesskey|character varying|255||YES|NO
+elodmpath|secretkey|character varying|255||YES|NO
+elodmpath|bucket|character varying|255||YES|NO
+elodmpath|region|character varying|255||YES|NO
+elodmpath|encryptionkey|character varying|512||YES|NO
+elodmpath|retentionmode|integer||32|YES|NO
+elodmpreview|docid|integer||32|NO|NO
+elodmpreview|status|integer||32|NO|NO
+elodmpreview|isodate|character varying|16||NO|NO
+elodmpreview|docpath|character varying|290||NO|NO
+eloftopt|optid|integer||32|YES|NO
+eloftopt|optval|character varying|255||YES|NO
+eloftopt|remark|character varying|80||YES|NO
+eloftrel|wordid|bigint||64|NO|NO
+eloftrel|docid|integer||32|NO|NO
+eloftstop|stopword|character varying|64||NO|NO
+eloftswords|wordid|bigint||64|YES|NO
+eloftswords|word|character varying|64||NO|NO
+eloftwords|wordid|bigint||64|YES|NO
+eloftwords|word|character varying|64||NO|NO
+eloixopt|ixid|character varying|255||NO|YES
+eloixopt|optname|character varying|255||NO|YES
+eloixopt|optval|character varying|255||YES|NO
+feedaction|actionguid|character varying|40||NO|NO
+feedaction|createdateiso|character varying|14||NO|NO
+feedaction|updatedateiso|character varying|14||YES|NO
+feedaction|actiontstamp|character varying|20||NO|NO
+feedaction|actiontstampsync|character varying|20||YES|NO
+feedaction|actiontype|integer||32|YES|NO
+feedaction|feedguid|character varying|40||NO|NO
+feedaction|parentguid|character varying|40||YES|NO
+feedaction|userguid|character varying|40||YES|NO
+feedaction|changecounter|integer||32|YES|NO
+feedaction|actiontext|character varying|2000||YES|NO
+feedaction|docversionguid|character varying|40||YES|NO
+feedaction|workflowguid|character varying|40||YES|NO
+feedaction|actionacl|character varying|4000||NO|NO
+feedactionhist|actionguid|character varying|40||NO|NO
+feedactionhist|createdateiso|character varying|14||NO|NO
+feedactionhist|actiontext|character varying|2000||YES|NO
+feedactionhist|actionhisttstampsync|character varying|20||YES|NO
+fulltextctrl8|ftobjid|integer||32|YES|NO
+fulltextctrl8|ftobjguid|text|||YES|NO
+fulltextctrl8|fttstamp|character varying|20||YES|NO
+fulltextctrl8|ftotype|integer||32|YES|NO
+fulltextctrl9|ftobjid|integer||32|YES|NO
+fulltextctrl9|ftobjguid|text|||YES|NO
+fulltextctrl9|fttstamp|character varying|20||YES|NO
+fulltextctrl9|ftotype|integer||32|YES|NO
+haftnotiz|parentid|integer||32|NO|NO
+haftnotiz|pageno|integer||32|NO|NO
+haftnotiz|xpos|integer||32|YES|NO
+haftnotiz|ypos|integer||32|YES|NO
+haftnotiz|userid|integer||32|YES|NO
+haftnotiz|notetype|integer||32|YES|NO
+haftnotiz|hlock|integer||32|YES|NO
+haftnotiz|noteid|integer||32|NO|NO
+haftnotiz|createdate|integer||32|YES|NO
+haftnotiz|pidesc|text|||YES|NO
+haftnotiz|noteguid|character varying|40||NO|NO
+haftnotiz|notetstamp|character varying|20||YES|NO
+haftnotiz|notestatus|integer||32|YES|NO
+haftnotiz|width|integer||32|YES|NO
+haftnotiz|height|integer||32|YES|NO
+haftnotiz|color|integer||32|YES|NO
+haftnotiz|noteacl|character varying|4000||YES|NO
+haftnotiz|deletedate|integer||32|NO|NO
+haftnotiz|notetstampsync|character varying|20||YES|NO
+hashtagrelations|hashtagguid|character varying|40||NO|NO
+hashtagrelations|actionguid|character varying|40||NO|NO
+hashtagrelations|tstamp|character varying|20||NO|NO
+hashtagrelations|tstampsync|character varying|20||YES|NO
+hashtagrelations|status|integer||32|NO|NO
+hashtags|hstgguid|character varying|40||NO|NO
+hashtags|hstgname|character varying|40||NO|NO
+hashtags|createdateiso|character varying|14||NO|NO
+hashtags|lastusediso|character varying|14||NO|NO
+hashtags|tstamp|character varying|20||NO|NO
+hashtags|tstampsync|character varying|20||YES|NO
+hashtags|status|integer||32|NO|NO
+healthcheck|ixid|integer||32|NO|NO
+healthcheck|timestamp|character varying|20||YES|NO
+healthcheck|hour|integer||32|NO|NO
+healthcheck|hcisblob|bytea|||YES|NO
+komfloorplan|planname|character varying|20||YES|NO
+komfloorplan|updatecounter|integer||32|YES|NO
+komfloorplan|planowner|integer||32|YES|NO
+komfloorplan|officelist|character varying|2000||YES|NO
+kommovement|reqid|integer||32|YES|NO
+kommovement|reqstatus|integer||32|YES|NO
+kommovement|objid|integer||32|YES|NO
+kommovement|reqdate|integer||32|YES|NO
+kommovement|duedate|integer||32|YES|NO
+kommovement|returndate|integer||32|YES|NO
+kommovement|owner|integer||32|YES|NO
+kommovement|sender|integer||32|YES|NO
+kommovement|reqprio|integer||32|YES|NO
+komrequest|reqid|integer||32|NO|NO
+komrequest|reqstatus|integer||32|YES|NO
+komrequest|objid|integer||32|YES|NO
+komrequest|reqdate|integer||32|YES|NO
+komrequest|duedate|integer||32|YES|NO
+komrequest|returndate|integer||32|YES|NO
+komrequest|owner|integer||32|YES|NO
+komrequest|sender|integer||32|YES|NO
+komrequest|reqprio|integer||32|YES|NO
+map_formdata|mapid|character varying|255||YES|NO
+map_formdata|mapkey|character varying|255||YES|NO
+map_formdata|mapvalue|character varying|255||YES|NO
+map_formdata|mapblob|bytea|||YES|NO
+map_formdata|mapcontenttype|character varying|255||YES|NO
+map_objekte|mapid|character varying|255||YES|NO
+map_objekte|mapkey|character varying|255||YES|NO
+map_objekte|mapvalue|character varying|255||YES|NO
+map_objekte|mapblob|bytea|||YES|NO
+map_objekte|mapcontenttype|character varying|255||YES|NO
+map_wfactive|mapid|character varying|255||YES|NO
+map_wfactive|mapkey|character varying|255||YES|NO
+map_wfactive|mapvalue|character varying|255||YES|NO
+map_wfactive|mapblob|bytea|||YES|NO
+map_wfactive|mapcontenttype|character varying|255||YES|NO
+map_wffinished|mapid|character varying|255||YES|NO
+map_wffinished|mapkey|character varying|255||YES|NO
+map_wffinished|mapvalue|character varying|255||YES|NO
+map_wffinished|mapblob|bytea|||YES|NO
+map_wffinished|mapcontenttype|character varying|255||YES|NO
+mapdomain|mapdname|character varying|255||YES|NO
+mapdomain|mapdflags|integer||32|YES|NO
+maph_formdata|maphistguid|character varying|40||YES|NO
+maph_formdata|mapkey|character varying|255||YES|NO
+maph_formdata|mapvalue|character varying|255||YES|NO
+maph_formdata|mapblob|bytea|||YES|NO
+maph_formdata|mapcontenttype|character varying|255||YES|NO
+maph_objekte|maphistguid|character varying|40||YES|NO
+maph_objekte|mapkey|character varying|255||YES|NO
+maph_objekte|mapvalue|character varying|255||YES|NO
+maph_objekte|mapblob|bytea|||YES|NO
+maph_objekte|mapcontenttype|character varying|255||YES|NO
+maph_wfactive|maphistguid|character varying|40||YES|NO
+maph_wfactive|mapkey|character varying|255||YES|NO
+maph_wfactive|mapvalue|character varying|255||YES|NO
+maph_wfactive|mapblob|bytea|||YES|NO
+maph_wfactive|mapcontenttype|character varying|255||YES|NO
+maph_wffinished|maphistguid|character varying|40||YES|NO
+maph_wffinished|mapkey|character varying|255||YES|NO
+maph_wffinished|mapvalue|character varying|255||YES|NO
+maph_wffinished|mapblob|bytea|||YES|NO
+maph_wffinished|mapcontenttype|character varying|255||YES|NO
+maphead_formdata|mapid|character varying|255||YES|NO
+maphead_formdata|mapguid|character varying|40||YES|NO
+maphead_formdata|mapobjid|integer||32|YES|NO
+maphead_formdata|maplockid|integer||32|YES|NO
+maphead_formdata|maptstamp|character varying|20||YES|NO
+maphead_formdata|maptstampsync|character varying|20||YES|NO
+maphead_objekte|mapid|character varying|255||YES|NO
+maphead_objekte|mapguid|character varying|40||YES|NO
+maphead_objekte|mapobjid|integer||32|YES|NO
+maphead_objekte|maplockid|integer||32|YES|NO
+maphead_objekte|maptstamp|character varying|20||YES|NO
+maphead_objekte|maptstampsync|character varying|20||YES|NO
+maphead_wfactive|mapid|character varying|255||YES|NO
+maphead_wfactive|mapguid|character varying|40||YES|NO
+maphead_wfactive|mapobjid|integer||32|YES|NO
+maphead_wfactive|maplockid|integer||32|YES|NO
+maphead_wfactive|maptstamp|character varying|20||YES|NO
+maphead_wfactive|maptstampsync|character varying|20||YES|NO
+maphead_wffinished|mapid|character varying|255||YES|NO
+maphead_wffinished|mapguid|character varying|40||YES|NO
+maphead_wffinished|mapobjid|integer||32|YES|NO
+maphead_wffinished|maplockid|integer||32|YES|NO
+maphead_wffinished|maptstamp|character varying|20||YES|NO
+maphead_wffinished|maptstampsync|character varying|20||YES|NO
+maphhead_formdata|maphistguid|character varying|40||YES|NO
+maphhead_formdata|maphistts|character varying|25||YES|NO
+maphhead_formdata|maphiststatus|integer||32|YES|NO
+maphhead_formdata|mapguid|character varying|40||YES|NO
+maphhead_formdata|mapuser|integer||32|YES|NO
+maphhead_formdata|mapusername|character varying|64||YES|NO
+maphhead_formdata|maphistsrc|integer||32|YES|NO
+maphhead_formdata|maphistlocts|character varying|25||YES|NO
+maphhead_formdata|maphistwks|character varying|255||YES|NO
+maphhead_formdata|maphisttssync|character varying|20||YES|NO
+maphhead_objekte|maphistguid|character varying|40||YES|NO
+maphhead_objekte|maphistts|character varying|25||YES|NO
+maphhead_objekte|maphiststatus|integer||32|YES|NO
+maphhead_objekte|mapguid|character varying|40||YES|NO
+maphhead_objekte|mapuser|integer||32|YES|NO
+maphhead_objekte|mapusername|character varying|64||YES|NO
+maphhead_objekte|maphistsrc|integer||32|YES|NO
+maphhead_objekte|maphistlocts|character varying|25||YES|NO
+maphhead_objekte|maphistwks|character varying|255||YES|NO
+maphhead_objekte|maphisttssync|character varying|20||YES|NO
+maphhead_wfactive|maphistguid|character varying|40||YES|NO
+maphhead_wfactive|maphistts|character varying|25||YES|NO
+maphhead_wfactive|maphiststatus|integer||32|YES|NO
+maphhead_wfactive|mapguid|character varying|40||YES|NO
+maphhead_wfactive|mapuser|integer||32|YES|NO
+maphhead_wfactive|mapusername|character varying|64||YES|NO
+maphhead_wfactive|maphistsrc|integer||32|YES|NO
+maphhead_wfactive|maphistlocts|character varying|25||YES|NO
+maphhead_wfactive|maphistwks|character varying|255||YES|NO
+maphhead_wfactive|maphisttssync|character varying|20||YES|NO
+maphhead_wffinished|maphistguid|character varying|40||YES|NO
+maphhead_wffinished|maphistts|character varying|25||YES|NO
+maphhead_wffinished|maphiststatus|integer||32|YES|NO
+maphhead_wffinished|mapguid|character varying|40||YES|NO
+maphhead_wffinished|mapuser|integer||32|YES|NO
+maphhead_wffinished|mapusername|character varying|64||YES|NO
+maphhead_wffinished|maphistsrc|integer||32|YES|NO
+maphhead_wffinished|maphistlocts|character varying|25||YES|NO
+maphhead_wffinished|maphistwks|character varying|255||YES|NO
+maphhead_wffinished|maphisttssync|character varying|20||YES|NO
+masklines|maskno|integer||32|YES|NO
+masklines|mlineno|integer||32|YES|NO
+masklines|linetype|integer||32|YES|NO
+masklines|linebez|character varying|40||YES|NO
+masklines|linekey|character varying|40||YES|NO
+masklines|linemin|integer||32|YES|NO
+masklines|linemax|integer||32|YES|NO
+masklines|linelkey|integer||32|YES|NO
+masklines|lineflags|integer||32|YES|NO
+masklines|linecomment|character varying|400||YES|NO
+masklines|lineext|character varying|200||YES|NO
+masklines|lineacl|character varying|200||YES|NO
+masklines|linedefault|character varying|200||YES|NO
+masklines|linetab|integer||32|NO|NO
+masklines|linescript|character varying|100||YES|NO
+masklines|linebeztrkey|character varying|255||YES|NO
+masklines|linecommenttrkey|character varying|255||YES|NO
+masklines|validateexpression|character varying|255||YES|NO
+masklines|allowedrefmaskids|character varying|255||YES|NO
+notification|userguid|character varying|40||NO|NO
+notification|watchguid|character varying|40||NO|NO
+notification|createdateiso|character varying|14||NO|NO
+notification|prio|integer||32|NO|NO
+notification|what|integer||32|NO|NO
+objekte|objtype|integer||32|NO|NO
+objekte|objid|integer||32|NO|YES
+objekte|objflags|integer||32|YES|NO
+objekte|objshort|character varying|128||YES|NO
+objekte|objsreg|character varying|16||YES|NO
+objekte|objidate|integer||32|YES|NO
+objekte|objxdate|integer||32|YES|NO
+objekte|objkey|integer||32|YES|NO
+objekte|objkind|integer||32|YES|NO
+objekte|objpath|integer||32|YES|NO
+objekte|objinfo|integer||32|YES|NO
+objekte|objmask|integer||32|YES|NO
+objekte|objdoc|integer||32|YES|NO
+objekte|objattach|integer||32|YES|NO
+objekte|objakey1|integer||32|YES|NO
+objekte|objakey2|integer||32|YES|NO
+objekte|objlkey1|integer||32|YES|NO
+objekte|objlkey2|integer||32|YES|NO
+objekte|objuser|integer||32|YES|NO
+objekte|objlock|integer||32|YES|NO
+objekte|objparent|integer||32|YES|NO
+objekte|objstatus|integer||32|YES|NO
+objekte|objhistcount|integer||32|YES|NO
+objekte|objdesc|text|||YES|NO
+objekte|objchildcount|integer||32|YES|NO
+objekte|objdeldate|integer||32|YES|NO
+objekte|objsyncdateloc|integer||32|YES|NO
+objekte|objsyncdaterem|integer||32|YES|NO
+objekte|objvtrep|integer||32|YES|NO
+objekte|objacl|character varying|4000||YES|NO
+objekte|replset|character varying|22||YES|NO
+objekte|objguid|character varying|40||NO|NO
+objekte|objtstamp|character varying|20||YES|NO
+objekte|objtstampsync|character varying|20||YES|NO
+objekte|deletedate|integer||32|NO|NO
+objekte|doclock|integer||32|YES|NO
+objekte|objtstampacl|character varying|20||YES|NO
+objekte|objtstampaclsync|character varying|20||YES|NO
+objekte|deleteuser|integer||32|YES|NO
+objekte|encryptionset|integer||32|YES|NO
+objekte|spaceguid|character varying|40||YES|NO
+objekte|objtstamplocal|character varying|20||YES|NO
+objekte|packagename|character varying|255||YES|NO
+objekte|regionid|integer||32|YES|NO
+objekte|objrefid|character varying|255||YES|NO
+objekte|objexternalid|character varying|255||YES|NO
+objhistkeys|objhistguid|character varying|40||YES|NO
+objhistkeys|okeyno|integer||32|YES|NO
+objhistkeys|okeyname|character varying|40||YES|NO
+objhistkeys|okeydata|character varying|255||YES|NO
+objhistkeys|objdesc|text|||YES|NO
+objhistory|objhistguid|character varying|40||YES|NO
+objhistory|objhistts|character varying|25||YES|NO
+objhistory|objhisttssync|character varying|20||YES|NO
+objhistory|objhiststatus|integer||32|YES|NO
+objhistory|objguid|character varying|40||YES|NO
+objhistory|objuser|integer||32|YES|NO
+objhistory|username|character varying|250||YES|NO
+objhistory|objhistsrc|integer||32|YES|NO
+objhistory|objhistlocts|character varying|25||YES|NO
+objhistory|objhistwks|character varying|250||YES|NO
+objkeys|parentid|integer||32|NO|YES
+objkeys|okeyno|integer||32|NO|YES
+objkeys|okeyname|character varying|40||YES|NO
+objkeys|okeydata|character varying|255||YES|NO
+objkeys|okeyudata|character varying|255||YES|NO
+objkeys|okeydouble|double precision||53|NO|NO
+objlinks|objguidparent|character varying|40||NO|NO
+objlinks|objguidtarget|character varying|40||NO|NO
+objlinks|linkguid|character varying|40||NO|NO
+objlinks|linktstamp|character varying|20||NO|NO
+objlinks|linktstampsync|character varying|20||YES|NO
+objlinks|linkflags|integer||32|NO|NO
+objreplsetcombis|combiid|bytea|||NO|NO
+objreplsetcombis|dw|bytea|||NO|NO
+objreplsets|objid|integer||32|NO|NO
+objreplsets|combiid|bytea|||NO|NO
+objreplsets|combiidsynced|bytea|||YES|NO
+objreplsets|tstamp|character varying|20||YES|NO
+objreplsets|tstampsync|character varying|20||YES|NO
+objspaces|objid|integer||32|NO|NO
+objspaces|spaceguid|character varying|40||YES|NO
+package|pkguid|character varying|40||NO|YES
+package|pkname|character varying|255||YES|NO
+package|pkdesc|text|||YES|NO
+package|icon|bytea|||YES|NO
+package|pktstamp|character varying|20||NO|NO
+package|lockid|integer||32|YES|NO
+package|contenttype|character varying|255||YES|NO
+package|maintainer|character varying|255||YES|NO
+package|namespace|character varying|40||YES|NO
+packagelevel|guid|character varying|40||NO|YES
+packagelevel|pkguid|character varying|40||NO|NO
+packagelevel|pkglevel|integer||32|YES|NO
+packagelevel|name|character varying|255||YES|NO
+physdel|pdguid|character varying|40||YES|NO
+physdel|pdtype|integer||32|YES|NO
+physdel|pdtstamp|character varying|20||YES|NO
+physdel|pdtstampsync|character varying|20||YES|NO
+profileopts|userid|integer||32|NO|YES
+profileopts|optkey|character varying|255||NO|YES
+profileopts|optvalue|character varying|255||YES|NO
+publicdownloads|guid|character varying|40||NO|NO
+publicdownloads|tstamp|character varying|20||NO|NO
+publicdownloads|expiration|character varying|16||NO|NO
+publicdownloads|remaining|integer||32|NO|NO
+publicdownloads|userid|integer||32|NO|NO
+publicdownloads|docid|integer||32|NO|NO
+publicdownloads|objid|integer||32|NO|NO
+publicdownloads|fname|character varying|255||NO|NO
+publicdownloads|acode|character varying|10||NO|NO
+refpaths2|id1|integer||32|YES|NO
+refpaths2|guid1|character varying|40||YES|NO
+refpaths2|name1|character varying|128||YES|NO
+refpaths2|acl1|character varying|4000||YES|NO
+refpaths2|status1|integer||32|YES|NO
+refpaths2|id2|integer||32|YES|NO
+refpaths2|guid2|character varying|40||YES|NO
+refpaths2|name2|character varying|128||YES|NO
+refpaths2|acl2|character varying|4000||YES|NO
+refpaths2|status2|integer||32|YES|NO
+refpaths2|id3|integer||32|YES|NO
+refpaths2|guid3|character varying|40||YES|NO
+refpaths2|name3|character varying|128||YES|NO
+refpaths2|acl3|character varying|4000||YES|NO
+refpaths2|status3|integer||32|YES|NO
+refpaths2|id4|integer||32|YES|NO
+refpaths2|guid4|character varying|40||YES|NO
+refpaths2|name4|character varying|128||YES|NO
+refpaths2|acl4|character varying|4000||YES|NO
+refpaths2|status4|integer||32|YES|NO
+refpaths2|id5|integer||32|YES|NO
+refpaths2|guid5|character varying|40||YES|NO
+refpaths2|name5|character varying|128||YES|NO
+refpaths2|acl5|character varying|4000||YES|NO
+refpaths2|status5|integer||32|YES|NO
+refpaths2|id6|integer||32|YES|NO
+refpaths2|guid6|character varying|40||YES|NO
+refpaths2|name6|character varying|128||YES|NO
+refpaths2|acl6|character varying|4000||YES|NO
+refpaths2|status6|integer||32|YES|NO
+refpaths2|id7|integer||32|YES|NO
+refpaths2|guid7|character varying|40||YES|NO
+refpaths2|name7|character varying|128||YES|NO
+refpaths2|acl7|character varying|4000||YES|NO
+refpaths2|status7|integer||32|YES|NO
+refpaths2|id8|integer||32|YES|NO
+refpaths2|guid8|character varying|40||YES|NO
+refpaths2|name8|character varying|128||YES|NO
+refpaths2|acl8|character varying|4000||YES|NO
+refpaths2|status8|integer||32|YES|NO
+refpaths2|id9|integer||32|YES|NO
+refpaths2|guid9|character varying|40||YES|NO
+refpaths2|name9|character varying|128||YES|NO
+refpaths2|acl9|character varying|4000||YES|NO
+refpaths2|status9|integer||32|YES|NO
+refpaths2|id10|integer||32|YES|NO
+refpaths2|guid10|character varying|40||YES|NO
+refpaths2|name10|character varying|128||YES|NO
+refpaths2|acl10|character varying|4000||YES|NO
+refpaths2|status10|integer||32|YES|NO
+relation|parentid|integer||32|NO|YES
+relation|objectid|integer||32|NO|YES
+relation|ordinal|integer||32|YES|NO
+relation|relstatus|integer||32|YES|NO
+relation|reltstamp|character varying|20||YES|NO
+relation|reltstampsync|character varying|20||YES|NO
+relation|relguid|character varying|40||YES|NO
+relation|reldeletedate|integer||32|NO|NO
+relation|relmain|integer||32|YES|NO
+replihist|rhrowid|integer||32|YES|NO
+replihist|rhtsdate|character varying|20||YES|NO
+replihist|rhimex|integer||32|YES|NO
+replihist|rhsucc|integer||32|YES|NO
+replihist|rharcguid|character varying|40||YES|NO
+replihist|rharcshort|character varying|64||YES|NO
+replihist|rharcdesc|character varying|128||YES|NO
+replihist|rhtsbegin|character varying|20||YES|NO
+replihist|rhtsend|character varying|20||YES|NO
+replihist|rhpriolocal|integer||32|NO|NO
+replihist|rhprioremote|integer||32|NO|NO
+replsetnames|rsid|integer||32|YES|NO
+replsetnames|rsimage|integer||32|YES|NO
+replsetnames|rsname|character varying|80||YES|NO
+replsetnames|rsdesc|character varying|255||YES|NO
+replsetnames|rststamp|character varying|20||YES|NO
+replsetnames|rststampsync|character varying|20||YES|NO
+replsetnames|rsmobile|integer||32|YES|NO
+replsetnames|rsprio|integer||32|YES|NO
+report|actionno|integer||32|NO|NO
+report|userid|integer||32|NO|NO
+report|acttime|integer||32|NO|YES
+report|docid|integer||32|NO|NO
+report|extra1|integer||32|NO|NO
+report|extra2|integer||32|NO|NO
+report|sessionno|integer||32|NO|NO
+report|addtext|character varying|250||YES|NO
+report|reportid|bigint||64|NO|YES
+report|extra3|bytea|||YES|NO
+serverstat|actionid|integer||32|YES|NO
+serverstat|subkey|integer||32|YES|NO
+serverstat|action|character varying|255||YES|NO
+shobjkeys|parentid|integer||32|YES|NO
+shobjkeys|okeyno|integer||32|YES|NO
+shobjkeys|okeyname|character varying|40||YES|NO
+shobjkeys|okeydata|character varying|255||YES|NO
+shobjkeys3|parentid|integer||32|YES|NO
+shobjkeys3|okeyno|integer||32|YES|NO
+shobjkeys3|okeyname|character varying|40||YES|NO
+shobjkeys3|shokeydata|character varying|||YES|NO
+sol_accounting_costcenter|company_code|character varying|20||NO|YES
+sol_accounting_costcenter|no|character varying|20||NO|YES
+sol_accounting_costcenter|name|character varying|100||NO|NO
+sol_accounting_costobject|company_code|character varying|20||NO|YES
+sol_accounting_costobject|no|character varying|20||NO|YES
+sol_accounting_costobject|name|character varying|100||NO|NO
+sol_accounting_gl_account|company_code|character varying|20||NO|YES
+sol_accounting_gl_account|no|character varying|20||NO|YES
+sol_accounting_gl_account|name|character varying|100||NO|NO
+sol_business_area|company_code|character varying|20||NO|YES
+sol_business_area|code|character varying|20||NO|YES
+sol_business_area|name|character varying|100||NO|NO
+sol_common_fx|currency_code|character varying|20||NO|YES
+sol_common_fx|currency_exchange_rate|character varying|10||NO|NO
+sol_common_fx|currency_symbol|character varying|10||YES|NO
+sol_common_fx|currency_description|character varying|50||YES|NO
+sol_common_fx|time|character varying|14||NO|NO
+sol_common_fx_history|currency_code|character varying|20||NO|YES
+sol_common_fx_history|currency_exchange_rate|character varying|10||NO|NO
+sol_common_fx_history|time|character varying|14||NO|YES
+sol_common_fx_history|base_currency_code|character varying|20||NO|NO
+sol_company|code|character varying|20||NO|YES
+sol_company|name|character varying|150||YES|NO
+sol_company|street|character varying|150||YES|NO
+sol_company|zipcode|character varying|20||YES|NO
+sol_company|city|character varying|50||YES|NO
+sol_company|country_code|character varying|50||YES|NO
+sol_company|gln|character varying|15||YES|NO
+sol_company|standard_currency_code|character varying|10||YES|NO
+sol_inbox_register|pos|character varying|50||NO|YES
+sol_inbox_register|main_register|character varying|50||YES|NO
+sol_inbox_register|register|character varying|50||YES|NO
+sol_inbox_register|doctype_name|character varying|100||YES|NO
+sol_inbox_register|doctype_id|character varying|10||YES|NO
+sol_inbox_register|workflow|character varying|50||YES|NO
+sol_internal_order|company_code|character varying|20||NO|YES
+sol_internal_order|no|character varying|20||NO|YES
+sol_internal_order|name|character varying|100||NO|NO
+sol_invoice_item|company_code|character varying|20||NO|YES
+sol_invoice_item|no|character varying|20||NO|YES
+sol_invoice_item|description|character varying|150||NO|NO
+sol_invoice_item|unit_name|character varying|50||YES|NO
+sol_invoice_item|unit_price|numeric||18|YES|NO
+sol_invoice_item|cost_center_no|character varying|50||YES|NO
+sol_invoice_item|cost_object_no|character varying|50||YES|NO
+sol_invoice_item|gl_account_no|character varying|50||YES|NO
+sol_invoice_item|vendor_no|character varying|50||YES|NO
+sol_invoice_po_line|company_code|character varying|20||NO|YES
+sol_invoice_po_line|vendor_no|character varying|20||NO|YES
+sol_invoice_po_line|purchase_order_no|character varying|20||NO|YES
+sol_invoice_po_line|line_no|character varying|20||NO|YES
+sol_invoice_po_line|item_no|character varying|20||YES|NO
+sol_invoice_po_line|item_description|character varying|150||YES|NO
+sol_invoice_po_line|cost_center_no|character varying|20||YES|NO
+sol_invoice_po_line|cost_object_no|character varying|20||YES|NO
+sol_invoice_po_line|gl_account_no|character varying|20||YES|NO
+sol_invoice_po_line|quantity|integer||32|YES|NO
+sol_invoice_po_line|quantity_unit|character varying|5||YES|NO
+sol_invoice_po_line|unit_price|numeric||18|YES|NO
+sol_invoice_po_line|discount|numeric||18|YES|NO
+sol_invoice_po_line|line_amount|numeric||18|YES|NO
+sol_invoice_po_line|currency_code|character varying|5||YES|NO
+sol_invoice_po_line|delivery_note_no|character varying|10||YES|NO
+sol_invoice_po_line|delivery_note_date|date|||YES|NO
+sol_invoice_po_line|received|integer||32|NO|NO
+sol_profit_center|company_code|character varying|20||NO|YES
+sol_profit_center|code|character varying|20||NO|YES
+sol_profit_center|name|character varying|100||NO|NO
+sol_project|company_code|character varying|20||NO|YES
+sol_project|no|character varying|20||NO|YES
+sol_project|name|character varying|100||YES|NO
+sol_special_gl_indicator|company_code|character varying|20||NO|YES
+sol_special_gl_indicator|code|character varying|10||NO|YES
+sol_special_gl_indicator|language|character varying|10||NO|YES
+sol_special_gl_indicator|description|character varying|100||YES|NO
+sol_tax_code|company_code|character varying|20||NO|YES
+sol_tax_code|code|character varying|10||NO|YES
+sol_tax_code|language|character varying|10||NO|YES
+sol_tax_code|description|character varying|100||YES|NO
+sol_tax_code|vat_rate|numeric||18|NO|NO
+sol_trade_charge|code|character varying|10||NO|YES
+sol_trade_charge|language|character varying|10||NO|YES
+sol_trade_charge|description|character varying|100||YES|NO
+sol_trade_charge|docxfield|character varying|50||YES|NO
+sol_units|code|character varying|10||NO|YES
+sol_units|language|character varying|10||NO|YES
+sol_units|description|character varying|100||YES|NO
+sol_units|symbol|character varying|20||YES|NO
+sol_vat_rates|country|character varying|20||NO|YES
+sol_vat_rates|start_date|date|||NO|YES
+sol_vat_rates|vat_rates|character varying|100||NO|YES
+sol_vendor|company_code|character varying|20||NO|YES
+sol_vendor|no|character varying|20||NO|YES
+sol_vendor|name|character varying|100||YES|NO
+sol_vendor|street|character varying|150||YES|NO
+sol_vendor|zipcode|character varying|10||YES|NO
+sol_vendor|city|character varying|50||YES|NO
+sol_vendor|iban|character varying|100||YES|NO
+sol_vendor|bic|character varying|20||YES|NO
+sol_vendor|country_code|character varying|10||YES|NO
+sol_vendor|vat_id|character varying|30||YES|NO
+sol_vendor|due_days|integer||32|YES|NO
+sol_vendor|tax_no|character varying|30||YES|NO
+sol_vendor|gln|character varying|15||YES|NO
+sol_vendor_terms_of_payment|company_code|character varying|20||NO|YES
+sol_vendor_terms_of_payment|vendor_no|character varying|10||NO|YES
+sol_vendor_terms_of_payment|cash_discount_days|integer||32|NO|YES
+sol_vendor_terms_of_payment|cash_discount_rate|numeric||18|NO|NO
+sol_wbs_element|company_code|character varying|20||NO|YES
+sol_wbs_element|code|character varying|20||NO|YES
+sol_wbs_element|name|character varying|100||NO|NO
+sordtype|id|integer||32|NO|YES
+sordtype|name|character varying|255||YES|NO
+sordtype|extensions|character varying|255||YES|NO
+sordtype|packagename|character varying|255||YES|NO
+sordtype|guid|character varying|40||YES|NO
+sordtype|st_type|integer||32|YES|NO
+sordtype|nametrkey|character varying|255||YES|NO
+spacefeedaction2|actionguid|character varying|40||YES|NO
+spacefeedaction2|createdateiso|character varying|14||YES|NO
+spacefeedaction2|updatedateiso|character varying|14||YES|NO
+spacefeedaction2|actiontstamp|character varying|20||YES|NO
+spacefeedaction2|actiontstampsync|character varying|20||YES|NO
+spacefeedaction2|actiontype|integer||32|YES|NO
+spacefeedaction2|feedguid|character varying|40||YES|NO
+spacefeedaction2|parentguid|character varying|40||YES|NO
+spacefeedaction2|userguid|character varying|40||YES|NO
+spacefeedaction2|changecounter|integer||32|YES|NO
+spacefeedaction2|actiontext|character varying|2000||YES|NO
+spacefeedaction2|docversionguid|character varying|40||YES|NO
+spacefeedaction2|workflowguid|character varying|40||YES|NO
+spacefeedaction2|actionacl|character varying|4000||YES|NO
+spacefeedaction2|vspaceguid|character varying|40||YES|NO
+subscription|userguid|character varying|40||NO|NO
+subscription|watchguid|character varying|40||NO|NO
+subscription|createdateiso|character varying|14||NO|NO
+swl|groupid|character varying|128||NO|YES
+swl|orderid|character varying|32||NO|YES
+swl|entry|character varying|250||YES|NO
+swl|texttrkey|character varying|255||YES|NO
+swlgrp|swlgroupid|character varying|128||NO|YES
+swlgrp|swluser|integer||32|YES|NO
+swlgrp|swltstamp|character varying|20||YES|NO
+swlgrp|swltstampsync|character varying|20||YES|NO
+swlgrp|swlguid|character varying|40||YES|NO
+swlgrp|swlstatus|integer||32|NO|NO
+swlgrp|swllock|integer||32|NO|NO
+swlgrp|packagename|character varying|250||YES|NO
+swlgrp|swlnametrkey|character varying|255||YES|NO
+thesaurus|groupid|integer||32|NO|YES
+thesaurus|prio|integer||32|NO|YES
+thesaurus|data|character varying|250||NO|NO
+thesaurus|compare|character varying|250||YES|NO
+thesaurus|listid|integer||32|NO|NO
+translations|guid|character varying|40||NO|NO
+translations|tstamp|character varying|20||NO|NO
+translations|tstampsync|character varying|20||YES|NO
+translations|status|integer||32|NO|NO
+translations|lang1|character varying|2000||YES|NO
+translations|lang2|character varying|2000||YES|NO
+translations|lang3|character varying|2000||YES|NO
+translations|lang4|character varying|2000||YES|NO
+translations|lang5|character varying|2000||YES|NO
+translations|lang6|character varying|2000||YES|NO
+translations|lang7|character varying|2000||YES|NO
+translations|lang8|character varying|2000||YES|NO
+translations|lang9|character varying|2000||YES|NO
+translations|trankey|character varying|255||YES|NO
+translations|pack|character varying|255||YES|NO
+translations|tlevel|integer||32|YES|NO
+translations|lang10|character varying|2000||YES|NO
+translations|lang11|character varying|2000||YES|NO
+translations|lang12|character varying|2000||YES|NO
+translations|lang13|character varying|2000||YES|NO
+translations|lang14|character varying|2000||YES|NO
+translations|lang15|character varying|2000||YES|NO
+translations|lang16|character varying|2000||YES|NO
+translations|lang17|character varying|2000||YES|NO
+translations|lang18|character varying|2000||YES|NO
+translations|lang19|character varying|2000||YES|NO
+translations|lang20|character varying|2000||YES|NO
+translations|lang21|character varying|2000||YES|NO
+translations|lang22|character varying|2000||YES|NO
+translations|lang23|character varying|2000||YES|NO
+translations|lang24|character varying|2000||YES|NO
+translations|lang25|character varying|2000||YES|NO
+translations|lang26|character varying|2000||YES|NO
+translations|lang27|character varying|2000||YES|NO
+translations|lang28|character varying|2000||YES|NO
+translations|lang29|character varying|2000||YES|NO
+translations|lang30|character varying|2000||YES|NO
+uniquearcpath|parentid|integer||32|NO|NO
+uniquearcpath|objshort|character varying|128||NO|NO
+vtdocs|objid|integer||32|YES|NO
+vtdocs|objdoc|integer||32|YES|NO
+vtdocs|vtcode|integer||32|YES|NO
+vtdocs|retries|integer||32|YES|NO
+wiedervorlage|wvident|integer||32|NO|NO
+wiedervorlage|parentid|integer||32|NO|NO
+wiedervorlage|userowner|integer||32|NO|NO
+wiedervorlage|userfrom|integer||32|YES|NO
+wiedervorlage|wvdate|integer||32|NO|NO
+wiedervorlage|createdate|integer||32|NO|NO
+wiedervorlage|prio|integer||32|NO|NO
+wiedervorlage|parenttype|integer||32|NO|NO
+wiedervorlage|short|character varying|128||YES|NO
+wiedervorlage|wvdesc|text|||YES|NO
+wiedervorlage|duedate|integer||32|YES|NO
+wiedervorlage|action|integer||32|YES|NO
+wiedervorlage|wvlock|integer||32|NO|NO
+workflowactivedoc|wf_flowid|integer||32|NO|YES
+workflowactivedoc|wf_nodeid|integer||32|NO|YES
+workflowactivedoc|wf_flow_name|character varying|256||NO|NO
+workflowactivedoc|wf_name|character varying|256||YES|NO
+workflowactivedoc|wf_node_type|integer||32|NO|NO
+workflowactivedoc|wf_succ_type|integer||32|NO|NO
+workflowactivedoc|wf_department|integer||32|YES|NO
+workflowactivedoc|wf_alert_to|integer||32|YES|NO
+workflowactivedoc|wf_alert_from_begin|integer||32|YES|NO
+workflowactivedoc|wf_alert_wait|integer||32|YES|NO
+workflowactivedoc|wf_yesnocondition|character varying|128||YES|NO
+workflowactivedoc|wf_condition|character varying|128||YES|NO
+workflowactivedoc|wf_comment|character varying|512||YES|NO
+workflowactivedoc|wf_succ_0|integer||32|YES|NO
+workflowactivedoc|wf_succ_1|integer||32|YES|NO
+workflowactivedoc|wf_succ_2|integer||32|YES|NO
+workflowactivedoc|wf_succ_3|integer||32|YES|NO
+workflowactivedoc|wf_succ_4|integer||32|YES|NO
+workflowactivedoc|wf_succ_5|integer||32|YES|NO
+workflowactivedoc|wf_succ_6|integer||32|YES|NO
+workflowactivedoc|wf_succ_7|integer||32|YES|NO
+workflowactivedoc|wf_succ_8|integer||32|YES|NO
+workflowactivedoc|wf_succ_9|integer||32|YES|NO
+workflowactivedoc|wf_succ_10|integer||32|YES|NO
+workflowactivedoc|wf_succ_11|integer||32|YES|NO
+workflowactivedoc|wf_succ_12|integer||32|YES|NO
+workflowactivedoc|wf_succ_13|integer||32|YES|NO
+workflowactivedoc|wf_succ_14|integer||32|YES|NO
+workflowactivedoc|wf_succ_15|integer||32|YES|NO
+workflowactivedoc|wf_succ_16|integer||32|YES|NO
+workflowactivedoc|wf_succ_17|integer||32|YES|NO
+workflowactivedoc|wf_succ_18|integer||32|YES|NO
+workflowactivedoc|wf_succ_19|integer||32|YES|NO
+workflowactivedoc|wf_locked|integer||32|YES|NO
+workflowactivedoc|pos_x|integer||32|YES|NO
+workflowactivedoc|pos_y|integer||32|YES|NO
+workflowactivedoc|wf_eloobjid|integer||32|YES|NO
+workflowactivedoc|wf_locked_owner|integer||32|YES|NO
+workflowactivedoc|wf_is_next|integer||32|YES|NO
+workflowactivedoc|wf_activate|integer||32|YES|NO
+workflowactivedoc|wf_terminate|integer||32|YES|NO
+workflowactivedoc|wf_in_use_date|integer||32|YES|NO
+workflowactivedoc|wf_completion_date|integer||32|YES|NO
+workflowactivedoc|wf_ev_on_activate|character varying|64||YES|NO
+workflowactivedoc|wf_ev_on_terminate|character varying|64||YES|NO
+workflowactivedoc|wf_nodeflags|integer||32|YES|NO
+workflowactivedoc|wf_userterminate|character varying|250||YES|NO
+workflowactivedoc|wf_tag|integer||32|YES|NO
+workflowactivedoc|wf_designdepartment|integer||32|YES|NO
+workflowactivedoc|wf_dx|integer||32|YES|NO
+workflowactivedoc|wf_department2|integer||32|YES|NO
+workflowactivedoc|wf_delaydays|integer||32|YES|NO
+workflowactivedoc|wf_duedate|integer||32|YES|NO
+workflowactivedoc|wf_template|integer||32|YES|NO
+workflowactivedoc|wf_prio|integer||32|YES|NO
+workflowactivedoc|wf_user_delaydate|integer||32|YES|NO
+workflowactivedoc|wf_alert_to2|integer||32|YES|NO
+workflowactivedoc|wf_alert_wait2|integer||32|YES|NO
+workflowactivedoc|wf_alert_to3|integer||32|YES|NO
+workflowactivedoc|wf_alert_wait3|integer||32|YES|NO
+workflowactivedoc|nextserverid|character varying|64||YES|NO
+workflowactivedoc|wf_icon_guid|character varying|40||YES|NO
+workflowactivedoc|wf_form_spec|character varying|2000||YES|NO
+workflowactivedoc|wf_flownametrkey|character varying|255||YES|NO
+workflowactivedoc|wf_nametrkey|character varying|255||YES|NO
+workflowactivedoc|wf_commenttrkey|character varying|255||YES|NO
+workflowactivedoc|wf_label|character varying|128||YES|NO
+workflowactivedoc|wf_labeltrkey|character varying|255||YES|NO
+workflowactivedoc|wf_properties|bytea|||YES|NO
+workflowactivedoc|wf_departmentgroup|integer||32|YES|NO
+workflowactivedoc|wf_succ_overtime|integer||32|YES|NO
+workflowactivedoc|wf_edges_ordinals|character varying|2000||YES|NO
+workflowactivedoc|wf_sub_wf|integer||32|YES|NO
+workflowactivedoc|wf_retval|integer||32|YES|NO
+workflowactivedoc|wf_returnvalue|character varying|255||YES|NO
+workflowactivedoc|wf_sub_wf_templ|integer||32|YES|NO
+workflowactivedoc|wf_active_acl|character varying|128||YES|NO
+workflowactivedoc|wf_ev_on_enter_handle_rollback|character varying|64||YES|NO
+workflowactivedoc|wf_ev_on_exit_handle_rollback|character varying|64||YES|NO
+workflowcompletiondoc|wf_flowid|integer||32|NO|YES
+workflowcompletiondoc|wf_nodeid|integer||32|NO|YES
+workflowcompletiondoc|wf_flow_name|character varying|256||NO|NO
+workflowcompletiondoc|wf_name|character varying|256||YES|NO
+workflowcompletiondoc|wf_node_type|integer||32|NO|NO
+workflowcompletiondoc|wf_succ_type|integer||32|NO|NO
+workflowcompletiondoc|wf_department|integer||32|YES|NO
+workflowcompletiondoc|wf_alert_to|integer||32|YES|NO
+workflowcompletiondoc|wf_alert_from_begin|integer||32|YES|NO
+workflowcompletiondoc|wf_alert_wait|integer||32|YES|NO
+workflowcompletiondoc|wf_yesnocondition|character varying|128||YES|NO
+workflowcompletiondoc|wf_condition|character varying|128||YES|NO
+workflowcompletiondoc|wf_comment|character varying|512||YES|NO
+workflowcompletiondoc|wf_succ_0|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_1|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_2|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_3|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_4|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_5|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_6|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_7|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_8|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_9|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_10|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_11|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_12|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_13|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_14|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_15|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_16|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_17|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_18|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_19|integer||32|YES|NO
+workflowcompletiondoc|wf_locked|integer||32|YES|NO
+workflowcompletiondoc|pos_x|integer||32|YES|NO
+workflowcompletiondoc|pos_y|integer||32|YES|NO
+workflowcompletiondoc|wf_eloobjid|integer||32|YES|NO
+workflowcompletiondoc|wf_locked_owner|integer||32|YES|NO
+workflowcompletiondoc|wf_is_next|integer||32|YES|NO
+workflowcompletiondoc|wf_activate|integer||32|YES|NO
+workflowcompletiondoc|wf_terminate|integer||32|YES|NO
+workflowcompletiondoc|wf_in_use_date|integer||32|YES|NO
+workflowcompletiondoc|wf_completion_date|integer||32|YES|NO
+workflowcompletiondoc|wf_ev_on_activate|character varying|64||YES|NO
+workflowcompletiondoc|wf_ev_on_terminate|character varying|64||YES|NO
+workflowcompletiondoc|wf_nodeflags|integer||32|YES|NO
+workflowcompletiondoc|wf_userterminate|character varying|250||YES|NO
+workflowcompletiondoc|wf_tag|integer||32|YES|NO
+workflowcompletiondoc|wf_designdepartment|integer||32|YES|NO
+workflowcompletiondoc|wf_dx|integer||32|YES|NO
+workflowcompletiondoc|wf_department2|integer||32|YES|NO
+workflowcompletiondoc|wf_delaydays|integer||32|YES|NO
+workflowcompletiondoc|wf_duedate|integer||32|YES|NO
+workflowcompletiondoc|wf_template|integer||32|YES|NO
+workflowcompletiondoc|wf_prio|integer||32|YES|NO
+workflowcompletiondoc|wf_alert_to2|integer||32|YES|NO
+workflowcompletiondoc|wf_alert_wait2|integer||32|YES|NO
+workflowcompletiondoc|wf_alert_to3|integer||32|YES|NO
+workflowcompletiondoc|wf_alert_wait3|integer||32|YES|NO
+workflowcompletiondoc|nextserverid|character varying|64||YES|NO
+workflowcompletiondoc|wf_icon_guid|character varying|40||YES|NO
+workflowcompletiondoc|wf_form_spec|character varying|2000||YES|NO
+workflowcompletiondoc|wf_flownametrkey|character varying|255||YES|NO
+workflowcompletiondoc|wf_nametrkey|character varying|255||YES|NO
+workflowcompletiondoc|wf_commenttrkey|character varying|255||YES|NO
+workflowcompletiondoc|wf_label|character varying|128||YES|NO
+workflowcompletiondoc|wf_labeltrkey|character varying|255||YES|NO
+workflowcompletiondoc|wf_properties|bytea|||YES|NO
+workflowcompletiondoc|wf_departmentgroup|integer||32|YES|NO
+workflowcompletiondoc|wf_succ_overtime|integer||32|YES|NO
+workflowcompletiondoc|wf_edges_ordinals|character varying|2000||YES|NO
+workflowcompletiondoc|wf_sub_wf|integer||32|YES|NO
+workflowcompletiondoc|wf_retval|integer||32|YES|NO
+workflowcompletiondoc|wf_returnvalue|character varying|255||YES|NO
+workflowcompletiondoc|wf_sub_wf_templ|integer||32|YES|NO
+workflowcompletiondoc|wf_active_acl|character varying|128||YES|NO
+workflowcompletiondoc|wf_ev_on_enter_handle_rollback|character varying|64||YES|NO
+workflowcompletiondoc|wf_ev_on_exit_handle_rollback|character varying|64||YES|NO
+workflowhead|wftype|integer||32|NO|NO
+workflowhead|wfflowid|integer||32|NO|NO
+workflowhead|wftstamp|character varying|20||NO|NO
+workflowhead|wftstampsync|character varying|20||YES|NO
+workflowhead|wfguid|character varying|40||NO|NO
+workflowhead|wfstatus|integer||32|NO|NO
+workflowhead|actserverid|character varying|40||YES|NO
+workflowhead|wfparent|integer||32|YES|NO
+workflowhead|callnodeid|integer||32|YES|NO
+workflowhistory|wfhistguid|character varying|40||NO|NO
+workflowhistory|wfguid|character varying|40||NO|NO
+workflowhistory|wf_nodeid|integer||32|NO|NO
+workflowhistory|wf_activate|integer||32|NO|NO
+workflowhistory|wf_terminate|integer||32|NO|NO
+workflowhistory|wf_user|integer||32|NO|NO
+workflowhistory|wf_username|character varying|250||YES|NO
+workflowhistory|wf_succ_0|integer||32|YES|NO
+workflowhistory|wf_succ_1|integer||32|YES|NO
+workflowhistory|wf_succ_2|integer||32|YES|NO
+workflowhistory|wf_succ_3|integer||32|YES|NO
+workflowhistory|wf_succ_4|integer||32|YES|NO
+workflowhistory|wf_succ_5|integer||32|YES|NO
+workflowhistory|wf_succ_6|integer||32|YES|NO
+workflowhistory|wf_succ_7|integer||32|YES|NO
+workflowhistory|wf_succ_8|integer||32|YES|NO
+workflowhistory|wf_succ_9|integer||32|YES|NO
+workflowhistory|wf_succ_10|integer||32|YES|NO
+workflowhistory|wf_succ_11|integer||32|YES|NO
+workflowhistory|wf_succ_12|integer||32|YES|NO
+workflowhistory|wf_succ_13|integer||32|YES|NO
+workflowhistory|wf_succ_14|integer||32|YES|NO
+workflowhistory|wf_succ_15|integer||32|YES|NO
+workflowhistory|wf_succ_16|integer||32|YES|NO
+workflowhistory|wf_succ_17|integer||32|YES|NO
+workflowhistory|wf_succ_18|integer||32|YES|NO
+workflowhistory|wf_succ_19|integer||32|YES|NO
+workflowtempl|wf_flowid|integer||32|NO|YES
+workflowtempl|wf_nodeid|integer||32|NO|YES
+workflowtempl|wf_flow_name|character varying|256||NO|NO
+workflowtempl|wf_name|character varying|256||YES|NO
+workflowtempl|wf_node_type|integer||32|NO|NO
+workflowtempl|wf_succ_type|integer||32|NO|NO
+workflowtempl|wf_department|integer||32|YES|NO
+workflowtempl|wf_alert_to|integer||32|YES|NO
+workflowtempl|wf_alert_from_begin|integer||32|YES|NO
+workflowtempl|wf_alert_wait|integer||32|YES|NO
+workflowtempl|wf_yesnocondition|character varying|128||YES|NO
+workflowtempl|wf_condition|character varying|128||YES|NO
+workflowtempl|wf_comment|character varying|512||YES|NO
+workflowtempl|wf_succ_0|integer||32|YES|NO
+workflowtempl|wf_succ_1|integer||32|YES|NO
+workflowtempl|wf_succ_2|integer||32|YES|NO
+workflowtempl|wf_succ_3|integer||32|YES|NO
+workflowtempl|wf_succ_4|integer||32|YES|NO
+workflowtempl|wf_succ_5|integer||32|YES|NO
+workflowtempl|wf_succ_6|integer||32|YES|NO
+workflowtempl|wf_succ_7|integer||32|YES|NO
+workflowtempl|wf_succ_8|integer||32|YES|NO
+workflowtempl|wf_succ_9|integer||32|YES|NO
+workflowtempl|wf_succ_10|integer||32|YES|NO
+workflowtempl|wf_succ_11|integer||32|YES|NO
+workflowtempl|wf_succ_12|integer||32|YES|NO
+workflowtempl|wf_succ_13|integer||32|YES|NO
+workflowtempl|wf_succ_14|integer||32|YES|NO
+workflowtempl|wf_succ_15|integer||32|YES|NO
+workflowtempl|wf_succ_16|integer||32|YES|NO
+workflowtempl|wf_succ_17|integer||32|YES|NO
+workflowtempl|wf_succ_18|integer||32|YES|NO
+workflowtempl|wf_succ_19|integer||32|YES|NO
+workflowtempl|wf_locked|integer||32|YES|NO
+workflowtempl|pos_x|integer||32|YES|NO
+workflowtempl|pos_y|integer||32|YES|NO
+workflowtempl|wf_locked_owner|integer||32|YES|NO
+workflowtempl|wf_ev_on_activate|character varying|64||YES|NO
+workflowtempl|wf_ev_on_terminate|character varying|64||YES|NO
+workflowtempl|wf_nodeflags|integer||32|YES|NO
+workflowtempl|wf_userterminate|character varying|250||YES|NO
+workflowtempl|wf_tag|integer||32|YES|NO
+workflowtempl|wf_designdepartment|integer||32|YES|NO
+workflowtempl|wf_dx|integer||32|YES|NO
+workflowtempl|wf_department2|integer||32|YES|NO
+workflowtempl|wf_delaydays|integer||32|YES|NO
+workflowtempl|wf_deleted|integer||32|YES|NO
+workflowtempl|wf_prio|integer||32|YES|NO
+workflowtempl|wf_version|integer||32|NO|YES
+workflowtempl|wf_version_name|character varying|64||YES|NO
+workflowtempl|wf_version_tag|character varying|16||YES|NO
+workflowtempl|wf_version_userid|integer||32|NO|NO
+workflowtempl|wf_version_createdate|integer||32|NO|NO
+workflowtempl|wf_alert_to2|integer||32|YES|NO
+workflowtempl|wf_alert_wait2|integer||32|YES|NO
+workflowtempl|wf_alert_to3|integer||32|YES|NO
+workflowtempl|wf_alert_wait3|integer||32|YES|NO
+workflowtempl|nextserverid|character varying|64||YES|NO
+workflowtempl|wf_icon_guid|character varying|40||YES|NO
+workflowtempl|wf_form_spec|character varying|2000||YES|NO
+workflowtempl|wf_flownametrkey|character varying|255||YES|NO
+workflowtempl|wf_nametrkey|character varying|255||YES|NO
+workflowtempl|wf_commenttrkey|character varying|255||YES|NO
+workflowtempl|wf_label|character varying|128||YES|NO
+workflowtempl|wf_labeltrkey|character varying|255||YES|NO
+workflowtempl|wf_properties|bytea|||YES|NO
+workflowtempl|wf_departmentgroup|integer||32|YES|NO
+workflowtempl|wf_succ_overtime|integer||32|YES|NO
+workflowtempl|wf_edges_ordinals|character varying|2000||YES|NO
+workflowtempl|wf_sub_wf|integer||32|YES|NO
+workflowtempl|wf_retval|integer||32|YES|NO
+workflowtempl|wf_returnvalue|character varying|255||YES|NO
+workflowtempl|wf_sub_wf_templ|integer||32|YES|NO
+workflowtempl|wf_active_acl|character varying|128||YES|NO
+workflowtempl|packagename|character varying|255||YES|NO
+workflowtempl|wf_ev_on_enter_handle_rollback|character varying|64||YES|NO
+workflowtempl|wf_ev_on_exit_handle_rollback|character varying|64||YES|NO
