@@ -14,6 +14,32 @@ const ELO = x.ELO_DIR;
 const DOCS_DIR = path.join(ELO, '..', '..', 'docs');      // ELO partner documentation copied by the user (git-ignored)
 const PORTS = { server: 9090, as: 9060, flows: 9010, search: 9200, 'search-transport': 9204 };
 const session = { registry: null };          // { username, secret } kept in memory only
+
+// ELO tags: v<release>-<major>.<minor>[.<patch>][-suffix]. Newest first: release, major, minor, patch;
+// on equal numbers the plain version before its variants (-beta, -debian…). Non-matching tags go last.
+function tagKey(tag) {
+  const m = String(tag).match(/^v(\d+)-(\d+)(?:\.(\d+))?(?:\.(\d+))?(.*)$/);
+  return m ? [1, +m[1], +m[2], +(m[3] || 0), +(m[4] || 0), m[5] ? 0 : 1, m[5]] : [0, 0, 0, 0, 0, 0, tag];
+}
+function compareTags(a, b) {
+  const x = tagKey(a), y = tagKey(b);
+  for (let i = 0; i < 6; i++) if (x[i] !== y[i]) return y[i] - x[i];
+  return String(x[6]).localeCompare(String(y[6]));
+}
+// Local cache file name for an image ref (reversible): "/" → "~", ":" → "@".
+const cacheName = ref => ref.replace(/\//g, '~').replace(/:/g, '@') + '.tar';
+const cacheRef = file => file.replace(/\.tar$/, '').replace(/~/g, '/').replace(/@/g, ':');
+
+// Images present in Docker and in the local cache (backup/*.tar) of the Linux environment.
+async function localImages() {
+  await x.detect();
+  const out = await x.sh(`docker images --format '{{.Repository}}:{{.Tag}}|{{.Size}}' 2>/dev/null; echo "__TAR__"; ` +
+    `ls -l --time-style=+%F ${x.shq(x.eloDir() + '/backup')}/*.tar 2>/dev/null | awk '{print $5"|"$6"|"$7}'`, 120);
+  const [d, t] = out.split('__TAR__');
+  const docker = Object.fromEntries(d.split('\n').map(s => s.trim()).filter(s => s.includes('|')).map(s => s.split('|')));
+  const tars = (t || '').split('\n').map(s => s.trim()).filter(Boolean).map(l => { const [size, date, f] = l.split('|'); const file = path.posix.basename(f); return { file, ref: cacheRef(file), size: Number(size), date }; });
+  return { docker, tars, cached: new Set(tars.map(x => x.ref)) };
+}
 const app = express();
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -74,7 +100,8 @@ echo "running=$(docker ps -q -f name=elo-server 2>/dev/null | grep -q . && echo 
   }
   const gb = kb => Math.round(Number(kb || 0) / 1048576 * 10) / 10;
   const items = [
-    { id: 'linux', label: 'Linux environment', ok: env.mode !== 'none', value: env.mode === 'linux' ? v.os : `WSL2 ${env.distro || ''} — ${v.os || '?'}`, fix: 'Install WSL2 + Ubuntu (Windows)' },
+    { id: 'linux', label: 'Linux environment', ok: env.mode !== 'none', fix: 'Install WSL2 + Ubuntu (Windows)',
+      value: env.mode === 'linux' ? v.os : env.mode === 'ssh' ? `SSH ${env.target.user}@${env.target.host} — ${v.os || '?'}` : `WSL2 ${env.distro || ''} — ${v.os || '?'}` },
     { id: 'docker', label: 'Docker Engine', ok: !!v.docker, value: v.docker || 'missing', fix: 'install' },
     { id: 'compose', label: 'Docker Compose', ok: !!v.compose, value: v.compose || 'missing', fix: 'install' },
     { id: 'memory', label: 'Memory (Linux side)', ok: gb(v.mem_total) >= 12, warn: gb(v.mem_avail) < 10, value: `${gb(v.mem_avail)} GB free of ${gb(v.mem_total)} GB (full stack ~10-16 GB)` },
@@ -125,15 +152,46 @@ app.post('/api/registry/inventory', wrap(async () => {
   if (!session.registry) throw new Error('enter the registry user and CLI secret first');
   const inv = await inventory(session.registry.username, session.registry.secret);
   fs.writeFileSync(path.join(x.RUN_DIR, 'elo-inventory.json'), JSON.stringify(inv));
-  const local = new Set((await x.sh(`docker images --format '{{.Repository}}:{{.Tag}}' | grep registry.elo.com`, 60)).split('\n').map(s => s.trim()));
+  const loc = await localImages();
   const repos = inv.projects.flatMap(p => p.repos.map(r => ({
     name: r.name, pulls: r.pulls, description: r.description,
-    tags: r.tags.slice(0, 40).flatMap(t => t.tags.map(tag => ({
-      tag, size: t.size, pushed: t.pushed, os: `${t.os}/${t.arch}`, base: (t.labels.distro || '').replace(/:$/, ''),
-      ix: t.labels['com.elo.cloud.version.ix'] || '', local: local.has(`registry.elo.com/${p.name}/${r.name}:${tag}`),
-    }))),
+    tags: r.tags.flatMap(t => t.tags.map(tag => {
+      const ref = `registry.elo.com/${p.name}/${r.name}:${tag}`;
+      return { tag, size: t.size, pushed: t.pushed, os: `${t.os}/${t.arch}`, base: (t.labels.distro || '').replace(/:$/, ''),
+        ix: t.labels['com.elo.cloud.version.ix'] || '', local: ref in loc.docker, cached: loc.cached.has(ref) };
+    })).sort((a, b) => compareTags(a.tag, b.tag)),
   })));
-  return { ok: true, generated: inv.generated, repos };
+  return { ok: true, generated: inv.generated, repos, source: 'registry' };
+}));
+
+// Same shape as the registry inventory, built only from local images + cache (install without registry access).
+app.get('/api/local-inventory', wrap(async () => {
+  const loc = await localImages();
+  const byRepo = {};
+  const add = (ref, local, cached, size) => {
+    const m = ref.match(/^registry\.elo\.com\/eck-services\/([^:]+):(.+)$/); if (!m) return;
+    const e = ((byRepo[m[1]] ||= {}))[m[2]] ||= { tag: m[2], local: false, cached: false, size: null, pushed: '', os: 'linux/amd64', base: '', ix: '' };
+    e.local ||= local; e.cached ||= cached; e.size ??= size;
+  };
+  for (const ref of Object.keys(loc.docker)) add(ref, true, loc.cached.has(ref), null);
+  for (const t of loc.tars) add(t.ref, t.ref in loc.docker, true, t.size);
+  const repos = Object.entries(byRepo).map(([name, tags]) => ({ name, pulls: null, description: '', tags: Object.values(tags).sort((a, b) => compareTags(a.tag, b.tag)) }));
+  return { ok: true, generated: new Date().toISOString(), repos, source: 'local' };
+}));
+
+// Save the images of a version (all stack services incl. optional ones) into the local cache.
+app.post('/api/cache/save', wrap(async req => {
+  const { ELO_TAG, ELO_SEARCH_TAG } = req.body || {};
+  if (!/^[\w.-]+$/.test(ELO_TAG || '') || !/^[\w.-]+$/.test(ELO_SEARCH_TAG || '')) throw new Error('bad version');
+  await x.detect(); await x.deployRemote();
+  return x.startJob('cache', `export ELO_DIR=${x.shq(x.eloDir())} ELO_TAG=${x.shq(ELO_TAG)} ELO_SEARCH_TAG=${x.shq(ELO_SEARCH_TAG)}
+cd "$ELO_DIR"; tr -d '\\r' < elo.sh > /tmp/elo.sh
+echo "__STEP__ Saving ELO ${ELO_TAG} (+ iSearch ${ELO_SEARCH_TAG}) into the local cache"
+# Use a temporary env so the installation's .env (versions) is not changed.
+[ -f .env ] && cp .env /tmp/elo-env.bak; sed -i "s/^ELO_TAG=.*/ELO_TAG=$ELO_TAG/; s/^ELO_SEARCH_TAG=.*/ELO_SEARCH_TAG=$ELO_SEARCH_TAG/" .env 2>/dev/null || true
+bash /tmp/elo.sh cache; rc=$?
+[ -f /tmp/elo-env.bak ] && cp /tmp/elo-env.bak .env
+echo "__STEP__ Done"; exit $rc`);
 }));
 
 // ── License ─────────────────────────────────────────────────────────────────
@@ -169,7 +227,7 @@ ${exports}
 step() { echo "__STEP__ $*"; }
 ${c.fresh ? 'step "Removing the previous installation (containers and data volumes)"; bash /tmp/elo.sh down --volumes || true' : ''}
 step "Writing configuration (.env)"; bash /tmp/elo.sh env ${c.fresh ? '--force' : ''}
-step "Downloading images"; bash /tmp/elo.sh pull 2>&1 | grep -E 'Pulling|Pulled|Error|error' || true
+step "Getting images (local Docker → local cache → registry)"; bash /tmp/elo.sh pull
 step "Starting the stack"; bash /tmp/elo.sh up
 . ./.env
 step "Waiting for the repository setup and the services"
@@ -184,6 +242,18 @@ done
 search=$(curl -sk --max-time 8 -u "$AUTH_SERVICE_USERNAME:$AUTH_SERVICE_PASSWORD" https://localhost:9200/_cluster/health | sed -n 's/.*"status":"\\([a-z]*\\)".*/\\1/p')
 echo "__CHECK__ {\\"search\\":\\"\${search:-down}\\"}"
 step "Done"`);
+}));
+
+// Executed commands since id (secrets masked) — "terminal commands" panel of each wizard step.
+app.get('/api/commands', (req, res) => {
+  const all = x.history(0), since = Number(req.query.since) || 0;
+  res.json({ ok: true, commands: all.filter(h => h.id > since), last: all.length ? all[all.length - 1].id : 0 });
+});
+
+// Read a job log incrementally (scripts/CLI): returns new text from byte position pos.
+app.get('/api/jobs/:id/log', wrap(async req => {
+  const r = await x.readLog(path.basename(req.params.id), Number(req.query.pos) || 0);
+  return { ok: true, chunk: r.chunk, pos: r.pos, done: /__EXIT__:\d/.test(r.chunk) };
 }));
 
 // Stream a job log (Server-Sent Events) until "__EXIT__".
@@ -324,7 +394,7 @@ app.post('/api/backup', wrap(async req => {
   if (!images.length) throw new Error('no images');
   await x.detect();
   return x.startJob('backup', `set -e; d=${x.shq(x.eloDir() + '/backup')}; mkdir -p "$d"
-for i in ${images.map(x.shq).join(' ')}; do f="$d/$(echo "$i" | tr '/:' '__').tar"; echo "__STEP__ saving $i"; docker save -o "$f" "$i"; ls -lh "$f" | awk '{print "saved", $5, $9}'; done
+for i in ${images.map(x.shq).join(' ')}; do f="$d/$(echo "$i" | tr '/:' '~@').tar"; echo "__STEP__ saving $i"; docker save -o "$f" "$i"; ls -lh "$f" | awk '{print "saved", $5, $9}'; done
 echo "__STEP__ Done"`);
 }));
 
@@ -352,10 +422,10 @@ app.get('/api/target', wrap(async () => {
   return { ok: true, ...env, publicKey: pub, keyPath: SSH_KEY, dockerDesktopInstalled: desktop };
 }));
 app.post('/api/target', wrap(async req => {
-  const { kind, host, port, user, key } = req.body || {};
+  const { kind, host, port, user, key, targetKind } = req.body || {};
   if (kind !== 'ssh') { x.setTarget(null); return { ok: true, ...(await x.detect()) }; }
   if (!host || !user) throw new Error('host and user required');
-  x.setTarget({ host, port, user, key: key || SSH_KEY });
+  x.setTarget({ host, port, user, key: key || SSH_KEY, kind: targetKind || 'server' });
   const env = await x.detect();
   const info = await x.sh(`. /etc/os-release; echo "$PRETTY_NAME | $(nproc) CPU | $(awk '/MemTotal/{printf "%.1f GB", $2/1048576}' /proc/meminfo) | docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo missing)"`, 60);
   return { ok: true, ...env, info: info.trim() };
@@ -409,8 +479,11 @@ echo "__TAR__"; ls -l --time-style=+%F ${x.shq(x.eloDir() + '/backup')}/*.tar 2>
   const images = sect('IMG').map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean)
     .filter(i => /registry\.elo\.com|postgres|pgadmin|hvc-seat|guacamole/.test(i.Repository))
     .map(i => ({ ref: `${i.Repository}:${i.Tag}`, id: i.ID, size: i.Size, created: i.CreatedSince, usedBy: used[`${i.Repository}:${i.Tag}`] || [] }));
-  const backups = sect('TAR').map(l => { const [size, date, file] = l.split('|'); return { file: path.posix.basename(file), size: Number(size), date }; });
-  return { ok: true, images, backups };
+  const backups = sect('TAR').map(l => { const [size, date, file] = l.split('|'); const f = path.posix.basename(file); return { file: f, ref: cacheRef(f), size: Number(size), date }; });
+  // Cloud images cached for VM creation (Windows side).
+  let vmImages = [];
+  try { const d = path.join(require('./provision').VM_DIR, 'cache'); vmImages = fs.readdirSync(d).map(f => ({ file: f, size: fs.statSync(path.join(d, f)).size, date: fs.statSync(path.join(d, f)).mtime.toISOString().slice(0, 10) })); } catch {}
+  return { ok: true, images, backups, vmImages };
 }));
 app.post('/api/images/remove', wrap(async req => {
   const refs = (req.body?.refs || []).filter(r => /^[\w./:-]+$/.test(r));
@@ -459,6 +532,17 @@ app.post('/api/optional', wrap(async req => {
 
 // ── Open folders: logs, archive files, data (Docker volumes) ────────────────
 app.post('/api/open', wrap(async req => {
+  // Local package caches are plain folders: the ELO image cache (backup/) and the VM cloud-image cache.
+  const folder = { cache: path.join(ELO, 'backup'), vmcache: path.join(require('./provision').VM_DIR, 'cache') }[req.body?.what];
+  if (folder) {
+    await x.detect();
+    if (x.getMode() === 'ssh' && req.body.what === 'cache') return { ok: true, linuxPath: x.REMOTE_DIR + '/backup', note: 'on the SSH target' };
+    fs.mkdirSync(folder, { recursive: true });
+    if (!x.IS_WIN) return { ok: true, linuxPath: folder };
+    const cmd = `Start-Process explorer.exe -ArgumentList '${folder.replace(/'/g, "''")}'`;
+    if (x.getMode() === 'wsl-user') await x.getSeatLib().runAsUser(cmd, 60); else await x.ps(cmd);
+    return { ok: true, path: folder };
+  }
   const vol = { logs: 'logs', archive: 'repository-basis', system: 'repository-system', data: 'data-ix' }[req.body?.what];
   if (!vol) throw new Error('unknown folder');
   // Docker volume of the compose project; make it readable for the file manager (test environment).
@@ -474,6 +558,77 @@ app.post('/api/open', wrap(async req => {
   }
   if (mode === 'linux') { await x.sh(`(command -v xdg-open && sudo -u "\${SUDO_USER:-root}" xdg-open ${x.shq(mp)}) >/dev/null 2>&1 &`, 20); return { ok: true, linuxPath: mp }; }
   return { ok: true, linuxPath: mp, note: `On the SSH target: ${mp}` };
+}));
+
+// ── ELO installations found on this computer (all runtimes) ─────────────────
+// local Docker (WSL/Linux), Docker Desktop, Hyper-V VMs, VirtualBox VMs, the configured SSH server.
+const VBOXM = 'C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe';
+const eloState = out => { const m = out.match(/__ELO__ (\d+) (\d+)/); return m ? { running: +m[1], total: +m[2] } : { running: 0, total: 0 }; };
+const ELO_PROBE = `echo "__ELO__ $(docker ps -q -f name=^elo- 2>/dev/null | wc -l) $(docker ps -aq -f name=^elo- 2>/dev/null | wc -l)"`;
+
+app.get('/api/installations', wrap(async () => {
+  const list = [];
+  const tgt = x.getTarget();
+  // Local Linux side (WSL / native): Docker stack of this installer.
+  try {
+    const out = await x.shLocal(ELO_PROBE + `; docker version --format '{{.Server.Version}}' 2>/dev/null`, 60);
+    const s = eloState(out);
+    if (s.total) list.push({ id: 'local', name: x.IS_WIN ? `WSL ${x.getDistro() || ''}`.trim() : 'This machine', type: 'docker',
+      typeLabel: x.IS_WIN ? 'Docker Engine (WSL2)' : 'Docker Engine', state: s.running ? 'running' : 'stopped', detail: `${s.running}/${s.total} ELO containers`, active: !tgt });
+  } catch {}
+  if (x.IS_WIN) {
+    // Docker Desktop engine (Windows docker CLI, desktop-linux context), if running.
+    const dd = await x.run('docker', ['--context', 'desktop-linux', 'ps', '-a', '--filter', 'name=^elo-', '--format', '{{.State}}'], { timeoutMs: 20000 });
+    if (dd.code === 0 && dd.out.trim()) { const st = dd.out.trim().split('\n'); const r = st.filter(s => s === 'running').length;
+      list.push({ id: 'desktop', name: 'Docker Desktop', type: 'desktop', typeLabel: 'Docker Desktop', state: r ? 'running' : 'stopped', detail: `${r}/${st.length} ELO containers` }); }
+    // Hyper-V VMs (all; the installer's ones are marked).
+    const hv = await x.ps(`try { Get-VM -EA Stop | % { "$($_.Name)|$($_.State)|$([math]::Round($_.MemoryStartup/1GB,1))|$($_.Path)" } } catch {}`, 60000);
+    for (const l of hv.out.trim().split('\n').filter(s => s.includes('|'))) {
+      const [name, state, ram, vpath] = l.trim().split('|');
+      const ours = /hvc-vms/i.test(vpath) || (tgt?.vm === name);
+      list.push({ id: `hyperv:${name}`, name, type: 'hyperv', typeLabel: ours ? 'Hyper-V VM · ELO Docker (installer)' : 'Hyper-V VM',
+        state: state === 'Running' ? 'running' : state === 'Off' ? 'stopped' : state.toLowerCase(), detail: `${ram} GB RAM`, active: tgt?.vm === name });
+    }
+    // VirtualBox VMs.
+    if (fs.existsSync(VBOXM)) {
+      const all = await x.run(VBOXM, ['list', 'vms'], { timeoutMs: 30000 }), run = await x.run(VBOXM, ['list', 'runningvms'], { timeoutMs: 30000 });
+      const running = new Set([...run.out.matchAll(/"([^"]+)"/g)].map(m => m[1]));
+      for (const m of all.out.matchAll(/"([^"]+)"/g)) list.push({ id: `vbox:${m[1]}`, name: m[1], type: 'vbox', typeLabel: 'VirtualBox VM',
+        // "<inaccessible>": registered VM whose files are missing — listed without actions.
+        state: m[1] === '<inaccessible>' ? 'unreachable' : running.has(m[1]) ? 'running' : 'stopped', detail: '', active: tgt?.vm === m[1] });
+    }
+  }
+  // Configured SSH server (not one of the VMs above): ELO containers there.
+  if (tgt && !list.some(i => i.active)) {
+    let s = { running: 0, total: 0 }, reach = true;
+    try { s = eloState(await x.sh(ELO_PROBE, 30)); } catch { reach = false; }
+    list.push({ id: 'ssh', name: `${tgt.user}@${tgt.host}`, type: 'ssh', typeLabel: 'Linux server (SSH)', state: !reach ? 'unreachable' : s.running ? 'running' : 'stopped', detail: `${s.running}/${s.total} ELO containers`, active: true });
+  }
+  return { ok: true, installations: list };
+}));
+
+app.post('/api/installations/action', wrap(async req => {
+  const { id, action } = req.body || {};
+  if (!['start', 'stop'].includes(action)) throw new Error('bad action');
+  const eloCmd = `export ELO_DIR=${x.shq(x.toLinux(ELO))}; tr -d '\\r' < "$ELO_DIR/elo.sh" > /tmp/elo.sh; bash /tmp/elo.sh ${action === 'start' ? 'up' : 'down'}`;
+  if (id === 'local') return { ok: true, out: await x.shLocal(eloCmd, 900) };
+  if (id === 'ssh') return { ok: true, out: await elo(action === 'start' ? 'up' : 'down', {}, 900) };
+  if (id === 'desktop') {
+    const ids = (await x.run('docker', ['--context', 'desktop-linux', 'ps', '-aq', '--filter', 'name=^elo-'])).out.trim().split('\n').filter(Boolean);
+    const r = await x.run('docker', ['--context', 'desktop-linux', action, ...ids], { timeoutMs: 300000 });
+    return { ok: r.code === 0, out: r.out + r.err };
+  }
+  const [kind, name] = String(id).split(/:(.+)/);
+  if (!name || /['"]/.test(name)) throw new Error('bad id');
+  if (kind === 'hyperv') {
+    const r = await x.ps(action === 'start' ? `Start-VM -Name '${name}' -EA Stop; 'started'` : `Stop-VM -Name '${name}' -Force -EA Stop; 'stopped'`, 600000);
+    return { ok: !r.err.trim(), out: (r.out + r.err).trim() };
+  }
+  if (kind === 'vbox') {
+    const r = await x.run(VBOXM, action === 'start' ? ['startvm', name, '--type', 'headless'] : ['controlvm', name, 'acpipowerbutton'], { timeoutMs: 120000 });
+    return { ok: r.code === 0, out: (r.out + r.err).trim() };
+  }
+  throw new Error('unknown installation');
 }));
 
 // ── Provisioning of targets (Windows): WSL2 + distro, Docker Desktop, Hyper-V, VirtualBox, Ubuntu/Debian VMs ──

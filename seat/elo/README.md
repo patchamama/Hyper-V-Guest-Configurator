@@ -144,6 +144,22 @@ Además:
   como administrador; se muestra el comando `curl` (contraseña oculta), el código, el tiempo y la respuesta. En las
   imágenes ECK el resto de métodos de `/rest` responden 401/403 (reservados a servicios internos).
 
+- **Versiones ordenadas:** las etiquetas `v<versión>-<major>.<minor>[.<bug>][-sufijo]` se listan de más reciente a más
+  antigua (versión de ELO, major, minor, bug; la estable antes que `-beta`/`-debian`).
+- **Caché local / repositorio local:** `elo.sh pull` usa primero la imagen de Docker, luego la caché `backup/*.tar`
+  (`docker load`) y solo después descarga; `elo.sh cache` (y "Guardar esta versión en la caché local") guarda la pila
+  completa como `.tar`. En el paso de imágenes cada versión se marca ● en Docker / ◆ en caché / ○ a descargar, con la
+  disponibilidad de cada imagen; se puede instalar **sin registro** ("Usar solo imágenes locales"). Las imágenes cloud de
+  las VMs también se cachean. "Contenedores e imágenes" muestra la caché y abre sus carpetas.
+- **Comandos de terminal** de cada paso (desplegable al final; contraseñas enmascaradas).
+- **Instalaciones de ELO en este equipo** (Administración): Docker en WSL/Linux, Docker Desktop, VMs de Hyper-V
+  (marcando las creadas por el instalador), VMs de VirtualBox y el servidor SSH, con Arrancar/Parar según el estado.
+  Los servicios de larga duración tienen `restart: unless-stopped`, así ELO arranca con la VM.
+
+**Prueba de VM en Hyper-V (asistente):** Ubuntu 24.04.5, Gen2 + Secure Boot, 2 CPU / 8 GB / 40 GB, IP por el Default
+Switch, SSH con la clave del instalador: **195 s** (imagen ya en caché). Docker instalado en la VM como trabajo remoto
+por SSH en 33 s; parada/arranque desde la tabla de instalaciones correctos. La VM de prueba se eliminó después.
+
 Diseño de los pasos (referencia):
 
 ### Pasos del asistente

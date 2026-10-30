@@ -1,7 +1,8 @@
 #!/bin/bash
 # ELO test stack on Docker (official ECK images). Run as root in Linux / the WSL distro, from this directory.
 #   elo.sh env [--force]   create .env (values from the environment, random passwords otherwise) + license
-#   elo.sh pull            pull the images (docker login registry.elo.com first)
+#   elo.sh pull            get the images: local Docker → local cache backup/*.tar → registry (login needed only then)
+#   elo.sh cache           save the stack's images to the local cache backup/ (for offline installs)
 #   elo.sh up              start the stack (sets vm.max_map_count for Elasticsearch)
 #   elo.sh status          container states and ELO URLs
 #   elo.sh stats           memory/CPU per container (JSON lines)
@@ -68,7 +69,23 @@ EOF
 cmd=${1:-}; shift || true
 case "$cmd" in
   env)     make_env "${1:-}" ;;
-  pull)    make_env; docker compose pull ;;
+  # Local first: an image already in Docker is kept, one in the local cache (backup/<ref>.tar) is loaded,
+  # only the rest is downloaded from the registry. backup/ file name = ref with "/"→"~" and ":"→"@".
+  pull)    make_env
+           for img in $(docker compose config --images | sort -u); do
+             if docker image inspect "$img" >/dev/null 2>&1; then echo "local   $img"; continue; fi
+             tar="backup/$(echo "$img" | tr '/:' '~@').tar"
+             if [ -f "$tar" ]; then echo "cache   $img (docker load $tar)"; docker load -q -i "$tar" >/dev/null && continue; fi
+             echo "pull    $img"; docker pull -q "$img" >/dev/null || { echo "ERROR pulling $img"; exit 1; }
+           done ;;
+  # Save the stack's images (current .env versions) into the local cache backup/ (offline install / own repository).
+  cache)   make_env >/dev/null; mkdir -p backup
+           for img in $(docker compose --profile as --profile flows --profile pgadmin config --images | sort -u); do
+             tar="backup/$(echo "$img" | tr '/:' '~@').tar"
+             [ -f "$tar" ] && { echo "cached  $img"; continue; }
+             docker image inspect "$img" >/dev/null 2>&1 || docker pull -q "$img" >/dev/null || { echo "ERROR pulling $img"; exit 1; }
+             docker save -o "$tar" "$img" && echo "saved   $img ($(du -h "$tar" | cut -f1))"
+           done ;;
   up)      make_env; sysctl -w vm.max_map_count=262144 >/dev/null; docker compose up -d ;;
   status)  . ./.env; docker compose ps -a --format 'table {{.Name}}\t{{.State}}\t{{.Status}}'
            echo "Web Client:    http://localhost:9090/$REPO/plugin/de.elo.ix.plugin.proxy/web/"
@@ -90,5 +107,5 @@ case "$cmd" in
            docker compose restart server ;;
   logs)    docker compose logs --no-color --tail "${2:-200}" "$1" ;;
   down)    if [ "${1:-}" = --volumes ]; then docker compose down -v; else docker compose down; fi ;;
-  *) echo "usage: elo.sh env|pull|up|status|stats|stop|start|restart|enable|disable|license|logs|down"; exit 2 ;;
+  *) echo "usage: elo.sh env|pull|cache|up|status|stats|stop|start|restart|enable|disable|license|logs|down"; exit 2 ;;
 esac
