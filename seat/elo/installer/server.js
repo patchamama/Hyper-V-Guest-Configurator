@@ -806,6 +806,14 @@ app.get('/api/provision/status', wrap(() => prov.status()));
 app.post('/api/provision/wsl', wrap(async req => x.nodeJob('wsl', log => prov.installWsl(req.body || {}, log))));
 app.post('/api/provision/hyperv', wrap(async () => x.nodeJob('hyperv', log => prov.enableHyperV(log))));
 app.post('/api/provision/vbox', wrap(async () => x.nodeJob('vbox', log => prov.installVirtualBox(log))));
+// Windows Server ISOs (cached evaluation ISOs and own ISOs in the VM cache folder): list, download, serve.
+app.get('/api/isos', wrap(async () => ({ ok: true, ...prov.isoList() })));
+app.post('/api/isos/download', wrap(async req => x.nodeJob('iso', log => prov.downloadIso(req.body?.id, log))));
+app.get('/isos/:file', (req, res) => {
+  const it = prov.isoList().isos.find(i => i.cached && i.file === req.params.file);
+  if (!it) return res.status(404).send('not found');
+  res.download(it.path, it.file);
+});
 app.post('/api/provision/vm', wrap(async req => {
   const b = req.body || {};
   if (prov.WIN_IMAGES[b.distro]) { if (b.platform !== 'hyperv') throw new Error('Windows Server VMs: Hyper-V only'); return x.nodeJob('winvm', log => prov.createWinVm(b, log, SSH_KEY)); }
