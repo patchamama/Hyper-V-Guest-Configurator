@@ -70,6 +70,24 @@ async function detect() {
   mode = 'none'; return { mode, distro: null };
 }
 
+// Run a bash script as root in the LOCAL Linux environment (native Linux or WSL), even when the installation target
+// is a remote VM — used as a toolbox (qemu-img, cloud-localds) to prepare VM disks.
+async function shLocal(script, timeoutSec = 600) {
+  const saved = { mode, target };
+  try { target = null; mode = null; await detect(); return await sh(script, timeoutSec); }
+  finally { mode = saved.mode; target = saved.target; }
+}
+
+// Node-driven job: async fn(log) whose log lines go to RUN_DIR/<id>.log (read locally, also when the target is SSH).
+function nodeJob(name, fn) {
+  const id = `local-${name}-${Date.now().toString(36)}`;
+  const file = path.join(RUN_DIR, `${id}.log`);
+  fs.writeFileSync(file, '');
+  const log = (...a) => fs.appendFileSync(file, a.join(' ') + '\n');
+  Promise.resolve().then(() => fn(log)).then(() => log('__EXIT__:0'), e => { log('ERROR: ' + e.message); log('__EXIT__:1'); });
+  return { id };
+}
+
 // Run a bash script as root and return its output.
 async function sh(script, timeoutSec = 300) {
   await detect();
@@ -106,7 +124,7 @@ async function deployRemote() {
 
 // Read new output of a job log from position pos (local file, or remote over SSH).
 async function readLog(job, pos) {
-  if (mode === 'ssh') {
+  if (mode === 'ssh' && !job.startsWith('local-')) {
     const out = await sh(`tail -c +${pos + 1} ${shq(`/tmp/${job}.log`)} 2>/dev/null`, 30);
     return { chunk: out, pos: pos + Buffer.byteLength(out) };
   }
@@ -149,5 +167,5 @@ function ps(script, timeoutMs = 120000) {
     '[Console]::OutputEncoding=[Text.Encoding]::UTF8; ' + script], { timeoutMs });
 }
 
-module.exports = { detect, sh, startJob, readLog, ps, run, toLinux, shq, setTarget, getTarget, deployRemote, eloDir,
+module.exports = { detect, sh, shLocal, nodeJob, startJob, readLog, ps, run, toLinux, shq, setTarget, getTarget, deployRemote, eloDir,
   IS_WIN, RUN_DIR, ELO_DIR, REMOTE_DIR, getMode: () => mode, getDistro: () => distro, getSeatLib: () => seatLib };
