@@ -155,6 +155,25 @@ Además:
 - **Instalaciones de ELO en este equipo** (Administración): Docker en WSL/Linux, Docker Desktop, VMs de Hyper-V
   (marcando las creadas por el instalador), VMs de VirtualBox y el servidor SSH, con Arrancar/Parar según el estado.
   Los servicios de larga duración tienen `restart: unless-stopped`, así ELO arranca con la VM.
+  Cada fila muestra RAM, IP y **espacio en disco** (discos virtuales de la VM, datos de Docker / Docker Desktop) y, si
+  está en marcha, una fila desplegable con los **servicios** (contenedores ELO con estado y puertos) y los **puertos
+  abiertos** (prueba TCP: SSH, RDP, WinRM, puertos de ELO, pgAdmin, PostgreSQL…; en VirtualBox, las redirecciones NAT).
+  **Visor**: al arrancar (opcional) o con el botón, se abre la consola de Hyper-V (`vmconnect`), la ventana de
+  VirtualBox (VM arrancada en modo `separate`), Docker Desktop o el ELO Web Client (Docker en WSL/SSH).
+- **WSL** (Administración): memoria usada (vmmemWSL y dentro de Linux) y **Apagar WSL** (`wsl --shutdown` del usuario
+  conectado) para liberar memoria; la tabla no arranca WSL solo para consultarlo.
+- **Fuentes de caché** (Contenedores e imágenes → Configuración): carpetas, recursos de red (`\\servidor\recurso`,
+  montados con drvfs) o URLs FTP/HTTP(S) con los `.tar` de las imágenes (mismos nombres que `backup/`). Se buscan tras la
+  caché local y antes del registro; lo encontrado se copia a la caché local. `elo.sh sources` lista qué tiene cada fuente.
+- **VM con Windows Server 2022/2025 (Hyper-V):** ISO de evaluación (180 días, en caché) o ISO propia, edición
+  Standard/Datacenter con o sin escritorio, clave opcional. La imagen se aplica al VHDX con DISM + `unattend.xml` (hay
+  que aceptar los términos de licencia de Microsoft en el asistente). Dentro: WSL2 (virtualización anidada) + Ubuntu
+  24.04 con el usuario `elo` y la clave del instalador; una tarea de inicio redirige SSH y los puertos de ELO de la VM a
+  Ubuntu, así los pasos siguientes instalan Docker y ELO como en cualquier Linux. Windows Server 2019 no tiene WSL2.
+- **"Esta máquina Linux"** está deshabilitada cuando el instalador corre en Windows.
+- **VirtualBox con Hyper-V activo:** VirtualBox usa entonces la capa NEM de Hyper-V y un invitado Linux puede quedarse
+  colgado al arrancar (bloqueos RCU en el kernel). La VM se crea bien (puertos libres detectados, 2 puertos SATA), pero en
+  este equipo no llegó a SSH; en un equipo sin Hyper-V funciona normal.
 
 **Prueba de VM en Hyper-V (asistente):** Ubuntu 24.04.5, Gen2 + Secure Boot, 2 CPU / 8 GB / 40 GB, IP por el Default
 Switch, SSH con la clave del instalador: **195 s** (imagen ya en caché). Docker instalado en la VM como trabajo remoto

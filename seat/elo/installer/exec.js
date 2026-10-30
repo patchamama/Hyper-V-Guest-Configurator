@@ -30,7 +30,8 @@ try { target = JSON.parse(fs.readFileSync(TARGET_FILE, 'utf8')); } catch {}
 const sshArgs = t => ['-i', t.key, '-p', String(t.port || 22), '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new',
   '-o', 'ConnectTimeout=10', `${t.user}@${t.host}`];
 function setTarget(t) {
-  target = t && t.host ? { host: t.host, port: Number(t.port) || 22, user: t.user, key: t.key, kind: t.kind || 'server', vm: t.vm || null } : null;
+  target = t && t.host ? { host: t.host, port: Number(t.port) || 22, user: t.user, key: t.key, kind: t.kind || 'server', vm: t.vm || null,
+    portOffset: Number(t.portOffset) || 0, portMap: t.portMap || null, os: t.os || null } : null;
   if (target) fs.writeFileSync(TARGET_FILE, JSON.stringify(target, null, 2)); else { try { fs.unlinkSync(TARGET_FILE); } catch {} }
   mode = null;   // re-detect
 }
@@ -79,7 +80,10 @@ function mask(s) {
     .replace(/("(?:userPwd|password|secret)"\s*:\s*")[^"]*"/gi, '$1********"')
     .replace(/(\bP=)('[^']*'|\S+)/g, '$1********')
     .replace(/(-Password\s+)('[^']*'|\S+)/gi, '$1********')
-    .replace(/(\/pass:)('[^']*'|\S+)/gi, '$1********');
+    .replace(/(\/pass:)('[^']*'|\S+)/gi, '$1********')
+    .replace(/(ConvertTo-SecureString\s+)('[^']*'|\S+)/gi, '$1********')
+    .replace(/(<Value>)[^<]*(<\/Value>)/g, '$1********$2')
+    .replace(/((?:ftp|https?):\/\/[^:\/\s@'"]+:)[^@\s'"]+@/gi, '$1********@');
 }
 function record(where, text) {
   HISTORY.push({ id: ++histId, t: Date.now(), where, cmd: mask(text).slice(0, 4000) });
@@ -128,6 +132,14 @@ async function sh(script, timeoutSec = 300) {
   throw new Error('No Linux environment: install WSL2 with Ubuntu (Windows) or run on Linux');
 }
 
+// Run a bash script over SSH on an explicit target (independent of the current installation target).
+async function shOn(t, script, timeoutSec = 120) {
+  record(`ssh ${t.user}@${t.host}:${t.port || 22}`, script);
+  const r = await run('ssh', [...sshArgs(t), 'sudo -n bash -s'], { input: script.replace(/\r/g, ''), timeoutMs: timeoutSec * 1000 });
+  if (r.code === 255) throw new Error(`SSH to ${t.user}@${t.host}:${t.port || 22} failed: ${r.err.trim().split('\n').pop()}`);
+  return r.out + r.err;
+}
+
 // SSH target: copy the ELO project files (compose, elo.sh, uploaded license) to REMOTE_DIR.
 async function deployRemote() {
   if (mode !== 'ssh') return { ok: true, skipped: true };
@@ -142,7 +154,7 @@ async function deployRemote() {
 
 // Read new output of a job log from position pos (local file, or remote over SSH).
 async function readLog(job, pos) {
-  if (mode === 'ssh' && !job.startsWith('local-')) {
+  if (/^elo-[a-z]+-r-/.test(job)) {
     const out = await sh(`tail -c +${pos + 1} ${shq(`/tmp/${job}.log`)} 2>/dev/null`, 30);
     return { chunk: out, pos: pos + Buffer.byteLength(out) };
   }
@@ -167,7 +179,8 @@ async function keepAlive() {
 async function startJob(name, script) {
   await detect();
   record(`job ${name}`, script);
-  const id = `elo-${name}-${Date.now().toString(36)}`;
+  // "-r-" in the id = job on the SSH target (its log is read remotely), otherwise a local log file.
+  const id = `elo-${name}${mode === 'ssh' ? '-r' : ''}-${Date.now().toString(36)}`;
   if (mode === 'ssh') {   // script and log live on the target in /tmp
     await sh(`cat > /tmp/${id}.sh <<'__ELO_JOB__'\n#!/bin/bash\n${script.replace(/\r/g, '')}\n__ELO_JOB__\n: > /tmp/${id}.log; ` +
       `setsid nohup bash -c ${shq(`bash /tmp/${id}.sh; echo "__EXIT__:$?"`)} >> /tmp/${id}.log 2>&1 < /dev/null & echo started`, 60);
@@ -175,8 +188,13 @@ async function startJob(name, script) {
   }
   const shFile = path.join(RUN_DIR, `${id}.sh`), log = path.join(RUN_DIR, `${id}.log`);
   fs.writeFileSync(shFile, `#!/bin/bash\n${script}\n`.replace(/\r/g, ''));
-  fs.writeFileSync(log, '');
-  await sh(`setsid nohup bash -c ${shq(`bash ${shq(toLinux(shFile))}; echo "__EXIT__:$?"`)} >> ${shq(toLinux(log))} 2>&1 < /dev/null & echo started`, 60);
+  // The log is created by the job itself (in WSL it runs as the interactive user, who cannot write to a file the
+  // elevated installer created here); readLog treats a missing log as empty.
+  // With systemd (WSL with systemd=true) the job runs as a transient unit: processes started from a wsl.exe session
+  // are killed when that session ends, even with setsid/nohup. Without systemd: setsid + nohup.
+  const body = `bash ${shq(toLinux(shFile))} >> ${shq(toLinux(log))} 2>&1 < /dev/null; echo "__EXIT__:$?" >> ${shq(toLinux(log))}`;
+  await sh(`if [ -d /run/systemd/system ] && command -v systemd-run >/dev/null; then systemd-run --quiet --collect --unit=${id} bash -c ${shq(body)}; ` +
+    `else setsid nohup bash -c ${shq(body)} > /dev/null 2>&1 < /dev/null & fi; echo started`, 60);
   return { id, log };
 }
 
@@ -187,5 +205,5 @@ function ps(script, timeoutMs = 120000) {
     '[Console]::OutputEncoding=[Text.Encoding]::UTF8; ' + script], { timeoutMs });
 }
 
-module.exports = { detect, sh, shLocal, nodeJob, startJob, history, record, readLog, ps, run, toLinux, shq, setTarget, getTarget, deployRemote, eloDir,
+module.exports = { detect, sh, shLocal, shOn, nodeJob, startJob, history, record, readLog, ps, run, toLinux, shq, setTarget, getTarget, deployRemote, eloDir,
   IS_WIN, RUN_DIR, ELO_DIR, REMOTE_DIR, getMode: () => mode, getDistro: () => distro, getSeatLib: () => seatLib };
