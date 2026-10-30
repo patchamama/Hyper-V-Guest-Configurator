@@ -205,10 +205,31 @@ if(-not $ip){ $m=($a.MacAddress -replace '(..)(?!$)','$1-'); $ip=(Get-NetNeighbo
 // ELO images are Linux-only, so Docker runs in WSL2 inside the VM (nested virtualization). Windows Server 2019 has
 // no WSL2, hence 2022 and 2025 only. Evaluation ISOs (180 days) or an own ISO; the image is applied to the VHDX
 // with DISM (no setup UI), unattend.xml sets the Administrator password and skips OOBE.
+// wsl2: false → Windows only (2019 has WSL1 only, 2016 no WSL): the VM is created without Docker/ELO.
 const WIN_IMAGES = {
-  ws2025: { label: 'Windows Server 2025', iso: 'https://go.microsoft.com/fwlink/?linkid=2293312&clcid=0x409&culture=en-us&country=us', file: 'ws2025-eval-en-us.iso' },
-  ws2022: { label: 'Windows Server 2022', iso: 'https://go.microsoft.com/fwlink/p/?LinkID=2195280&clcid=0x409&culture=en-us&country=US', file: 'ws2022-eval-en-us.iso' },
+  ws2025: { label: 'Windows Server 2025', wsl2: true, gb: 5.6, iso: 'https://go.microsoft.com/fwlink/?linkid=2293312&clcid=0x409&culture=en-us&country=us', file: 'ws2025-eval-en-us.iso' },
+  ws2022: { label: 'Windows Server 2022', wsl2: true, gb: 4.7, iso: 'https://go.microsoft.com/fwlink/p/?LinkID=2195280&clcid=0x409&culture=en-us&country=US', file: 'ws2022-eval-en-us.iso' },
+  ws2019: { label: 'Windows Server 2019', wsl2: false, gb: 5.3, iso: 'https://go.microsoft.com/fwlink/p/?LinkID=2195167&clcid=0x409&culture=en-us&country=US', file: 'ws2019-eval-en-us.iso' },
+  ws2016: { label: 'Windows Server 2016', wsl2: false, gb: 6.5, iso: 'https://go.microsoft.com/fwlink/p/?LinkID=2195174&clcid=0x409&culture=en-us&country=US', file: 'ws2016-eval-en-us.iso' },
 };
+// Windows Server ISOs: the evaluation ISO of each version (cached or not) + any other .iso in the cache folder.
+function isoList() {
+  const stat = f => { try { const s = fs.statSync(path.join(CACHE, f)); return { size: s.size, date: s.mtime.toISOString().slice(0, 10) }; } catch { return null; } };
+  const files = (() => { try { return fs.readdirSync(CACHE).filter(f => /\.iso$/i.test(f)); } catch { return []; } })();
+  const evals = Object.entries(WIN_IMAGES).map(([id, w]) => ({ id, label: w.label, wsl2: w.wsl2, file: w.file, path: path.join(CACHE, w.file), gb: w.gb, cached: stat(w.file) }));
+  const own = files.filter(f => !evals.some(e => e.file === f)).map(f => ({ id: null, label: f, file: f, path: path.join(CACHE, f), cached: stat(f) }));
+  return { dir: CACHE, isos: [...evals, ...own] };
+}
+async function downloadIso(id, log) {
+  const w = WIN_IMAGES[id]; if (!w) throw new Error('unknown Windows version');
+  fs.mkdirSync(CACHE, { recursive: true });
+  const f = path.join(CACHE, w.file);
+  log(`__STEP__ Downloading the ${w.label} evaluation ISO (${w.gb} GB) into ${CACHE}`);
+  const r = await x.ps(`$f='${psq(f)}'; if(-not (Test-Path $f)){ [Net.ServicePointManager]::SecurityProtocol='Tls12'; $ProgressPreference='SilentlyContinue'
+Invoke-WebRequest '${psq(w.iso)}' -OutFile "$f.part" -UseBasicParsing; Move-Item "$f.part" $f -Force }; "$([math]::Round((Get-Item $f).Length/1GB,2)) GB  $f"`, 180 * 60000);
+  if (r.code !== 0) throw new Error(r.err.trim());
+  log(r.out.trim());
+}
 const WSL_ROOTFS = { url: 'https://cloud-images.ubuntu.com/wsl/releases/24.04/current/ubuntu-noble-wsl-amd64-wsl.rootfs.tar.gz', file: 'ubuntu-24.04-wsl-rootfs.tar.gz' };
 const EDITIONS = { 'standard-desktop': 'Standard.*Desktop', 'standard-core': 'Standard(?!.*Desktop)', 'datacenter-desktop': 'Datacenter.*Desktop', 'datacenter-core': 'Datacenter(?!.*Desktop)' };
 const ELO_PORTS = [9090, 9060, 9010, 9200, 5050];
@@ -246,23 +267,30 @@ async function createWinVm({ distro, name, ramGB = 16, cpus = 4, diskGB = 127, p
   if (st.hyperV !== 'Enabled') throw new Error('Hyper-V is not enabled');
   if (!fs.existsSync(keyFile + '.pub')) await x.run('ssh-keygen', ['-t', 'ed25519', '-N', '', '-C', 'elo-installer', '-f', keyFile]);
   const pubKey = fs.readFileSync(keyFile + '.pub', 'utf8').trim();
-  // Complex enough for the Windows password policy.
-  const pw = password || `Elo-${Math.random().toString(36).slice(2, 8)}${Math.floor(Math.random() * 90 + 10)}X`;
   const dir = path.join(VM_DIR, name); fs.mkdirSync(dir, { recursive: true }); fs.mkdirSync(CACHE, { recursive: true });
   const disk = path.join(dir, `${name}.vhdx`), unattendFile = path.join(dir, 'unattend.xml');
-  if (fs.existsSync(disk)) throw new Error(`${disk} already exists`);
-  fs.writeFileSync(unattendFile, unattend({ name, password: pw, productKey }));
   const ps = async (script, min = 30) => { const r = await x.ps(`$ErrorActionPreference='Stop'; ${script}`, min * 60000); if (r.code !== 0) throw new Error((r.err || r.out).trim().split('\n').slice(-3).join(' ')); return r.out.trim(); };
+  // Running it again for an existing VM of the installer resumes it (start + remaining steps; they are idempotent),
+  // e.g. after "not enough free memory"; the password comes from its unattend.xml.
+  const exists = (await x.ps(`[bool](Get-VM -Name '${psq(name)}' -EA SilentlyContinue)`)).out.trim() === 'True';
+  if (exists && !fs.existsSync(unattendFile)) throw new Error(`a VM named ${name} already exists (not created by the installer)`);
+  if (!exists && fs.existsSync(disk)) throw new Error(`${disk} already exists without a VM: delete the folder ${dir} and try again`);
+  // Complex enough for the Windows password policy.
+  const pw = exists ? fs.readFileSync(unattendFile, 'utf8').match(/<Value>([^<]*)<\/Value>/)[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    : password || `Elo-${Math.random().toString(36).slice(2, 8)}${Math.floor(Math.random() * 90 + 10)}X`;
+  if (!exists) fs.writeFileSync(unattendFile, unattend({ name, password: pw, productKey }));
   const dl = async (url, file, label) => {
     log(`__STEP__ Downloading ${label} (cached in ${CACHE})`);
     log(await ps(`$f='${psq(file)}'; if(-not (Test-Path $f) -or (Get-Item $f).Length -lt 1MB){ [Net.ServicePointManager]::SecurityProtocol='Tls12'; $ProgressPreference='SilentlyContinue'
 Invoke-WebRequest '${psq(url)}' -OutFile "$f.part" -UseBasicParsing; Move-Item "$f.part" $f -Force }; "$([math]::Round((Get-Item $f).Length/1GB,2)) GB  $f"`, 180));
   };
   const iso = isoPath || path.join(CACHE, w.file);
-  if (isoPath) { if (!fs.existsSync(isoPath)) throw new Error(`ISO not found: ${isoPath}`); log(`__STEP__ Using the ISO ${isoPath}`); }
-  else await dl(w.iso, iso, `${w.label} evaluation ISO (about 5–6 GB, 180-day evaluation)`);
   const rootfs = path.join(CACHE, WSL_ROOTFS.file);
-  await dl(WSL_ROOTFS.url, rootfs, 'Ubuntu 24.04 WSL root file system');
+  if (exists) log(`__STEP__ Resuming the existing VM ${name}`);
+  else {
+  if (isoPath) { if (!fs.existsSync(isoPath)) throw new Error(`ISO not found: ${isoPath}`); log(`__STEP__ Using the ISO ${isoPath}`); }
+  else if (fs.existsSync(iso)) log(`__STEP__ Using the cached ${w.label} evaluation ISO (${iso})`);
+  else await dl(w.iso, iso, `${w.label} evaluation ISO (${w.gb} GB, 180-day evaluation)`);
 
   log(`__STEP__ Applying ${w.label} to a new ${diskGB} GB VHDX (DISM, a few minutes)`);
   log(await ps(`$vhd='${psq(disk)}'; $iso='${psq(iso)}'
@@ -288,15 +316,25 @@ try {
 } finally { Dismount-VHD -Path $vhd }
 "VHDX: $([math]::Round((Get-Item $vhd).Length/1GB,1)) GB"`, 60));
 
-  log('__STEP__ Creating the Hyper-V VM (Generation 2, nested virtualization for WSL2) and starting Windows');
+  log(`__STEP__ Creating the Hyper-V VM (Generation 2${w.wsl2 ? ', nested virtualization for WSL2' : ''})`);
   log(await ps(`$n='${psq(name)}'
 $sw=(Get-VMSwitch | Where-Object Name -eq 'Default Switch' | Select-Object -First 1); if(-not $sw){ $sw=Get-VMSwitch | Select-Object -First 1 }
 New-VM -Name $n -Generation 2 -MemoryStartupBytes ${Number(ramGB)}GB -VHDPath '${psq(disk)}' -SwitchName $sw.Name -Path '${psq(VM_DIR)}' | Out-Null
-Set-VMProcessor -VMName $n -Count ${Number(cpus)} -ExposeVirtualizationExtensions $true
+Set-VMProcessor -VMName $n -Count ${Number(cpus)} -ExposeVirtualizationExtensions $${w.wsl2 ? 'true' : 'false'}
 Set-VMMemory -VMName $n -DynamicMemoryEnabled $false
 Get-VMNetworkAdapter -VMName $n | Set-VMNetworkAdapter -MacAddressSpoofing On
-Enable-VMIntegrationService -VMName $n -Name 'Guest Service Interface'
-Start-VM -Name $n; "switch=$($sw.Name)"`, 5));
+"switch=$($sw.Name)"`, 5));
+  }
+
+  // Static memory (needed for nested virtualization) must be free on the host to start the VM.
+  const mem = JSON.parse((await ps(`$v=Get-VM -Name '${psq(name)}'; $os=Get-CimInstance Win32_OperatingSystem
+ConvertTo-Json -Compress @{ state="$($v.State)"; need=[int64]$v.MemoryStartup; free=[int64]$os.FreePhysicalMemory*1KB }`, 2)).split('\n').pop());
+  if (mem.state !== 'Running') {
+    if (mem.free < mem.need) throw new Error(`the VM ${name} is created but not started: it needs ${(mem.need / 2 ** 30).toFixed(0)} GB of RAM and only ` +
+      `${(mem.free / 2 ** 30).toFixed(1)} GB are free. Stop another VM or shut down WSL (Administration), then create it again with the same name to resume.`);
+    log('__STEP__ Starting Windows');
+    await ps(`Start-VM -Name '${psq(name)}'`, 5);
+  }
 
   // PowerShell Direct (VMBus): works without network, as Administrator.
   const cred = `$c=New-Object PSCredential('Administrator',(ConvertTo-SecureString '${psq(pw)}' -AsPlainText -Force))`;
@@ -310,6 +348,12 @@ Start-VM -Name $n; "switch=$($sw.Name)"`, 5));
     throw new Error('Windows in the VM did not answer over PowerShell Direct (check the VM console)');
   };
   log(await waitVm('Waiting for Windows setup (specialize + first boot, several minutes)'));
+  if (!w.wsl2) {
+    log(`__STEP__ ${w.label} is ready (Administrator / ${pw}). ${w.label} has no WSL2, so Docker/ELO are not installed in it; ` +
+      'the VM is not set as the installation target. Open it with the viewer (Administration → installations).');
+    return;
+  }
+  await dl(WSL_ROOTFS.url, rootfs, 'Ubuntu 24.04 WSL root file system');
 
   log('__STEP__ Enabling WSL and the Virtual Machine Platform in the VM (then restart)');
   log(await inVm(`foreach($f in 'Microsoft-Windows-Subsystem-Linux','VirtualMachinePlatform'){ $r=Enable-WindowsOptionalFeature -Online -FeatureName $f -All -NoRestart; "$f restart=$($r.RestartNeeded)" }`, 20));
@@ -322,9 +366,13 @@ Start-VM -Name $n; "switch=$($sw.Name)"`, 5));
 $a=(Invoke-RestMethod https://api.github.com/repos/microsoft/WSL/releases/latest).assets | ? name -match 'x64\\.msi$' | Select-Object -First 1
 Invoke-WebRequest $a.browser_download_url -OutFile C:\\elo\\wsl.msi -UseBasicParsing
 $p=Start-Process msiexec.exe -ArgumentList '/i','C:\\elo\\wsl.msi','/qn','/norestart' -Wait -PassThru; "$($a.name) exit=$($p.ExitCode)"`, 30));
-  const s = `${cred}; $s=New-PSSession -VMName '${psq(name)}' -Credential $c`;
-  log(await ps(`${s}; Copy-Item '${psq(rootfs)}' -Destination C:\\elo\\rootfs.tar.gz -ToSession $s; Remove-PSSession $s; 'rootfs copied'`, 30));
-  log(await inVm(`$env:WSL_UTF8='1'; wsl.exe --import Ubuntu C:\\elo\\wsl\\Ubuntu C:\\elo\\rootfs.tar.gz --version 2 2>&1 | Out-String; Remove-Item C:\\elo\\rootfs.tar.gz; wsl.exe -l -v 2>&1 | Out-String`, 30));
+  const hasDistro = /Ubuntu/.test(await inVm(`$env:WSL_UTF8='1'; (wsl.exe -l -q 2>$null) -join ' '`, 5).catch(() => ''));
+  if (hasDistro) log('Ubuntu is already imported');
+  else {
+    const s = `${cred}; $s=New-PSSession -VMName '${psq(name)}' -Credential $c`;
+    log(await ps(`${s}; Copy-Item '${psq(rootfs)}' -Destination C:\\elo\\rootfs.tar.gz -ToSession $s; Remove-PSSession $s; 'rootfs copied'`, 30));
+    log(await inVm(`$env:WSL_UTF8='1'; wsl.exe --import Ubuntu C:\\elo\\wsl\\Ubuntu C:\\elo\\rootfs.tar.gz --version 2 2>&1 | Out-String; Remove-Item C:\\elo\\rootfs.tar.gz; wsl.exe -l -v 2>&1 | Out-String`, 30));
+  }
 
   log('__STEP__ Configuring Ubuntu in WSL: user elo with the installer key, passwordless sudo, systemd, OpenSSH');
   const setup = `set -e; export DEBIAN_FRONTEND=noninteractive
@@ -339,6 +387,7 @@ apt-get update -qq; apt-get install -y -qq openssh-server curl ca-certificates >
   log('__STEP__ Startup task in the VM: keep WSL running, forward SSH and the ELO ports to it, open the firewall');
   const startB64 = Buffer.from(WSL_START, 'utf16le').toString('base64');
   log(await inVm(`[IO.File]::WriteAllText('C:\\elo\\wsl-start.ps1', [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('${startB64}')))
+Remove-NetFirewallRule -DisplayName 'ELO via WSL' -EA SilentlyContinue
 New-NetFirewallRule -DisplayName 'ELO via WSL' -Direction Inbound -Protocol TCP -LocalPort 22,${ELO_PORTS.join(',')} -Action Allow | Out-Null
 $act=New-ScheduledTaskAction -Execute powershell.exe -Argument '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File C:\\elo\\wsl-start.ps1'
 $trg=New-ScheduledTaskTrigger -AtStartup; $set=New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 -AllowStartIfOnBatteries
@@ -364,4 +413,4 @@ Start-ScheduledTask -TaskName 'ELO-WSL'; Start-Sleep 25; Get-Content C:\\elo\\ws
   log(`__STEP__ VM ready and set as the installation target (Windows: Administrator / ${pw}; Ubuntu in WSL: elo / ${pw}). Next: Requirements installs Docker, Install deploys ELO.`);
 }
 
-module.exports = { status, installWsl, enableHyperV, installVirtualBox, createVm, createWinVm, VM_DIR, IMAGES, WIN_IMAGES };
+module.exports = { status, installWsl, enableHyperV, installVirtualBox, createVm, createWinVm, isoList, downloadIso, VM_DIR, IMAGES, WIN_IMAGES };

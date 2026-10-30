@@ -237,20 +237,32 @@ async function targetExtra() {
     if (k === 'hyperv' && !ready) html += p.home ? `<p class="tbad">${t('p.home')}</p>` : `<div style="margin-top:10px"><button class="btn primary small" onclick="provJob('/provision/hyperv')">${t('p.enableHyperv')}</button></div>`;
     if (k === 'vbox' && !ready) html += `<div style="margin-top:10px"><button class="btn primary small" onclick="provJob('/provision/vbox')">${t('p.installVbox')}</button> <span class="muted">${t('p.vboxHint')}</span></div>`;
     // Windows Server (Hyper-V only): WSL2 + Ubuntu inside the VM runs Docker/ELO.
-    const oses = [['ubuntu', 'Ubuntu 24.04 LTS'], ['debian', 'Debian 13'], ...(k === 'hyperv' ? [['ws2025', 'Windows Server 2025'], ['ws2022', 'Windows Server 2022']] : [])];
+    const isos = k === 'hyperv' ? (W.isos || (W.isos = await api('/isos'))) : null;
+    const evals = (isos?.isos || []).filter(i => i.id);
+    const oses = [['ubuntu', 'Ubuntu 24.04 LTS'], ['debian', 'Debian 13'],
+      ...evals.map(i => [i.id, `${i.label}${i.cached ? ' — ' + t('iso.inCache') : ''}${i.wsl2 ? '' : ' — ' + t('iso.noWsl2')}`])];
     if (k !== 'hyperv' && W.vm.distro.startsWith('ws')) W.vm.distro = 'ubuntu';
-    const win = W.vm.distro.startsWith('ws');
+    const win = W.vm.distro.startsWith('ws'), cur = evals.find(i => i.id === W.vm.distro);
+    // ISO choice: the cached evaluation ISO of the version (or download it), own ISOs in the cache folder, or a path.
+    if (win && W.vm.isoChoice === undefined) W.vm.isoChoice = '';
+    const ownIsos = (isos?.isos || []).filter(i => !i.id && i.cached);
     if (ready) html += `<div class="explain" style="margin-top:12px">${t(win ? 'p.winExplain' : 'p.vmExplain')}</div><div class="grid2">
       <div><label>${t('p.vmName')}</label><input type="text" value="${esc(W.vm.name)}" maxlength="${win ? 15 : 40}" oninput="W.vm.name=this.value"></div>
       <div><label>${t('p.os')}</label><select onchange="W.vm.distro=this.value; targetExtra()">${oses.map(([v, l]) => `<option value="${v}" ${W.vm.distro === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       ${win ? `<div><label>${t('p.edition')}</label><select onchange="W.vm.edition=this.value">${[['standard-desktop', 'Standard (Desktop Experience)'], ['standard-core', 'Standard (Server Core)'], ['datacenter-desktop', 'Datacenter (Desktop Experience)'], ['datacenter-core', 'Datacenter (Server Core)']]
           .map(([v, l]) => `<option value="${v}" ${(W.vm.edition || 'standard-desktop') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-        <div><label>${t('p.iso')}</label><input type="text" placeholder="${esc(t('p.isoEval'))}" value="${esc(W.vm.isoPath || '')}" oninput="W.vm.isoPath=this.value.trim()"></div>
+        <div><label>${t('p.iso')}</label><select onchange="W.vm.isoChoice=this.value; W.vm.isoPath=this.value==='other'?'':this.value; targetExtra()">
+          <option value="" ${!W.vm.isoChoice ? 'selected' : ''}>${cur?.cached ? `● ${t('iso.useCached')} (${gb(cur.cached.size)})` : `○ ${t('iso.downloadEval', { gb: cur?.gb })}`}</option>
+          ${ownIsos.map(i => `<option value="${esc(i.path)}" ${W.vm.isoChoice === i.path ? 'selected' : ''}>● ${esc(i.file)} (${gb(i.cached.size)})</option>`).join('')}
+          <option value="other" ${W.vm.isoChoice === 'other' ? 'selected' : ''}>${t('iso.other')}</option></select>
+          ${W.vm.isoChoice === 'other' ? `<input type="text" style="margin-top:6px" placeholder="D:\\iso\\server.iso" value="${esc(W.vm.isoPath || '')}" oninput="W.vm.isoPath=this.value.trim()">` : ''}</div>
         <div><label>${t('p.productKey')}</label><input type="text" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" value="${esc(W.vm.productKey || '')}" oninput="W.vm.productKey=this.value.trim()"></div>` : ''}
       <div><label>${t('p.ram')}</label><input type="number" min="4" value="${W.vm.ramGB}" oninput="W.vm.ramGB=+this.value"></div>
       <div><label>${t('p.cpus')}</label><input type="number" min="1" value="${W.vm.cpus}" oninput="W.vm.cpus=+this.value"></div>
       <div><label>${t('p.disk')}</label><input type="number" min="30" value="${W.vm.diskGB}" oninput="W.vm.diskGB=+this.value"></div>
       <div style="align-self:end"><button class="btn primary small" id="vm-create" ${(win || p.wslDistro) && !(win && !W.vm.acceptEula) ? '' : 'disabled'} onclick="provVm('${k}')">${t('p.createVm')}</button></div></div>
+      ${win && !cur?.wsl2 ? `<p class="twarn" style="margin-top:8px">${t('iso.noWsl2Note', { v: esc(cur?.label || '') })}</p>` : ''}
+      ${win ? isoTable(isos) : ''}
       ${win ? `<label class="row" style="gap:8px;margin-top:10px"><input type="checkbox" ${W.vm.acceptEula ? 'checked' : ''} onchange="W.vm.acceptEula=this.checked; $('vm-create').disabled=!this.checked">
         <span>${t('p.eula')} <a href="https://www.microsoft.com/licensing/terms" target="_blank" rel="noopener">${t('p.eulaLink')}</a></span></label>` : ''}`;
     if (tg.mode === 'ssh') html += `<p class="tok" style="margin-top:8px">${t('p.using')} ${esc(tg.target.user)}@${esc(tg.target.host)}:${esc(tg.target.port)}</p>`;
@@ -264,6 +276,19 @@ async function targetExtra() {
       <div style="align-self:end"><button class="btn small" onclick="genKey()">${t('p.genKey')}</button> <button class="btn small primary" onclick="testSsh()">${t('p.connect')}</button></div></div>
     <div id="t-msg" style="margin-top:8px">${tg.mode === 'ssh' ? `<span class="tok">${t('p.using')} ${esc(tg.target.user)}@${esc(tg.target.host)}</span>` : ''}</div>`;
 }
+// Windows Server ISOs: cached or not (always visible), download into the cache, open the folder, save from the browser.
+function isoTable(isos) {
+  if (!isos?.ok) return '';
+  return `<div class="card" style="margin-top:12px"><div class="row"><b>${t('iso.title')}</b><span class="muted">${esc(isos.dir)}</span>
+      <button class="btn small right" onclick="openCache('vmcache')">${t('k.openVmCache')}</button></div>
+    <div class="tablewrap"><table>${isos.isos.map(i => `<tr><td><span class="dot ${i.cached ? 'ok' : 'idle'}"></span> <b>${esc(i.label)}</b></td>
+      <td class="muted">${i.id ? (i.wsl2 ? 'WSL2 ✓ · ELO' : t('iso.noWsl2')) : t('iso.own')}</td>
+      <td>${i.cached ? `${t('iso.inCache')} · ${gb(i.cached.size)} · ${esc(i.cached.date)}` : `<span class="muted">${t('iso.notCached')} · ${i.gb} GB</span>`}</td>
+      <td style="white-space:nowrap">${i.cached ? `<a class="btn small" href="/isos/${encodeURIComponent(i.file)}" download>${t('iso.save')}</a>`
+        : `<button class="btn small" onclick="isoDownload('${i.id}')">${t('iso.download')}</button>`}</td></tr>`).join('')}</table></div>
+    <div id="iso-job" style="margin-top:8px"></div></div>`;
+}
+function isoDownload(id) { runJob('/isos/download', { id }, $('iso-job'), () => { W.isos = null; targetExtra(); }); }
 const sshCmds = pub => `mkdir -p ~/.ssh && echo '${pub}' >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys\necho "$USER ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/elo-installer`;
 const afterProv = () => { W.prov = null; setTimeout(() => { targetExtra(); refreshEnv(); }, 500); };
 function provJob(endpoint, body) { runJob(endpoint, body || {}, $('prov-job'), afterProv); }
@@ -661,7 +686,8 @@ async function renderContainers(reload) {
       ${i.backups.map(b => `<tr><td><span class="dot" style="background:var(--accent2)"></span> ${esc(b.ref)}</td><td>${gb(b.size)}</td><td>${esc(b.date)}</td>
         <td><button class="btn small" onclick="loadTar('${esc(b.file)}')">${t('k.load')}</button></td></tr>`).join('')}</table></div>` : `<p class="muted">${t('m.none')}</p>`}
     <b class="muted">${t('k.vmImages')}</b>
-    ${i.vmImages?.length ? `<table>${i.vmImages.map(v => `<tr><td>${esc(v.file)}</td><td>${gb(v.size)}</td><td>${esc(v.date)}</td></tr>`).join('')}</table>` : `<p class="muted">${t('m.none')}</p>`}
+    ${i.vmImages?.length ? `<table>${i.vmImages.map(v => `<tr><td>${esc(v.file)}</td><td>${gb(v.size)}</td><td>${esc(v.date)}</td>
+      <td>${/\.iso$/i.test(v.file) ? `<a class="btn small" href="/isos/${encodeURIComponent(v.file)}" download>${t('iso.save')}</a>` : ''}</td></tr>`).join('')}</table>` : `<p class="muted">${t('m.none')}</p>`}
   </div>`;
   renderSources();
 }

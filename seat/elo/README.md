@@ -169,7 +169,12 @@ Además:
   Standard/Datacenter con o sin escritorio, clave opcional. La imagen se aplica al VHDX con DISM + `unattend.xml` (hay
   que aceptar los términos de licencia de Microsoft en el asistente). Dentro: WSL2 (virtualización anidada) + Ubuntu
   24.04 con el usuario `elo` y la clave del instalador; una tarea de inicio redirige SSH y los puertos de ELO de la VM a
-  Ubuntu, así los pasos siguientes instalan Docker y ELO como en cualquier Linux. Windows Server 2019 no tiene WSL2.
+  Ubuntu, así los pasos siguientes instalan Docker y ELO como en cualquier Linux.
+  Versiones: **2025, 2022** (con WSL2 → Docker + ELO) y **2019, 2016** (sin WSL2: la VM se crea solo con Windows).
+  La tabla "ISOs de Windows Server" muestra siempre qué ISO está en caché (`C:\ProgramData\hvc-vms\cache`), permite
+  descargarla a la caché, abrir la carpeta y guardarla desde el navegador (`/isos/<archivo>`); también se puede usar
+  una ISO propia de esa carpeta u otra ruta. Volver a crear una VM con el mismo nombre la reanuda (p. ej. si no había
+  RAM libre para arrancarla: la memoria estática que exige la virtualización anidada se comprueba antes de arrancar).
 - **"Esta máquina Linux"** está deshabilitada cuando el instalador corre en Windows.
 - **VirtualBox con Hyper-V activo:** VirtualBox usa entonces la capa NEM de Hyper-V y un invitado Linux puede quedarse
   colgado al arrancar (bloqueos RCU en el kernel). La VM se crea bien (puertos libres detectados, 2 puertos SATA), pero en
