@@ -130,6 +130,20 @@ Además:
 - **Archivos en disco:** abrir en el explorador la carpeta de logs, el archivo de ELO (ficheros del repositorio), los
   datos de sistema del archivo y los del Index Server (volúmenes de Docker; en Windows vía `\\wsl.localhost`).
 
+- **Interfaz:** inglés (por defecto), alemán y español; tema sistema/claro/oscuro (se recuerdan en el navegador).
+- **Al abrir:** detecta una instalación existente (versión, repositorio, servicios en marcha) y ofrece ir a la administración.
+- **Aprovisionamiento automático** (`provision.js`): WSL (`wsl --install`) + Ubuntu 24.04/Debian con usuario y systemd;
+  Docker Desktop; Hyper-V (característica de Windows; no en ediciones Home); VirtualBox (instalador firmado de Oracle);
+  y **VM Ubuntu 24.04 / Debian 13** en Hyper-V (Gen2, VHDX) o VirtualBox (VDI, NAT con puertos) a partir de la imagen
+  cloud oficial convertida con `qemu-img` en WSL y configurada con cloud-init (usuario `elo`, clave SSH del instalador,
+  sudo sin contraseña); la VM queda como destino SSH. Si hace falta reiniciar Windows, el asistente lo indica.
+- **Pestaña Contenedores e imágenes:** todos los contenedores (estado, memoria, CPU, puertos, tamaño; arrancar, parar,
+  reiniciar, eliminar) y las imágenes (copia, restaurar, borrar). La administración y esta pestaña guardan los datos
+  hasta pulsar "Actualizar"; las acciones dependen del estado (Arrancar si está parado; Parar/Reiniciar si está en marcha).
+- **Prueba de la API IX con curl:** página de estado del IX y login en la API JSON (`POST /<repo>/rest/IXServicePortIF/login`)
+  como administrador; se muestra el comando `curl` (contraseña oculta), el código, el tiempo y la respuesta. En las
+  imágenes ECK el resto de métodos de `/rest` responden 401/403 (reservados a servicios internos).
+
 Diseño de los pasos (referencia):
 
 ### Pasos del asistente

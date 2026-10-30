@@ -216,6 +216,42 @@ app.post('/api/webcheck', wrap(async () => {
   return webClientCheck({ base: await baseUrl(), repo: e.REPO, user: e.AUTH_ADMIN_USERNAME || 'Administrator', pass: e.AUTH_ADMIN_PASSWORD });
 }));
 
+// ── ELO IX API test with curl (JSON API: /<repo>/rest/IXServicePortIF/<method>, session via cookie) ──
+app.post('/api/ixtest', wrap(async () => {
+  const e = await readEnv(); if (!e) throw new Error('not installed');
+  const user = e.AUTH_ADMIN_USERNAME || 'Administrator', repo = e.REPO || 'repository';
+  const B = `http://localhost:9090/${repo}`, J = `${B}/rest/IXServicePortIF`;
+  // In the ECK images the /rest interface allows login for any user; other IXServicePortIF methods answer 401/403
+  // there (reserved for internal services), so the test covers the status page and an authenticated login.
+  const steps = [
+    ['Index Server status page', `curl -s -w '\\nHTTP:%{http_code}' '${B}/ix?cmd=status'`],
+    ['IX JSON API: login (POST /rest/IXServicePortIF/login)', `curl -s -X POST -H 'Content-Type: application/json' -d '{"userName":"${user}","userPwd":"$P","clientComputer":"elo-installer","runAsUser":""}' '${J}/login'`],
+  ];
+  // Password passed via the environment of the script (never in the returned commands).
+  const script = `P=${x.shq(e.AUTH_ADMIN_PASSWORD)}\n` + steps.map(([, c], i) =>
+    `echo "__S${i}__"; t0=$(date +%s%N); out=$(${c.replace('"userPwd":"$P"', `"userPwd":"'"$P"'"`)} 2>&1); echo "$out" | head -c 60000; echo; echo "__T${i}__ $(( ($(date +%s%N)-t0)/1000000 ))"`).join('\n');
+  const out = await x.sh(script, 120);
+  const text = h => h.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+  return { ok: true, steps: steps.map(([name, cmd], i) => {
+    const part = (out.split(`__S${i}__`)[1] || '').split(/__T\d+__/)[0].trim();
+    const ms = Number(((out.split(`__T${i}__`)[1] || '').trim().split(/\s/)[0]) || 0);
+    let ok = false, summary = part.slice(0, 300), raw = part.slice(0, 1200);
+    if (i === 0) {
+      const code = (part.match(/HTTP:(\d+)/) || [])[1], t = text(part.replace(/HTTP:\d+$/, ''));
+      const ver = (t.match(/(?:Version|version)\s*:?\s*([\d.]{8,})/) || [])[1];
+      ok = code === '200'; summary = `HTTP ${code}${/Running/.test(t) ? ' · Running' : ''}${ver ? ' · IX ' + ver : ''}`; raw = t.slice(0, 600);
+    } else {
+      try {
+        const j = JSON.parse(part); const r = j.result || {};
+        ok = !j.exception;
+        summary = j.exception ? j.exception : `user ${r.user?.name} (id ${r.user?.id}) · ${(r.user?.groupList || []).length} groups · client types ${(r.clientInfo?.userProductClientTypes || []).join(',')} · ticket lifetime ${r.ticketLifetime}s`;
+        raw = JSON.stringify({ ...j, result: j.result ? { clientInfo: r.clientInfo, ticketLifetime: r.ticketLifetime, user: { id: r.user?.id, name: r.user?.name, groupList: r.user?.groupList } } : undefined }, null, 1);
+      } catch { ok = false; }
+    }
+    return { name, ok, ms, curl: cmd.replace('$P', '********'), summary, raw };
+  }) };
+}));
+
 // ── Administration ──────────────────────────────────────────────────────────
 app.get('/api/status', wrap(async () => {
   const e = await readEnv();
@@ -275,6 +311,7 @@ app.get('/api/logs/:svc', wrap(async req => ({ ok: true, out: await elo(`logs ${
 app.post('/api/engine', wrap(async req => {
   const { action } = req.body || {};
   if (action === 'stop-stack') return { ok: true, out: await elo('down', {}, 300) };
+  if (action === 'restart-stack') return { ok: true, out: await elo('restart', {}, 600) };
   if (action === 'start-stack') return { ok: true, out: await elo('up', {}, 600) };
   if (action === 'stop-docker') return { ok: true, out: await x.sh('systemctl stop docker docker.socket 2>&1 || service docker stop 2>&1; echo stopped', 120) };
   if (action === 'start-docker') return { ok: true, out: await x.sh('systemctl start docker 2>&1 || service docker start 2>&1; docker version --format "Docker {{.Server.Version}} running"', 120) };
@@ -386,6 +423,23 @@ app.post('/api/images/load', wrap(async req => {
   return x.startJob('load', `docker load -i ${x.shq(x.eloDir() + '/backup/' + file)}`);
 }));
 
+// ── All containers (ELO and others) with details; single-container actions ──
+app.get('/api/containers', wrap(async () => {
+  const out = await x.sh(`docker ps -a --size --format '{{json .}}' 2>/dev/null; echo "__STATS__"; docker stats --no-stream --format '{{json .}}' 2>/dev/null`, 180);
+  const [ps, st] = out.split('__STATS__');
+  const json = s => s.split('\n').map(l => { try { return JSON.parse(l.trim()); } catch { return null; } }).filter(Boolean);
+  const stats = Object.fromEntries(json(st || '').map(s => [s.Name, s]));
+  return { ok: true, containers: json(ps).map(c => ({
+    name: c.Names, image: c.Image, state: c.State, status: c.Status, ports: c.Ports, created: c.RunningFor, size: c.Size,
+    networks: c.Networks, mem: stats[c.Names]?.MemUsage || '', cpu: stats[c.Names]?.CPUPerc || '', elo: /^elo-/.test(c.Names),
+  })) };
+}));
+app.post('/api/container', wrap(async req => {
+  const { action, name } = req.body || {};
+  if (!['start', 'stop', 'restart', 'rm'].includes(action) || !/^[\w.-]+$/.test(name || '')) throw new Error('bad request');
+  return { ok: true, out: await x.sh(`docker ${action === 'rm' ? 'rm -f' : action} ${x.shq(name)} 2>&1`, 300) };
+}));
+
 // ── License update on an existing installation ──────────────────────────────
 app.post('/api/license/apply', wrap(async () => {
   const lic = ['elo-license.lic', 'uploaded-license.pk'].find(f => fs.existsSync(path.join(ELO, f)));
@@ -421,5 +475,13 @@ app.post('/api/open', wrap(async req => {
   if (mode === 'linux') { await x.sh(`(command -v xdg-open && sudo -u "\${SUDO_USER:-root}" xdg-open ${x.shq(mp)}) >/dev/null 2>&1 &`, 20); return { ok: true, linuxPath: mp }; }
   return { ok: true, linuxPath: mp, note: `On the SSH target: ${mp}` };
 }));
+
+// ── Provisioning of targets (Windows): WSL2 + distro, Docker Desktop, Hyper-V, VirtualBox, Ubuntu/Debian VMs ──
+const prov = require('./provision');
+app.get('/api/provision/status', wrap(() => prov.status()));
+app.post('/api/provision/wsl', wrap(async req => x.nodeJob('wsl', log => prov.installWsl(req.body || {}, log))));
+app.post('/api/provision/hyperv', wrap(async () => x.nodeJob('hyperv', log => prov.enableHyperV(log))));
+app.post('/api/provision/vbox', wrap(async () => x.nodeJob('vbox', log => prov.installVirtualBox(log))));
+app.post('/api/provision/vm', wrap(async req => x.nodeJob('vm', log => prov.createVm(req.body || {}, log, SSH_KEY))));
 
 app.listen(PORT, () => console.log(`ELO installer: http://localhost:${PORT}`));
