@@ -628,11 +628,39 @@ async function wslInfo() {
   const v = r.out.trim();
   return { running: v !== 'off' && v !== '', memBytes: +v || 0 };
 }
+// .wslconfig of the user whose WSL the installer uses (the signed-in user in wsl-user mode): [wsl2] memory=<n>GB.
+let wslCfgPath = null;
+async function wslConfigPath() {
+  if (wslCfgPath) return wslCfgPath;
+  await x.detect();   // the mode decides whose WSL (and .wslconfig) it is
+  if (x.getMode() !== 'wsl-user') return (wslCfgPath = path.join(require('os').homedir(), '.wslconfig'));
+  const r = await x.ps(`$u=(Get-CimInstance Win32_ComputerSystem).UserName; $sid=(New-Object Security.Principal.NTAccount($u)).Translate([Security.Principal.SecurityIdentifier]).Value
+(Get-ItemProperty "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\$sid").ProfileImagePath`, 30000);
+  const home = r.out.trim().split('\n').pop().trim();
+  if (!home) throw new Error('profile of the signed-in user not found');
+  return (wslCfgPath = path.join(home, '.wslconfig'));
+}
+function wslMemLimit(text) { const m = /^\s*memory\s*=\s*([\d.]+)\s*(GB|MB)?\s*$/im.exec(text || ''); return m ? (m[2]?.toUpperCase() === 'MB' ? +m[1] / 1024 : +m[1]) : null; }
+// Sets memory= in the [wsl2] section (added if missing), keeping the other settings.
+function setWslMem(text, gb) {
+  const lines = (text || '').split(/\r?\n/); let sec = -1;
+  for (let i = 0; i < lines.length; i++) if (/^\s*\[wsl2\]\s*$/i.test(lines[i])) { sec = i; break; }
+  if (sec < 0) { lines.push('[wsl2]'); sec = lines.length - 1; }
+  let end = lines.length; for (let i = sec + 1; i < lines.length; i++) if (/^\s*\[/.test(lines[i])) { end = i; break; }
+  const k = lines.slice(sec + 1, end).findIndex(l => /^\s*memory\s*=/i.test(l));
+  if (k >= 0) lines[sec + 1 + k] = `memory=${gb}GB`; else lines.splice(sec + 1, 0, `memory=${gb}GB`);
+  return lines.join('\r\n').replace(/(\r\n)+$/, '') + '\r\n';
+}
+
 app.get('/api/wsl', wrap(async () => {
   if (!x.IS_WIN) return { ok: true, available: false };
   const w = await wslInfo();
   if (w.running) try { const m = (await x.shLocal(`free -b | awk '/Mem:/{print $2, $3}'`, 60)).trim().split(/\s+/).map(Number); w.totalBytes = m[0]; w.usedBytes = m[1]; } catch {}
-  return { ok: true, available: true, ...w, distro: x.getDistro() };
+  const cfg = await wslConfigPath().catch(() => null);
+  const text = cfg && fs.existsSync(cfg) ? fs.readFileSync(cfg, 'utf8') : '';
+  const hostGB = require('os').totalmem() / 2 ** 30;
+  // Without memory= WSL uses 50 % of the host memory.
+  return { ok: true, available: true, ...w, distro: x.getDistro(), configPath: cfg, limitGB: wslMemLimit(text), defaultGB: Math.round(hostGB / 2), hostGB: Math.round(hostGB) };
 }));
 // Shut down WSL (frees its memory; stops Docker and the local ELO stack) or start it again.
 app.post('/api/wsl', wrap(async req => {
@@ -646,6 +674,22 @@ app.post('/api/wsl', wrap(async req => {
     return { ok: true, ...(await wslInfo()) };
   }
   if (action === 'start') { await x.shLocal('true', 120); return { ok: true, ...(await wslInfo()) }; }
+  if (action === 'memory') {
+    // New limit in .wslconfig (backup kept); it applies when WSL starts again (optionally restarted right away).
+    const gb = Number(req.body.gb), hostGB = require('os').totalmem() / 2 ** 30;
+    if (!(gb >= 2 && gb <= Math.floor(hostGB))) throw new Error(`memory: 2–${Math.floor(hostGB)} GB`);
+    const cfg = await wslConfigPath();
+    const old = fs.existsSync(cfg) ? fs.readFileSync(cfg, 'utf8') : '';
+    if (old) fs.writeFileSync(cfg + '.bak-elo-installer', old);
+    fs.writeFileSync(cfg, setWslMem(old, gb));
+    let restarted = false;
+    if (req.body.apply) {
+      const cmd = `wsl.exe --shutdown; 'shut down'`;
+      if (x.getMode() === 'wsl-user') await x.getSeatLib().runAsUser(cmd, 120); else await x.ps(cmd, 120000);
+      await x.shLocal('true', 120); restarted = true;
+    }
+    return { ok: true, configPath: cfg, limitGB: gb, restarted, ...(await wslInfo()) };
+  }
   throw new Error('bad action');
 }));
 
@@ -712,12 +756,12 @@ app.get('/api/installations', wrap(async () => {
     tasks.push((async () => {
       const hv = await x.ps(`try { Get-VM -EA Stop | % { $d=(Get-VMHardDiskDrive -VM $_ | % { if($_.Path -and (Test-Path $_.Path)){ (Get-Item $_.Path).Length } } | Measure-Object -Sum).Sum
 $ip=@($_.NetworkAdapters.IPAddresses | ?{ $_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$' })[0]
-"$($_.Name)|$($_.State)|$([math]::Round($_.MemoryStartup/1GB,1))|$($_.Path)|$d|$ip" } } catch {}`, 60000);
+"$($_.Name)|$($_.State)|$([math]::Round($_.MemoryStartup/1GB,1))|$($_.Path)|$d|$ip|$($_.DynamicMemoryEnabled)" } } catch {}`, 60000);
       await Promise.all(hv.out.trim().split('\n').filter(s => s.includes('|')).map(async l => {
-        const [name, state, ram, vpath, disk, ip] = l.trim().split('|');
+        const [name, state, ram, vpath, disk, ip, dyn] = l.trim().split('|');
         const ours = /hvc-vms/i.test(vpath) || (tgt?.vm === name), running = state === 'Running';
         const item = { id: `hyperv:${name}`, order: 2, name, type: 'hyperv', typeLabel: ours ? `Hyper-V VM · ELO Docker (installer)${tgt?.vm === name && tgt.os ? ' · ' + tgt.os : ''}` : 'Hyper-V VM',
-          state: running ? 'running' : state === 'Off' ? 'stopped' : state.toLowerCase(), detail: `${ram} GB RAM${ip ? ' · ' + ip : ''}`,
+          state: running ? 'running' : state === 'Off' ? 'stopped' : state.toLowerCase(), detail: `${ram} GB RAM${dyn === 'True' ? ' (dynamic)' : ''}${ip ? ' · ' + ip : ''}`, ramGB: +ram,
           disk: +disk || null, diskNote: 'virtual disks', active: tgt?.vm === name };
         if (running && ip) {
           item.ports = await openPorts(ip, known);
@@ -736,10 +780,11 @@ $ip=@($_.NetworkAdapters.IPAddresses | ?{ $_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$
         if (name === '<inaccessible>') { list.push({ id: `vbox:${name}`, order: 3, name, type: 'vbox', typeLabel: 'VirtualBox VM', state: 'unreachable', detail: '' }); return; }
         const info = (await x.run(VBOXM, ['showvminfo', name, '--machinereadable'], { timeoutMs: 30000 })).out;
         const disks = [...info.matchAll(/^"[^"]+-\d+-\d+"="([^"]+\.(?:vdi|vmdk|vhd|vhdx))"$/gim)].map(d => fileSize(d[1]) || 0);
-        const ram = +(info.match(/^memory=(\d+)/m) || [])[1] || 0;
+        const ram = +(info.match(/^memory=(\d+)/m) || [])[1] || 0, vmState = (info.match(/^VMState="([^"]+)"/m) || [])[1] || '';
         const fwd = [...info.matchAll(/^Forwarding\(\d+\)="([^,]*),tcp,[^,]*,(\d+),[^,]*,(\d+)"$/gm)].map(f => ({ port: +f[3], hostPort: +f[2], label: KNOWN_PORTS[f[3]] || f[1] }));
         const item = { id: `vbox:${name}`, order: 3, name, type: 'vbox', typeLabel: /hvc-vms/i.test(info) ? 'VirtualBox VM · ELO Docker (installer)' : 'VirtualBox VM',
-          state: running.has(name) ? 'running' : 'stopped', detail: ram ? `${Math.round(ram / 102.4) / 10} GB RAM` : '',
+          state: vmState === 'running' ? 'running' : vmState === 'saved' ? 'saved' : vmState === 'paused' ? 'paused' : 'stopped', ramGB: ram / 1024,
+          detail: ram ? `${Math.round(ram / 102.4) / 10} GB RAM` : '',
           disk: disks.reduce((a, b) => a + b, 0) || null, diskNote: 'virtual disks', active: tgt?.vm === name };
         if (item.state === 'running' && fwd.length) {
           item.ports = await openPorts('127.0.0.1', fwd);
@@ -763,9 +808,33 @@ $ip=@($_.NetworkAdapters.IPAddresses | ?{ $_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$
   return { ok: true, installations: list };
 }));
 
+// Memory of a VM (GB). Hyper-V: VM off; with static memory it is the RAM the VM gets, with dynamic memory its
+// startup value. VirtualBox: VM powered off.
+app.post('/api/installations/memory', wrap(async req => {
+  const { id } = req.body || {}, gb = Number(req.body?.gb);
+  const [kind, name] = String(id).split(/:(.+)/);
+  if (!name || /['"]/.test(name)) throw new Error('bad id');
+  const hostGB = require('os').totalmem() / 2 ** 30;
+  if (!(gb >= 1 && gb <= Math.floor(hostGB))) throw new Error(`memory: 1–${Math.floor(hostGB)} GB`);
+  if (kind === 'hyperv') {
+    const r = await x.ps(`$v=Get-VM -Name '${name}' -EA Stop; if($v.State -ne 'Off'){ throw "the VM must be turned off (now: $($v.State)); a saved VM must be started and shut down first" }
+$m=[int64]${gb}*1GB; if($v.DynamicMemoryEnabled){ if($v.MemoryMaximum -lt $m){ Set-VMMemory -VM $v -MaximumBytes $m }; if($v.MemoryMinimum -gt $m){ Set-VMMemory -VM $v -MinimumBytes $m } }
+Set-VMMemory -VM $v -StartupBytes $m; $v=Get-VM -Name '${name}'; "memory: $([math]::Round($v.MemoryStartup/1GB,1)) GB$(if($v.DynamicMemoryEnabled){' (dynamic, startup value)'})"`, 120000);
+    if (r.err.trim()) throw new Error(r.err.trim().split('\n')[0]);
+    return { ok: true, out: r.out.trim() };
+  }
+  if (kind === 'vbox') {
+    const r = await x.run(VBOXM, ['modifyvm', name, '--memory', String(Math.round(gb * 1024))], { timeoutMs: 60000 });
+    if (r.code !== 0) throw new Error((r.err || r.out).trim().split('\n').pop() + ' (the VM must be powered off)');
+    return { ok: true, out: `memory: ${gb} GB` };
+  }
+  throw new Error('memory can be changed for Hyper-V and VirtualBox VMs');
+}));
+
 app.post('/api/installations/action', wrap(async req => {
   const { id, action, viewer } = req.body || {};
-  if (!['start', 'stop'].includes(action)) throw new Error('bad action');
+  if (!['start', 'stop', 'save'].includes(action)) throw new Error('bad action');
+  if (action === 'save' && !/^(hyperv|vbox):/.test(String(id))) throw new Error('save state: Hyper-V and VirtualBox VMs only');
   const r = await instAction(id, action, viewer);
   // After a start, open the matching viewer (vmconnect, VirtualBox window, Docker Desktop, ELO Web Client).
   if (action === 'start' && viewer && r.ok && !String(id).startsWith('vbox:')) Object.assign(r, await openViewer(id).catch(() => ({})));
@@ -788,14 +857,18 @@ async function instAction(id, action, viewer) {
   }
   const [kind, name] = String(id).split(/:(.+)/);
   if (!name || /['"]/.test(name)) throw new Error('bad id');
+  // save = freeze the VM (memory to disk, RAM freed); start resumes it exactly there.
   if (kind === 'hyperv') {
-    const r = await x.ps(action === 'start' ? `Start-VM -Name '${name}' -EA Stop; 'started'` : `Stop-VM -Name '${name}' -Force -EA Stop; 'stopped'`, 600000);
+    const cmd = { start: `$v=Get-VM -Name '${name}' -EA Stop; if($v.State -eq 'Paused'){ Resume-VM -VM $v } else { Start-VM -VM $v -EA Stop }; 'started'`,
+      stop: `Stop-VM -Name '${name}' -Force -EA Stop; 'stopped'`, save: `Save-VM -Name '${name}' -EA Stop; 'state saved'` }[action];
+    const r = await x.ps(cmd, 600000);
     return { ok: !r.err.trim(), out: (r.out + r.err).trim() };
   }
   if (kind === 'vbox') {
     // With viewer: "separate" = VM process + its own window (closing the window keeps the VM running).
-    const r = await x.run(VBOXM, action === 'start' ? ['startvm', name, '--type', viewer ? 'separate' : 'headless'] : ['controlvm', name, 'acpipowerbutton'], { timeoutMs: 120000 });
-    return { ok: r.code === 0, out: (r.out + r.err).trim() };
+    const args = { start: ['startvm', name, '--type', viewer ? 'separate' : 'headless'], stop: ['controlvm', name, 'acpipowerbutton'], save: ['controlvm', name, 'savestate'] }[action];
+    const r = await x.run(VBOXM, args, { timeoutMs: 300000 });
+    return { ok: r.code === 0, out: (r.out + r.err).trim() || (action === 'save' ? 'state saved' : 'OK') };
   }
   throw new Error('unknown installation');
 }
