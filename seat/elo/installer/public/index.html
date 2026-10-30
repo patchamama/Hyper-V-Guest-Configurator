@@ -59,6 +59,14 @@ pre.log { background:var(--log); color:var(--logtext); font:12px/1.45 var(--mono
 .nav { display:flex; justify-content:space-between; margin-top:18px; }
 .info { display:inline-grid; place-items:center; width:18px; height:18px; border-radius:50%; border:1px solid var(--accent2); color:var(--accent2); font-size:11px; font-weight:700; cursor:pointer; margin-left:6px; background:none; padding:0; }
 .tcard { margin:0; cursor:pointer; } .tcard.sel { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+.tcard.disabled { opacity:.45; cursor:not-allowed; }
+.membar { display:flex; height:18px; border-radius:5px; overflow:hidden; margin:10px 0 8px; background:var(--sur2); }
+.membar > div { height:100%; min-width:2px; }
+.memlegend { gap:6px 16px; font-size:13px; } .memlegend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:6px; vertical-align:-1px; }
+.mem-wsl { background:#3b82f6; } .mem-hyperv { background:#8b5cf6; } .mem-vbox { background:#14b8a6; } .mem-desktop { background:#f59e0b; }
+.mem-system { background:#94a3b8; } .mem-free { background:var(--border); }
+.membar .mem-hyperv + .mem-hyperv { border-left:1px solid #fff8; }
+.pill { display:inline-block; padding:2px 8px; border:1px solid var(--line, #8884); border-radius:999px; font-size:12px; }
 </style>
 </head>
 <body>
@@ -185,8 +193,11 @@ function welcome() {
     <li>${t('w.need1')}<button class="info" title="${esc(t('cli.title'))}" onclick="$('cli-help').hidden=!$('cli-help').hidden">i</button>
       <div id="cli-help" class="explain" hidden style="margin-top:8px"><b>${t('cli.title')}</b>${t('cli.steps')}</div></li>
     <li>${t('w.need2')}</li><li>${t('w.need3')}</li></ul><p class="muted">${t('w.platform')}</p></div>
-  <div class="card"><b>${t('w.where')}</b><div class="grid2" style="margin-top:10px">${TARGETS.map(k => `
-    <div class="card tcard ${W.target === k ? 'sel' : ''}" onclick="pickTarget('${k}')"><b>${t('t.' + k)}</b><div class="muted" style="margin-top:4px">${t('t.' + k + '.d')}</div></div>`).join('')}</div>
+  <div class="card"><b>${t('w.where')}</b><div class="grid2" style="margin-top:10px">${TARGETS.map(k => {
+    // "This Linux machine" only when the installer itself runs on Linux.
+    const off = k === 'native' && W.isWindows;
+    return `<div class="card tcard ${W.target === k ? 'sel' : ''} ${off ? 'disabled' : ''}" ${off ? `title="${esc(t('t.native.win'))}"` : `onclick="pickTarget('${k}')"`}><b>${t('t.' + k)}</b>
+      <div class="muted" style="margin-top:4px">${t(off ? 't.native.win' : 't.' + k + '.d')}</div></div>`; }).join('')}</div>
     <div id="tgt-extra" style="margin-top:14px"><span class="muted">${t('p.checking')}</span></div></div>` + nav(true, t('nav.start')) + cmdsPanel();
   targetExtra();
 }
@@ -225,13 +236,23 @@ async function targetExtra() {
       ${stateDot(!!p.wslDistro, `${t('p.distro')} (WSL): ${esc(p.wslDistro || t('p.missing'))}`)}</div>`;
     if (k === 'hyperv' && !ready) html += p.home ? `<p class="tbad">${t('p.home')}</p>` : `<div style="margin-top:10px"><button class="btn primary small" onclick="provJob('/provision/hyperv')">${t('p.enableHyperv')}</button></div>`;
     if (k === 'vbox' && !ready) html += `<div style="margin-top:10px"><button class="btn primary small" onclick="provJob('/provision/vbox')">${t('p.installVbox')}</button> <span class="muted">${t('p.vboxHint')}</span></div>`;
-    if (ready) html += `<div class="explain" style="margin-top:12px">${t('p.vmExplain')}</div><div class="grid2">
-      <div><label>${t('p.vmName')}</label><input type="text" value="${esc(W.vm.name)}" oninput="W.vm.name=this.value"></div>
-      <div><label>${t('p.os')}</label><select onchange="W.vm.distro=this.value"><option value="ubuntu" ${W.vm.distro === 'ubuntu' ? 'selected' : ''}>Ubuntu 24.04 LTS</option><option value="debian" ${W.vm.distro === 'debian' ? 'selected' : ''}>Debian 13</option></select></div>
+    // Windows Server (Hyper-V only): WSL2 + Ubuntu inside the VM runs Docker/ELO.
+    const oses = [['ubuntu', 'Ubuntu 24.04 LTS'], ['debian', 'Debian 13'], ...(k === 'hyperv' ? [['ws2025', 'Windows Server 2025'], ['ws2022', 'Windows Server 2022']] : [])];
+    if (k !== 'hyperv' && W.vm.distro.startsWith('ws')) W.vm.distro = 'ubuntu';
+    const win = W.vm.distro.startsWith('ws');
+    if (ready) html += `<div class="explain" style="margin-top:12px">${t(win ? 'p.winExplain' : 'p.vmExplain')}</div><div class="grid2">
+      <div><label>${t('p.vmName')}</label><input type="text" value="${esc(W.vm.name)}" maxlength="${win ? 15 : 40}" oninput="W.vm.name=this.value"></div>
+      <div><label>${t('p.os')}</label><select onchange="W.vm.distro=this.value; targetExtra()">${oses.map(([v, l]) => `<option value="${v}" ${W.vm.distro === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      ${win ? `<div><label>${t('p.edition')}</label><select onchange="W.vm.edition=this.value">${[['standard-desktop', 'Standard (Desktop Experience)'], ['standard-core', 'Standard (Server Core)'], ['datacenter-desktop', 'Datacenter (Desktop Experience)'], ['datacenter-core', 'Datacenter (Server Core)']]
+          .map(([v, l]) => `<option value="${v}" ${(W.vm.edition || 'standard-desktop') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div><label>${t('p.iso')}</label><input type="text" placeholder="${esc(t('p.isoEval'))}" value="${esc(W.vm.isoPath || '')}" oninput="W.vm.isoPath=this.value.trim()"></div>
+        <div><label>${t('p.productKey')}</label><input type="text" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" value="${esc(W.vm.productKey || '')}" oninput="W.vm.productKey=this.value.trim()"></div>` : ''}
       <div><label>${t('p.ram')}</label><input type="number" min="4" value="${W.vm.ramGB}" oninput="W.vm.ramGB=+this.value"></div>
       <div><label>${t('p.cpus')}</label><input type="number" min="1" value="${W.vm.cpus}" oninput="W.vm.cpus=+this.value"></div>
       <div><label>${t('p.disk')}</label><input type="number" min="30" value="${W.vm.diskGB}" oninput="W.vm.diskGB=+this.value"></div>
-      <div style="align-self:end"><button class="btn primary small" ${p.wslDistro ? '' : 'disabled'} onclick="provVm('${k}')">${t('p.createVm')}</button></div></div>`;
+      <div style="align-self:end"><button class="btn primary small" id="vm-create" ${(win || p.wslDistro) && !(win && !W.vm.acceptEula) ? '' : 'disabled'} onclick="provVm('${k}')">${t('p.createVm')}</button></div></div>
+      ${win ? `<label class="row" style="gap:8px;margin-top:10px"><input type="checkbox" ${W.vm.acceptEula ? 'checked' : ''} onchange="W.vm.acceptEula=this.checked; $('vm-create').disabled=!this.checked">
+        <span>${t('p.eula')} <a href="https://www.microsoft.com/licensing/terms" target="_blank" rel="noopener">${t('p.eulaLink')}</a></span></label>` : ''}`;
     if (tg.mode === 'ssh') html += `<p class="tok" style="margin-top:8px">${t('p.using')} ${esc(tg.target.user)}@${esc(tg.target.host)}:${esc(tg.target.port)}</p>`;
     el.innerHTML = html + '<div id="prov-job" style="margin-top:10px"></div>'; return;
   }
@@ -461,7 +482,9 @@ async function renderAdmin(reload) {
   pg.innerHTML = `<div class="row"><h2>${t('m.title')}</h2><span class="muted">${t('m.updated', { time: CACHE.at.status.toLocaleTimeString() })}</span>
       <button class="btn small right" onclick="renderAdmin(true)">${t('m.refresh')}</button></div>
     <p class="lead">${t('m.lead')}</p>
+  <div class="card" id="adm-mem"><b>${t('hm.title')}</b> <span class="muted">${t('a.loading')}</span></div>
   <div class="card" id="adm-inst"><b>${t('inst.title')}</b> <span class="muted">${t('a.loading')}</span></div>
+  <div class="card" id="adm-wsl" hidden></div>
   <div class="grid2">
     <div class="card"><b>${t('m.memory')}</b><div class="progress" style="margin:8px 0"><div style="width:${usedPct}%"></div></div>
       <span class="muted">${t('m.usedOf', { used: gb(m.total - m.avail), total: gb(m.total), elo: (totalMem / 1024).toFixed(2) })}</span></div>
@@ -505,8 +528,23 @@ async function renderAdmin(reload) {
   </div>`;
   renderInstallations(reload);
 }
+// Memory of this computer: stacked bar by consumer (WSL, Hyper-V VMs, VirtualBox, Docker Desktop), system, free + legend.
+async function renderHostMem(reload) {
+  const el = $('adm-mem'); if (!el) return;
+  if (reload || !CACHE.hostmem) CACHE.hostmem = await api('/hostmem');
+  const m = CACHE.hostmem;
+  if (!m.ok) { el.innerHTML = `<b>${t('hm.title')}</b> <span class="tbad">${esc(m.error)}</span>`; return; }
+  const segs = [...m.parts, { key: 'free', bytes: m.free }], pct = b => (b / m.total * 100);
+  const label = s => t('hm.' + s.key) + (s.name ? ` · ${s.name}` : '');
+  el.innerHTML = `<div class="row"><b>${t('hm.title')}</b><span class="muted">${t('hm.summary', { used: gb(m.total - m.free), total: gb(m.total), free: gb(m.free) })}</span>
+      <button class="btn small right" onclick="renderHostMem(true)">${t('m.refresh')}</button></div>
+    <div class="membar">${segs.map(s => `<div class="mem-${s.key}" style="width:${pct(s.bytes).toFixed(2)}%" title="${esc(label(s))}: ${gb(s.bytes)}"></div>`).join('')}</div>
+    <div class="row memlegend">${segs.map(s => `<span><i class="mem-${s.key}"></i>${esc(label(s))} <b>${gb(s.bytes)}</b> <span class="muted">${pct(s.bytes).toFixed(0)}%</span></span>`).join('')}</div>
+    ${m.parts.some(p => p.key === 'wsl') ? `<p class="muted" style="margin:6px 0 0">${t('hm.note')}</p>` : ''}`;
+}
 // ELO installations on this computer (Docker/WSL, Docker Desktop, Hyper-V, VirtualBox, SSH) with start/stop by state.
 async function renderInstallations(reload) {
+  renderHostMem(reload);
   const el = $('adm-inst'); if (!el) return;
   if (reload || !CACHE.inst) CACHE.inst = await api('/installations');
   const r = CACHE.inst;
@@ -515,17 +553,60 @@ async function renderInstallations(reload) {
   el.innerHTML = `<div class="row"><b>${t('inst.title')}</b><span class="muted">${t('inst.note')}</span>
       <button class="btn small right" onclick="renderInstallations(true)">${t('m.refresh')}</button></div>
     ${r.installations.length ? `<div class="tablewrap"><table><tr><th>${t('inst.name')}</th><th>${t('inst.type')}</th><th>${t('m.state')}</th><th>${t('inst.detail')}</th><th></th></tr>
-    ${r.installations.map(i => `<tr><td><b>${esc(i.name)}</b>${i.active ? ` <span class="tok">· ${t('inst.active')}</span>` : ''}</td><td>${esc(i.typeLabel)}</td>
-      <td><span class="dot ${dot(i.state)}"></span> ${esc(t('st.' + i.state) === 'st.' + i.state ? i.state : t('st.' + i.state))}</td><td class="muted">${esc(i.detail)}</td>
-      <td>${i.state === 'running' ? `<button class="btn small" onclick="instAction('${esc(i.id)}','stop')">${t('m.stop')}</button>`
-        : i.state === 'stopped' ? `<button class="btn small primary" onclick="instAction('${esc(i.id)}','start')">${t('m.start')}</button>` : ''}</td></tr>`).join('')}
-    </table></div>` : `<p class="muted">${t('inst.none')}</p>`}<pre class="log" id="inst-out" hidden style="margin-top:8px"></pre>`;
+    ${r.installations.map((i, n) => {
+      // Collapsed details row: services (ELO containers) and open ports, only while running.
+      const svc = i.state === 'running' && i.services?.length ? `<b>${t('inst.services')}</b><table style="margin:4px 0 8px">${i.services.map(s => `<tr><td>${esc(s.name)}</td>
+          <td><span class="dot ${/^Up/.test(s.status) ? (/unhealthy/.test(s.status) ? 'warn' : 'ok') : 'idle'}"></span> ${esc(s.status)}</td><td class="muted">${esc(s.ports || '—')}</td></tr>`).join('')}</table>` : '';
+      const ports = i.state === 'running' && i.ports?.length ? `<b>${t('inst.ports')}</b><div class="row" style="gap:6px;margin-top:4px">${i.ports.map(p =>
+          `<span class="pill">${p.hostPort && p.hostPort !== p.port ? `${p.hostPort}→` : ''}${p.port} · ${esc(p.label)}</span>`).join('')}</div>` : '';
+      const more = svc || ports;
+      return `<tr><td>${more ? `<button class="info" style="margin-right:6px" onclick="const r=$('inst-more-${n}'); r.hidden=!r.hidden; this.textContent=r.hidden?'▸':'▾'">▸</button>` : ''}<b>${esc(i.name)}</b>${i.active ? ` <span class="tok">· ${t('inst.active')}</span>` : ''}</td><td>${esc(i.typeLabel)}</td>
+      <td><span class="dot ${dot(i.state)}"></span> ${esc(t('st.' + i.state) === 'st.' + i.state ? i.state : t('st.' + i.state))}</td>
+      <td class="muted">${esc([i.detail, i.disk ? `${gb(i.disk)} ${t('inst.disk')}${i.diskNote ? ` (${i.diskNote})` : ''}` : ''].filter(Boolean).join(' · '))}</td>
+      <td style="white-space:nowrap">${i.state === 'running' ? `<button class="btn small" onclick="instViewer('${esc(i.id)}')">${t('inst.viewer')}</button>
+          <button class="btn small" onclick="instAction('${esc(i.id)}','stop')">${t('m.stop')}</button>`
+        : ['stopped', 'saved'].includes(i.state) ? `<button class="btn small primary" onclick="instAction('${esc(i.id)}','start')">${t('m.start')}</button>` : ''}</td></tr>
+      ${more ? `<tr id="inst-more-${n}" hidden><td colspan="5" style="padding-left:34px">${svc}${ports}</td></tr>` : ''}`; }).join('')}
+    </table></div>` : `<p class="muted">${t('inst.none')}</p>`}
+    <label class="row" style="gap:8px;margin-top:8px"><input type="checkbox" ${viewerOnStart() ? 'checked' : ''} onchange="localStorage.setItem('elo-viewer', this.checked ? '1' : '0')">
+      <span class="muted">${t('inst.viewerOnStart')}</span></label>
+    <pre class="log" id="inst-out" hidden style="margin-top:8px"></pre>`;
+  renderWsl();
 }
+const viewerOnStart = () => localStorage.getItem('elo-viewer') !== '0';
+const viewerResult = r => { if (r.url) window.open(r.url, '_blank'); return r.url || r.opened ? `\n${t('inst.viewerOpened')}: ${r.url || r.opened}` : ''; };
 async function instAction(id, action) {
   const o = $('inst-out'); o.hidden = false; o.textContent = t('m.working');
-  const r = await api('/installations/action', { id, action });
-  o.textContent = r.ok ? (r.out || 'OK') : r.error;
+  const r = await api('/installations/action', { id, action, viewer: action === 'start' && viewerOnStart() });
+  o.textContent = r.ok ? (r.out || 'OK') + viewerResult(r) : r.error;
   CACHE.status = null; await renderInstallations(true);
+}
+async function instViewer(id) {
+  const o = $('inst-out'), r = await api('/installations/viewer', { id }); o.hidden = false;
+  o.textContent = r.ok ? viewerResult(r).trim() : r.error;
+}
+// WSL (Windows): memory in use and shut down / start (shutting down stops Docker and the ELO stack in WSL).
+async function renderWsl(reload) {
+  const el = $('adm-wsl'); if (!el) return;
+  if (reload || !CACHE.wsl) CACHE.wsl = await api('/wsl');
+  const w = CACHE.wsl; if (!w.ok || !w.available) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `<div class="row"><b>WSL</b><span class="dot ${w.running ? 'ok' : 'idle'}"></span><span>${w.running ? t('st.running') : t('wsl.off')}</span>
+    ${w.running ? `<span class="muted">${t('wsl.mem', { win: gb(w.memBytes), used: gb(w.usedBytes), total: gb(w.totalBytes) })}</span>` : ''}
+    <span class="right row" style="gap:6px"><button class="btn small" onclick="renderWsl(true)">${t('m.refresh')}</button>
+    ${w.running ? `<button class="btn small" onclick="wslAction('shutdown')">${t('wsl.shutdown')}</button>` : `<button class="btn small primary" onclick="wslAction('start')">${t('m.start')}</button>`}</span></div>
+    <p class="muted" style="margin:6px 0 0">${t('wsl.note')}</p><div id="wsl-confirm"></div>`;
+}
+async function wslAction(action, sure) {
+  if (action === 'shutdown' && !sure) {
+    $('wsl-confirm').innerHTML = `<div class="row" style="margin-top:8px"><span class="twarn">${t('wsl.confirm')}</span>
+      <button class="btn small primary" onclick="wslAction('shutdown', true)">${t('wsl.shutdown')}</button><button class="btn small" onclick="$('wsl-confirm').innerHTML=''">${t('m.cancel')}</button></div>`;
+    return;
+  }
+  $('wsl-confirm').innerHTML = `<span class="muted">${t('m.working')}</span>`;
+  const r = await api('/wsl', { action });
+  if (!r.ok) { $('wsl-confirm').innerHTML = `<span class="tbad">${esc(r.error)}</span>`; return; }
+  CACHE.status = null; await renderWsl(true); await renderInstallations(true);
 }
 const admOut = txt => { const o = $('adm-out'); if (o) { o.hidden = false; o.textContent = txt; } };
 async function svc(action, s) { admOut(t('m.working')); const r = await api('/service', { action, services: [s] }); if (!r.ok) admOut(r.error); renderAdmin(true); }
@@ -582,6 +663,27 @@ async function renderContainers(reload) {
     <b class="muted">${t('k.vmImages')}</b>
     ${i.vmImages?.length ? `<table>${i.vmImages.map(v => `<tr><td>${esc(v.file)}</td><td>${gb(v.size)}</td><td>${esc(v.date)}</td></tr>`).join('')}</table>` : `<p class="muted">${t('m.none')}</p>`}
   </div>`;
+  renderSources();
+}
+// Configuration: cache sources (folder, network share, FTP/HTTP) searched before downloading from the registry.
+async function renderSources() {
+  const pg = $('containers-page'); if (!pg || $('src-card')) return;
+  const c = await api('/config');
+  pg.insertAdjacentHTML('beforeend', `<div class="card" id="src-card"><b>${t('src.title')}</b><p class="muted" style="margin:4px 0">${t('src.note')}</p>
+    <textarea id="src-list" rows="4" style="font-family:var(--mono)" placeholder="\\\\server\\share\\elo-images&#10;D:\\elo-images&#10;ftp://user:password@ftp.example.com/elo&#10;https://mirror.example.com/elo">${esc((c.raw || []).join('\n'))}</textarea>
+    <div class="row" style="margin-top:8px"><button class="btn small primary" onclick="saveSources()">${t('src.save')}</button>
+      <button class="btn small" onclick="checkSources()">${t('src.check')}</button><span id="src-msg" class="muted"></span></div>
+    <pre class="log" id="src-out" hidden style="margin-top:8px"></pre></div>`);
+}
+async function saveSources() {
+  const r = await api('/config', { cacheSources: $('src-list').value.split('\n') });
+  $('src-msg').innerHTML = r.ok ? `<span class="tok">✓ ${t('src.saved', { n: r.count })}</span>` : `<span class="tbad">${esc(r.error)}</span>`;
+}
+async function checkSources() {
+  await saveSources(); $('src-msg').textContent = t('m.working');
+  const r = await api('/cache/sources', {}), o = $('src-out'); o.hidden = false;
+  o.textContent = r.ok ? r.lines.join('\n') : r.error;
+  $('src-msg').textContent = r.ok ? t('src.result', { found: r.found, total: r.total }) : '';
 }
 async function openCache(what) { $('cache-msg').textContent = t('m.opening'); const r = await api('/open', { what }); $('cache-msg').textContent = r.ok ? (r.path || r.linuxPath) + (r.note ? ' — ' + r.note : '') : r.error; }
 const kOut = txt => { const o = $('k-out'); if (o) { o.hidden = false; o.textContent = txt; } };
@@ -607,6 +709,7 @@ async function refreshEnv() { const e = await api('/target'); $('envinfo').textC
 (async () => {
   document.documentElement.lang = LANG; shell();
   const tg = await api('/target');               // start on the current target (e.g. a VM over SSH)
+  W.isWindows = !!tg.isWindows;
   if (tg.mode === 'ssh') W.target = tg.target.kind || 'server';
   else if (tg.mode === 'linux') W.target = 'native';
   render(); refreshEnv();
