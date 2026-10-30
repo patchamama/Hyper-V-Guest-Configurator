@@ -131,8 +131,9 @@ async function createVm({ platform, distro = 'ubuntu', name, ramGB = 16, cpus = 
 command -v qemu-img >/dev/null && command -v cloud-localds >/dev/null || { apt-get update -qq; apt-get install -y -qq qemu-utils cloud-image-utils >/dev/null; }
 c=${x.shq(L(path.join(CACHE, img.file)))}; [ -s "$c" ] || curl -fsSL -o "$c" ${x.shq(img.url)}
 echo "image: $(du -h "$c" | cut -f1)"
-qemu-img convert -O ${platform === 'hyperv' ? 'vhdx -o subformat=dynamic' : 'vdi'} "$c" /tmp/elo-vm.${ext}
-qemu-img resize /tmp/elo-vm.${ext} ${Number(diskGB)}G >/dev/null
+# Resize the qcow2 copy first (qemu-img cannot resize VHDX), then convert to the hypervisor's format.
+cp -f "$c" /tmp/elo-vm.qcow2 && qemu-img resize /tmp/elo-vm.qcow2 ${Number(diskGB)}G >/dev/null
+qemu-img convert -O ${platform === 'hyperv' ? 'vhdx -o subformat=dynamic' : 'vdi'} /tmp/elo-vm.qcow2 /tmp/elo-vm.${ext} && rm -f /tmp/elo-vm.qcow2
 mv -f /tmp/elo-vm.${ext} ${x.shq(L(disk))}
 cloud-localds ${x.shq(L(seed))} ${x.shq(L(path.join(dir, 'user-data')))} ${x.shq(L(path.join(dir, 'meta-data')))}
 ls -lh ${x.shq(L(dir))} | tail -n +2 | awk '{print $5, $9}'`, 3600);
@@ -179,7 +180,7 @@ if(-not $ip){ $m=($a.MacAddress -replace '(..)(?!$)','$1-'); $ip=(Get-NetNeighbo
   log(`VM address: ${ip}:${port}`);
 
   log('__STEP__ Waiting for SSH with the installer key');
-  x.setTarget({ host: ip, port, user: 'elo', key: keyFile });
+  x.setTarget({ host: ip, port, user: 'elo', key: keyFile, kind: platform, vm: name });
   let info = '';
   for (let i = 0; i < 60; i++) {
     try { info = (await x.sh('cloud-init status --wait >/dev/null 2>&1; . /etc/os-release; echo "$PRETTY_NAME, $(nproc) CPU, $(awk \'/MemTotal/{printf "%.1f GB", $2/1048576}\' /proc/meminfo)"', 900)).trim(); if (info) break; }

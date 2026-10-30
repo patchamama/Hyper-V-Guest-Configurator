@@ -30,7 +30,7 @@ try { target = JSON.parse(fs.readFileSync(TARGET_FILE, 'utf8')); } catch {}
 const sshArgs = t => ['-i', t.key, '-p', String(t.port || 22), '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new',
   '-o', 'ConnectTimeout=10', `${t.user}@${t.host}`];
 function setTarget(t) {
-  target = t && t.host ? { host: t.host, port: Number(t.port) || 22, user: t.user, key: t.key } : null;
+  target = t && t.host ? { host: t.host, port: Number(t.port) || 22, user: t.user, key: t.key, kind: t.kind || 'server', vm: t.vm || null } : null;
   if (target) fs.writeFileSync(TARGET_FILE, JSON.stringify(target, null, 2)); else { try { fs.unlinkSync(TARGET_FILE); } catch {} }
   mode = null;   // re-detect
 }
@@ -70,6 +70,23 @@ async function detect() {
   mode = 'none'; return { mode, distro: null };
 }
 
+// History of executed commands (shown per wizard step). Secrets are masked before storing.
+const HISTORY = [];
+let histId = 0;
+function mask(s) {
+  return String(s)
+    .replace(/((?:PASSWORD|SECRET|_PWD|KEYSTORE_PASSWORD|ELO_LIC)[A-Z_]*=)('[^']*'|"[^"]*"|\S+)/g, '$1********')
+    .replace(/("(?:userPwd|password|secret)"\s*:\s*")[^"]*"/gi, '$1********"')
+    .replace(/(\bP=)('[^']*'|\S+)/g, '$1********')
+    .replace(/(-Password\s+)('[^']*'|\S+)/gi, '$1********')
+    .replace(/(\/pass:)('[^']*'|\S+)/gi, '$1********');
+}
+function record(where, text) {
+  HISTORY.push({ id: ++histId, t: Date.now(), where, cmd: mask(text).slice(0, 4000) });
+  if (HISTORY.length > 400) HISTORY.shift();
+}
+const history = since => HISTORY.filter(h => h.id > (Number(since) || 0));
+
 // Run a bash script as root in the LOCAL Linux environment (native Linux or WSL), even when the installation target
 // is a remote VM — used as a toolbox (qemu-img, cloud-localds) to prepare VM disks.
 async function shLocal(script, timeoutSec = 600) {
@@ -91,6 +108,7 @@ function nodeJob(name, fn) {
 // Run a bash script as root and return its output.
 async function sh(script, timeoutSec = 300) {
   await detect();
+  record(mode === 'ssh' ? `ssh ${target.user}@${target.host}` : mode === 'linux' ? 'bash' : `wsl ${distro || ''}`.trim(), script);
   if (mode === 'linux') {
     const asRoot = process.getuid && process.getuid() !== 0 ? ['sudo', '-n', 'bash', '-s'] : ['bash', '-s'];
     const r = await run(asRoot[0], asRoot.slice(1), { input: script, timeoutMs: timeoutSec * 1000 });
@@ -148,6 +166,7 @@ async function keepAlive() {
 // Start a detached job; its output goes to RUN_DIR/<id>.log and ends with "__EXIT__:<code>".
 async function startJob(name, script) {
   await detect();
+  record(`job ${name}`, script);
   const id = `elo-${name}-${Date.now().toString(36)}`;
   if (mode === 'ssh') {   // script and log live on the target in /tmp
     await sh(`cat > /tmp/${id}.sh <<'__ELO_JOB__'\n#!/bin/bash\n${script.replace(/\r/g, '')}\n__ELO_JOB__\n: > /tmp/${id}.log; ` +
@@ -163,9 +182,10 @@ async function startJob(name, script) {
 
 // Windows-side PowerShell (memory, portproxy, firewall). Elevation is needed for portproxy/firewall.
 function ps(script, timeoutMs = 120000) {
+  record('powershell', script);
   return run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
     '[Console]::OutputEncoding=[Text.Encoding]::UTF8; ' + script], { timeoutMs });
 }
 
-module.exports = { detect, sh, shLocal, nodeJob, startJob, readLog, ps, run, toLinux, shq, setTarget, getTarget, deployRemote, eloDir,
+module.exports = { detect, sh, shLocal, nodeJob, startJob, history, record, readLog, ps, run, toLinux, shq, setTarget, getTarget, deployRemote, eloDir,
   IS_WIN, RUN_DIR, ELO_DIR, REMOTE_DIR, getMode: () => mode, getDistro: () => distro, getSeatLib: () => seatLib };
