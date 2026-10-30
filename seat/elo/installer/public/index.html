@@ -584,13 +584,16 @@ async function renderInstallations(reload) {
           <td><span class="dot ${/^Up/.test(s.status) ? (/unhealthy/.test(s.status) ? 'warn' : 'ok') : 'idle'}"></span> ${esc(s.status)}</td><td class="muted">${esc(s.ports || '—')}</td></tr>`).join('')}</table>` : '';
       const ports = i.state === 'running' && i.ports?.length ? `<b>${t('inst.ports')}</b><div class="row" style="gap:6px;margin-top:4px">${i.ports.map(p =>
           `<span class="pill">${p.hostPort && p.hostPort !== p.port ? `${p.hostPort}→` : ''}${p.port} · ${esc(p.label)}</span>`).join('')}</div>` : '';
-      const more = svc || ports;
+      const more = svc || ports, vm = ['hyperv', 'vbox'].includes(i.type) && i.state !== 'unreachable';
       return `<tr><td>${more ? `<button class="info" style="margin-right:6px" onclick="const r=$('inst-more-${n}'); r.hidden=!r.hidden; this.textContent=r.hidden?'▸':'▾'">▸</button>` : ''}<b>${esc(i.name)}</b>${i.active ? ` <span class="tok">· ${t('inst.active')}</span>` : ''}</td><td>${esc(i.typeLabel)}</td>
       <td><span class="dot ${dot(i.state)}"></span> ${esc(t('st.' + i.state) === 'st.' + i.state ? i.state : t('st.' + i.state))}</td>
       <td class="muted">${esc([i.detail, i.disk ? `${gb(i.disk)} ${t('inst.disk')}${i.diskNote ? ` (${i.diskNote})` : ''}` : ''].filter(Boolean).join(' · '))}</td>
       <td style="white-space:nowrap">${i.state === 'running' ? `<button class="btn small" onclick="instViewer('${esc(i.id)}')">${t('inst.viewer')}</button>
+          ${vm ? `<button class="btn small" title="${esc(t('inst.saveHint'))}" onclick="instAction('${esc(i.id)}','save')">${t('inst.save')}</button>` : ''}
           <button class="btn small" onclick="instAction('${esc(i.id)}','stop')">${t('m.stop')}</button>`
-        : ['stopped', 'saved'].includes(i.state) ? `<button class="btn small primary" onclick="instAction('${esc(i.id)}','start')">${t('m.start')}</button>` : ''}</td></tr>
+        : ['stopped', 'saved', 'paused'].includes(i.state) ? `<button class="btn small primary" onclick="instAction('${esc(i.id)}','start')">${i.state === 'stopped' ? t('m.start') : t('inst.resume')}</button>` : ''}
+        ${vm && i.ramGB ? `<button class="btn small" title="${esc(t('inst.ramHint'))}" onclick="vmMem(${n})">RAM…</button>` : ''}</td></tr>
+      <tr id="inst-mem-${n}" hidden><td colspan="5" style="padding-left:34px"></td></tr>
       ${more ? `<tr id="inst-more-${n}" hidden><td colspan="5" style="padding-left:34px">${svc}${ports}</td></tr>` : ''}`; }).join('')}
     </table></div>` : `<p class="muted">${t('inst.none')}</p>`}
     <label class="row" style="gap:8px;margin-top:8px"><input type="checkbox" ${viewerOnStart() ? 'checked' : ''} onchange="localStorage.setItem('elo-viewer', this.checked ? '1' : '0')">
@@ -606,6 +609,25 @@ async function instAction(id, action) {
   o.textContent = r.ok ? (r.out || 'OK') + viewerResult(r) : r.error;
   CACHE.status = null; await renderInstallations(true);
 }
+// Memory of a Hyper-V / VirtualBox VM (only while it is off; a saved VM has to be started and shut down first).
+function vmMem(n) {
+  const i = CACHE.inst.installations[n], row = $('inst-mem-' + n), cell = row.querySelector('td');
+  if (!row.hidden) { row.hidden = true; return; }
+  row.hidden = false;
+  const off = i.state === 'stopped';
+  cell.innerHTML = `<div class="row" style="gap:8px"><b>${t('inst.ram')}</b>
+    <input type="number" id="vm-ram-${n}" min="1" step="1" value="${Math.round(i.ramGB)}" style="width:90px" ${off ? '' : 'disabled'}> GB
+    <button class="btn small primary" ${off ? '' : 'disabled'} onclick="vmMemApply(${n})">${t('inst.apply')}</button>
+    <span class="muted" id="vm-ram-msg-${n}">${off ? t('inst.ramNow', { gb: i.ramGB }) : t('inst.ramOff')}</span></div>`;
+}
+async function vmMemApply(n) {
+  const i = CACHE.inst.installations[n], msg = $('vm-ram-msg-' + n);
+  msg.textContent = t('m.working');
+  const r = await api('/installations/memory', { id: i.id, gb: +$('vm-ram-' + n).value });
+  if (!r.ok) { msg.innerHTML = `<span class="tbad">${esc(r.error)}</span>`; return; }
+  await renderInstallations(true);
+  const o = $('inst-out'); o.hidden = false; o.textContent = `${i.name}: ${r.out}`;
+}
 async function instViewer(id) {
   const o = $('inst-out'), r = await api('/installations/viewer', { id }); o.hidden = false;
   o.textContent = r.ok ? viewerResult(r).trim() : r.error;
@@ -620,7 +642,21 @@ async function renderWsl(reload) {
     ${w.running ? `<span class="muted">${t('wsl.mem', { win: gb(w.memBytes), used: gb(w.usedBytes), total: gb(w.totalBytes) })}</span>` : ''}
     <span class="right row" style="gap:6px"><button class="btn small" onclick="renderWsl(true)">${t('m.refresh')}</button>
     ${w.running ? `<button class="btn small" onclick="wslAction('shutdown')">${t('wsl.shutdown')}</button>` : `<button class="btn small primary" onclick="wslAction('start')">${t('m.start')}</button>`}</span></div>
-    <p class="muted" style="margin:6px 0 0">${t('wsl.note')}</p><div id="wsl-confirm"></div>`;
+    <div class="row" style="gap:8px;margin-top:10px"><span>${t('wsl.limit')}</span>
+      <input type="number" id="wsl-gb" min="2" max="${w.hostGB}" step="1" value="${w.limitGB || w.defaultGB}" style="width:90px"> GB
+      <span class="muted">${w.limitGB ? t('wsl.limitNow', { gb: w.limitGB }) : t('wsl.limitDefault', { gb: w.defaultGB })} · ${t('wsl.host', { gb: w.hostGB })}</span>
+      <label class="row" style="gap:6px"><input type="checkbox" id="wsl-apply" ${w.running ? '' : 'disabled'}> ${t('wsl.restartNow')}</label>
+      <button class="btn small primary" onclick="wslMem()">${t('inst.apply')}</button></div>
+    <p class="muted" style="margin:6px 0 0">${t('wsl.note')} ${t('wsl.limitNote', { path: esc(w.configPath || '.wslconfig') })}</p><div id="wsl-confirm"></div>`;
+}
+async function wslMem() {
+  const apply = $('wsl-apply').checked;
+  $('wsl-confirm').innerHTML = `<span class="muted">${t('m.working')}</span>`;
+  const r = await api('/wsl', { action: 'memory', gb: +$('wsl-gb').value, apply });
+  if (!r.ok) { $('wsl-confirm').innerHTML = `<span class="tbad">${esc(r.error)}</span>`; return; }
+  CACHE.status = null; await renderWsl(true);
+  $('wsl-confirm').innerHTML = `<span class="tok">✓ ${t(r.restarted ? 'wsl.memApplied' : 'wsl.memSaved', { gb: r.limitGB })}</span>`;
+  if (r.restarted) renderInstallations(true);
 }
 async function wslAction(action, sure) {
   if (action === 'shutdown' && !sure) {
