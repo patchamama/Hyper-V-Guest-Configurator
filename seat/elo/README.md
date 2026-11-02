@@ -258,6 +258,44 @@ Diseño de los pasos (referencia):
 - El operador desactiva *scripting* y *plugins* por defecto: permitirlo explícitamente si se usan Business Solutions.
 - Para pruebas locales: k3s/kind/Minikube o el Kubernetes de Docker Desktop.
 
+### Enlaces ELO (escritorio y navegadores de las máquinas)
+
+Panel **"Enlaces ELO"** dentro de "Acceso" de cada máquina (`installer/elolinks.js`, `/api/elolinks/{status,scan,apply}`).
+Al abrir una máquina se comprueba sola y el botón **"Añadir enlaces ELO"** solo aparece si falta algo; es idempotente (lo
+que ya existe no se duplica) y la simulación (`dryRun`) no toca nada.
+
+| Máquina | Cómo llega | Escritorio | Navegadores |
+|---|---|---|---|
+| **Windows** (Hyper-V por PowerShell Direct; VirtualBox por guest control) | usuario/contraseña de la VM (se piden si no están guardados) | `.lnk`/`.url` en `C:\Users\Public\Desktop` para ELO Application Servers (`setup.bat --status`), Server Setup, Admin Console, Web Client, Workflow Client, Java Client, Dropzone, Desktop… solo lo que **se detecta** (carpeta `ELO` en cualquier unidad, puertos de `conf\server.xml`) | Carpeta **ELO** en la barra de marcadores de Chrome y Edge (edita `Bookmarks`, con copia `.bak-elo-installer`; con el navegador abierto se omite salvo "cerrar navegadores"); Firefox por `distribution\policies.json` |
+| **Linux** (SSH: VM Hyper-V/VirtualBox, WSL) | SSH + `sudo`, requiere `python3` | `.desktop` en `~/Desktop` y en el menú de aplicaciones, URLs por instancia (`elo.sh`, `instances/*/.env`, o contenedores `eck-services/server` en ejecución) | Firefox: `/etc/firefox/policies/policies.json`; Chrome / Chromium: política gestionada `ManagedBookmarks` (carpeta "ELO") |
+
+**Todos los marcadores van en una única carpeta "ELO"** de la barra de marcadores de cada navegador (Chrome/Edge: carpeta
+`ELO`; Firefox: carpeta `ELO` en la barra de herramientas; Chrome/Chromium en Linux: carpeta gestionada "ELO").
+
+**Requisitos (Linux):** el panel muestra qué hay (`python3`, módulo `venv`, `xdg-open`, `gio`) y, si falta algo, ofrece
+**"Instalar requisitos"**: instala los paquetes con el gestor de la máquina (`apt-get`, `dnf`, `zypper` o `pacman`) y crea un
+**venv privado** en `/opt/elo-installer/venv`, desde el que se ejecutan los scripts (solo biblioteca estándar); el python del
+sistema no se toca. "Añadir enlaces" también los prepara solos si faltan. En Windows no hace falta instalar nada
+(PowerShell Direct / guest control).
+
+Probado: `Contelo 25` (Windows Server, ELO 25 nativo, Chrome + Edge) y WSL Ubuntu (ELO 23 en Docker, Firefox).
+
+Pendiente de esta función:
+
+- [ ] **Barra de tareas / panel:** anclar los accesos a la barra de tareas de Windows (Windows 10/11 no permite anclar por
+      script de forma soportada; valorar un `LayoutModification.xml` para usuarios nuevos o la carpeta del menú Inicio) y a
+      los paneles de Xfce / LXQt / GNOME (lanzadores del panel y favoritos de GNOME).
+- [ ] Linux: comprobar la política de Firefox en Debian (`firefox-esr`) y en Snap, y en Chrome/Chromium con perfiles ya
+      sincronizados; ampliar a Brave/Vivaldi.
+- [ ] Hosts sin máquina virtual (Windows o Linux con ELO en Docker local): ofrecer lo mismo para el propio equipo.
+- [ ] Contenedores con escritorio (`ctr:`): solo se admiten máquinas con SSH o Windows; añadir escritorios en contenedores.
+- [ ] Windows invitado dentro de WSL no existe: lo que se ofrece en WSL es el escritorio **Linux** (Xfce/LXQt/GNOME). Si se
+      quiere un Windows desde Linux hay que usar una VM Hyper-V/VirtualBox; valorar si se instala el escritorio automáticamente
+      cuando una máquina Linux no lo tiene.
+- [ ] Linux: detectar si no hay escritorio y ofrecer instalarlo antes de crear los lanzadores (hoy solo avisa).
+- [ ] Certificados: las URLs `https://` de ELO con certificado propio muestran aviso en el navegador; valorar importar la CA.
+- [ ] Pruebas automáticas (scripts de scan/apply con `testDir` ya soportado en Windows).
+
 ### Pendiente
 
 - [ ] Probar la pila completa con la licencia ELO 25 (`elo.sh up`) y documentar tiempos, memoria y URLs reales.

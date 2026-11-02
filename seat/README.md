@@ -121,6 +121,15 @@ Si se detectan varias pantallas, cada una puede ser un puesto:
 - [ ] Núcleo común multiplataforma (Node/Electron o Tauri) con "backends" por sistema: `wsl`, `docker`, `native`,
       `browser`, `hyperv`, `virtualbox`, `logind`, `iokit`.
 
+- [ ] **Máquinas virtuales invitadas de cualquier sistema** como contenido de un puesto, no solo Windows:
+  - Windows (probado con WSL/RDP), **distros Linux** (Ubuntu, Debian, Fedora, openSUSE…; acceso por RDP/VNC/SPICE o
+    consola de la VM a pantalla completa) y **macOS** (solo sobre hardware Apple por la licencia de Apple; en otros
+    equipos queda fuera del alcance).
+  - Hipervisores objetivo: Hyper-V, VirtualBox, KVM/QEMU (libvirt), VMware y WSL/Docker. Un `backend` por hipervisor con la
+    misma interfaz: `listVMs`, `start`, `stop`, `attachInput(dispositivos)`, `showFullscreen(monitor)`.
+- [ ] **Detección del invitado:** al elegir una VM, reconocer su SO y ofrecer el modo adecuado (RDP para Windows, SPICE/VNC
+      para Linux, consola de VirtualBox/KVM para el resto).
+
 ### 4. Contenedores
 
 - [x] Docker Engine dentro de la Ubuntu del usuario (no Docker Desktop de otra cuenta: cada usuario de Windows tiene su
@@ -148,18 +157,35 @@ Si se detectan varias pantallas, cada una puede ser un puesto:
       También se puede indicar una **imagen propia** (debe existir en la distro y usar el mismo contrato: `MOUSE`, `KBD`,
       `DISPLAY_NUM`, `VNC_PORT`, `SEAT_W`, `SEAT_H`).
 - [ ] Contenedor con escritorio accesible por navegador (`linuxserver/webtop`) como alternativa sin dispositivos dedicados.
-- [ ] **Contenedor de ELO.** Lo averiguado:
-      - ELO publica **imágenes de contenedor oficiales** ("ELO Cloud on Kubernetes" / "ECK images"; documentación en
-        https://docs.elo.com/ops/eck-images/de-de/administration-docker/ y
-        https://docs.elo.com/ops/eck/de-de/getting-started/). Esa documentación, y presumiblemente el registro de imágenes,
-        **requiere cuenta de partner/cliente de ELO**.
-      - No hay imagen pública en Docker Hub.
-      - El servidor ELO corre en Linux (recomiendan SUSE; el ELO Server Setup incluye OpenJDK y Tomcat) y ELO tiene una guía
-        "ELO Installation auf Ubuntu Desktop Linux" (OpS-Letter).
-      - Siguiente paso: con los datos del registro (nombres de imagen, `docker login`, ejemplo `run`/`compose`) que aporte el
-        usuario desde su acceso de partner, añadir el contenedor de ELO; si no, construir una imagen Ubuntu + ELO propia.
+- [x] **ELO en contenedores:** resuelto, pero **no pertenece a este proyecto**. Vive en `seat/elo/` (asistente web para
+      instalar ELO en Docker, Hyper-V, VirtualBox y WSL) y se publica como repositorio propio. Aquí solo queda la idea de
+      que un puesto pueda ser "una VM/contenedor con ELO" como cualquier otro.
 
-### 5. Separar el proyecto
+### 5. Multi-seat en red
 
-- [ ] Mover `seat/` a su propio repositorio, con `package.json` propio (ya incluido) y sin dependencias del configurador.
+Un puesto no tiene por qué estar en la misma máquina física que el servidor. Objetivo: que el servidor reparta puestos a
+clientes de la red con el mismo modelo de "una pantalla + un teclado + un ratón = una máquina aparte".
+
+- [ ] **Puesto remoto:** cliente ligero (PC viejo, Raspberry Pi, portátil) que se conecta a un puesto del servidor por
+      RDP / VNC / SPICE / Sunshine+Moonlight y envía **solo su** teclado y ratón. El servidor no mezcla esa entrada con la de
+      los puestos locales.
+- [ ] **USB/IP:** exportar los dispositivos de un cliente al servidor (`usbip` en Linux, `usbipd-win` en Windows) para que
+      ese ratón/teclado remoto se comporte como local y pueda asignarse a un puesto.
+- [ ] **Modelo de acceso "permisible":** lista de dispositivos y clientes autorizados por puesto (por MAC/ID de
+      dispositivo o clave), con modos **exclusivo** (solo ese dispositivo manda en el puesto) e **inclusivo/compartido** (varios
+      dispositivos controlan el mismo puesto, p. ej. un puesto con ratón local y otro remoto).
+- [ ] **Seguridad:** autenticación de clientes (clave o certificado), cifrado (SSH/TLS/WireGuard), nada expuesto por
+      defecto; la interfaz web solo en `localhost` o tras autenticación.
+- [ ] **Descubrimiento:** anunciar los puestos libres en la LAN (mDNS) y permitir reservarlos desde el cliente.
+- [ ] **Varios monitores como puestos independientes** (un monitor + su teclado/ratón = una máquina) combinado con
+      puestos remotos, sin que un puesto vea ni controle a otro.
+
+### 6. Separar el proyecto
+
+- [ ] Publicar `seat/` (sin `seat/elo/`) como repositorio propio, con `package.json` propio (ya incluido) y sin
+      dependencias del Hyper-V Configurator. Para conservar el historial: `git filter-repo --path seat/ --path-rename seat/:`
+      en un clon nuevo (o copiar los archivos y empezar historial limpio).
+- [ ] Quitar de la interfaz las rutas `/api/seat` del configurador cuando el repositorio ya sea independiente.
 - [ ] Instalador/arranque elevado por plataforma y documentación de requisitos.
+- [ ] CI básica (lint + comprobación de sintaxis de `seat.sh`/`setup.sh` con `shellcheck`) y licencia del repositorio.
+- [ ] Nota sobre Interception y otros componentes con licencia no comercial antes de elegir la licencia del proyecto.
