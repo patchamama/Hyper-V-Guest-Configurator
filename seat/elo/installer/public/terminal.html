@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Terminal</title>
+<link rel="stylesheet" href="/vendor/xterm/css/xterm.css">
+<style>
+  html, body { height: 100%; margin: 0; background: #0d1117; color: #c9d1d9; font: 13px system-ui, sans-serif; }
+  #bar { display: flex; gap: 12px; align-items: center; padding: 6px 12px; background: #161b22; border-bottom: 1px solid #30363d; }
+  #bar b { color: #f0f6fc; } #st { margin-left: auto; color: #8b949e; }
+  #t { height: calc(100% - 38px); padding: 6px 8px; box-sizing: border-box; }
+  button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 5px; padding: 3px 10px; cursor: pointer; }
+</style></head><body>
+<div id="bar"><b id="title">Terminal</b><button id="re">Reconnect</button><span id="st">connecting…</span></div>
+<div id="t"></div>
+<script src="/vendor/xterm/lib/xterm.js"></script>
+<script src="/vendor/xterm-fit/lib/addon-fit.js"></script>
+<script>
+  const id = new URLSearchParams(location.search).get('id') || '', label = new URLSearchParams(location.search).get('label') || id;
+  document.title = 'Terminal · ' + label; document.getElementById('title').textContent = label;
+  const term = new Terminal({ cursorBlink: true, fontSize: 14, fontFamily: 'Cascadia Mono, Consolas, monospace', scrollback: 5000, theme: { background: '#0d1117' } });
+  const fit = new FitAddon.FitAddon(); term.loadAddon(fit); term.open(document.getElementById('t')); fit.fit();
+  let ws; const st = document.getElementById('st');
+  function connect() {
+    term.reset();
+    ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/terminal?id=' + encodeURIComponent(id));
+    ws.onopen = () => { st.textContent = 'connected'; ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows })); term.focus(); };
+    ws.onmessage = e => term.write(e.data);
+    ws.onclose = () => { st.textContent = 'closed'; };
+  }
+  term.onData(d => ws && ws.readyState === 1 && ws.send(JSON.stringify({ type: 'input', data: d })));
+  term.onResize(({ cols, rows }) => ws && ws.readyState === 1 && ws.send(JSON.stringify({ type: 'resize', cols, rows })));
+  window.addEventListener('resize', () => fit.fit());
+  document.getElementById('re').onclick = connect;
+  connect();
+</script></body></html>

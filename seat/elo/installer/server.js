@@ -916,7 +916,8 @@ $ip=@($_.NetworkAdapters.IPAddresses | ?{ $_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$
         const item = { id: `hyperv:${name}`, order: 2, name, type: 'hyperv', typeLabel: ours ? `Hyper-V VM · ELO Docker (installer)${tgt?.vm === name && tgt.os ? ' · ' + tgt.os : ''}` : 'Hyper-V VM',
           state: running ? 'running' : state === 'Off' ? 'stopped' : state.toLowerCase(), detail: `${ram} GB RAM${dyn === 'True' ? ' (dynamic)' : ''}${ip ? ' · ' + ip : ''}`, ramGB: +ram,
           disk: +disk || null, diskNote: 'virtual disks', active: tgt?.vm === name, locations: locs,
-          deletable: /hvc-vms/i.test(vpath) && !!vdir, deleteWhat: 'the VM and its disk files' };   // only VMs the installer created
+          deletable: /hvc-vms/i.test(vpath) && !!vdir, deleteWhat: 'the VM and its disk files',
+          access: true };   // only VMs the installer created
         if (running && ip) item.ports = await openPorts(ip, known);
         list.push(item);
       }));
@@ -940,7 +941,7 @@ $ip=@($_.NetworkAdapters.IPAddresses | ?{ $_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$
           state: vmState === 'running' ? 'running' : vmState === 'saved' ? 'saved' : vmState === 'paused' ? 'paused' : 'stopped', ramGB: ram / 1024,
           detail: ram ? `${Math.round(ram / 102.4) / 10} GB RAM` : '',
           disk: disks.reduce((a, b) => a + b, 0) || null, diskNote: 'virtual disks', active: tgt?.vm === name, locations: locs,
-          deletable: ours, deleteWhat: 'the VM and its disk files' };
+          deletable: ours, deleteWhat: 'the VM and its disk files', access: true };
         if (item.state === 'running' && fwd.length) item.ports = await openPorts('127.0.0.1', fwd);
         list.push(item);
       }));
@@ -1129,4 +1130,12 @@ app.post('/api/provision/vm', wrap(async req => {
   return x.nodeJob('vm', log => prov.createVm(b, log, SSH_KEY));
 }));
 
-app.listen(PORT, () => console.log(`ELO installer: http://localhost:${PORT}`));
+// Browser terminal (xterm.js ⇄ pty), access data and X desktop through SSH tunnels.
+app.use('/vendor/xterm', express.static(path.join(__dirname, 'node_modules/@xterm/xterm')));
+app.use('/vendor/xterm-fit', express.static(path.join(__dirname, 'node_modules/@xterm/addon-fit')));
+const terminals = require('./terminal')({ app, wrap, SSH_KEY, VM_DIR: prov.VM_DIR });
+
+require('./elolinks')({ app, wrap, terminals, localOnly: terminals.localOnly });
+
+const server = app.listen(PORT, () => console.log(`ELO installer: http://localhost:${PORT}`));
+terminals.attach(server);

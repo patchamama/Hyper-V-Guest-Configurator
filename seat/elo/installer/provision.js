@@ -197,6 +197,7 @@ if(-not $ip){ $m=($a.MacAddress -replace '(..)(?!$)','$1-'); $ip=(Get-NetNeighbo
   }
   if (!info) throw new Error('SSH to the VM did not succeed');
   log(`Connected: ${info}`);
+  require('./machines').save(`${platform}:${name}`, { os: 'linux', user: 'elo', password: pw, sshPort: port, label: img.label });
   x.setTarget(vmTarget);
   log(`__STEP__ VM ready and set as the installation target (user elo, password ${pw})`);
 }
@@ -279,6 +280,7 @@ async function createWinVm({ distro, name, ramGB = 16, cpus = 4, diskGB = 127, p
   const pw = exists ? fs.readFileSync(unattendFile, 'utf8').match(/<Value>([^<]*)<\/Value>/)[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
     : password || `Elo-${Math.random().toString(36).slice(2, 8)}${Math.floor(Math.random() * 90 + 10)}X`;
   if (!exists) fs.writeFileSync(unattendFile, unattend({ name, password: pw, productKey }));
+  require('./machines').save(`hyperv:${name}`, { os: 'windows', user: 'Administrator', password: pw, label: w.label, wslUser: w.wsl2 ? 'elo' : undefined });
   const dl = async (url, file, label) => {
     log(`__STEP__ Downloading ${label} (cached in ${CACHE})`);
     log(await ps(`$f='${psq(file)}'; if(-not (Test-Path $f) -or (Get-Item $f).Length -lt 1MB){ [Net.ServicePointManager]::SecurityProtocol='Tls12'; $ProgressPreference='SilentlyContinue'

@@ -1,0 +1,1 @@
+{"name":"elo-installer","private":true,"description":"ELO installer; express/ws come from the repository root","dependencies":{"@lydell/node-pty":"^1.2.0-beta.18","@xterm/addon-fit":"^0.11.0","@xterm/xterm":"^6.0.0"}}

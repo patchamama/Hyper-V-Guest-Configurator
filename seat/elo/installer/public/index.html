@@ -635,8 +635,11 @@ async function renderInstallations(reload) {
     ${r.installations.length ? `<div class="tablewrap"><table><tr><th>${t('inst.name')}</th><th>${t('inst.type')}</th><th>${t('m.state')}</th><th>${t('inst.detail')}</th><th></th></tr>
     ${r.installations.map((i, n) => {
       // Collapsed details row: services (ELO containers) and open ports, only while running.
+      // A terminal inside each running container (docker exec through SSH: WSL, or the SSH target).
+      const cscope = /^local:/.test(i.id) && W.isWindows ? 'wsl' : /^ssh:/.test(i.id) ? 'target' : '';
       const svc = i.state === 'running' && i.services?.length ? `<b>${t('inst.services')}</b><table style="margin:4px 0 8px">${i.services.map(s => `<tr><td>${esc(s.name)}</td>
-          <td><span class="dot ${/^Up/.test(s.status) ? (/unhealthy/.test(s.status) ? 'warn' : 'ok') : 'idle'}"></span> ${esc(s.status)}</td><td class="muted">${esc(s.ports || '—')}</td></tr>`).join('')}</table>` : '';
+          <td><span class="dot ${/^Up/.test(s.status) ? (/unhealthy/.test(s.status) ? 'warn' : 'ok') : 'idle'}"></span> ${esc(s.status)}</td><td class="muted">${esc(s.ports || '—')}</td>
+          <td>${cscope && /^Up/.test(s.status) ? `<a href="#" title="${esc(t('acc.ctrTerm'))}" onclick="openTerminal('ctr:${cscope}:${esc(s.name)}','${esc(s.name)}');return false">&gt;_</a>` : ''}</td></tr>`).join('')}</table>` : '';
       const ports = i.state === 'running' && i.ports?.length ? `<b>${t('inst.ports')}</b><div class="row" style="gap:6px;margin-top:4px">${i.ports.map(p =>
           `<span class="pill">${p.hostPort && p.hostPort !== p.port ? `${p.hostPort}→` : ''}${p.port} · ${esc(p.label)}</span>`).join('')}</div>` : '';
       // Where it lives on disk (always shown, also when stopped): folders open in the file manager; others are shown as text.
@@ -652,13 +655,14 @@ async function renderInstallations(reload) {
           <button class="btn small" onclick="instAction('${esc(i.id)}','stop')">${t('m.stop')}</button>`
         : ['stopped', 'saved', 'paused'].includes(i.state) ? `<button class="btn small primary" onclick="instAction('${esc(i.id)}','start')">${i.state === 'stopped' ? t('m.start') : t('inst.resume')}</button>` : ''}
         ${vm && i.ramGB ? `<button class="btn small" title="${esc(t('inst.ramHint'))}" onclick="vmMem(${n})">RAM…</button>` : ''}
+        ${i.access ? `<button class="btn small" onclick="showAccess('${esc(i.id)}','${esc(i.name)}')">${t('acc.btn')}</button>` : ''}
         ${i.instance ? `<button class="btn small" onclick="lastRun('${esc(i.instance)}')">${t('inst.lastRun')}</button>` : ''}
         ${i.deletable ? `<button class="btn small danger" title="${esc(t('inst.deleteHint'))}" onclick="instDelete(${n})">${t('inst.delete')}</button>` : ''}</td></tr>
       <tr id="inst-mem-${n}" hidden><td colspan="5" style="padding-left:34px"></td></tr>
       <tr id="inst-del-${n}" hidden><td colspan="5" style="padding-left:34px"></td></tr>
       ${more ? `<tr id="inst-more-${n}" hidden><td colspan="5" style="padding-left:34px">${svc}${ports}${loc}</td></tr>` : ''}`; }).join('')}
     </table></div>` : `<p class="muted">${t('inst.none')}</p>`}
-    <div id="adm-last" style="margin-top:10px"></div>
+    <div id="adm-last" style="margin-top:10px"></div><div id="adm-access"></div>
     <label class="row" style="gap:8px;margin-top:8px"><input type="checkbox" ${viewerOnStart() ? 'checked' : ''} onchange="localStorage.setItem('elo-viewer', this.checked ? '1' : '0')">
       <span class="muted">${t('inst.viewerOnStart')}</span></label>
     <pre class="log" id="inst-out" hidden style="margin-top:8px"></pre>`;
@@ -688,6 +692,107 @@ async function instOtherPorts(id, inst, ports) {
 }
 async function instUse(name) { await api('/instances/current', { name }); CACHE.status = null; await renderInstallations(true); }
 async function instOpen(id, k) { const r = await api('/installations/open', { id, index: k }), o = $('inst-out'); o.hidden = false; o.textContent = r.ok ? `${t('m.opening')} ${r.path}` : r.error; }
+// ── Access to a machine: browser terminal, SSH / PowerShell / RDP data, X desktop through an SSH tunnel ──
+const openTerminal = (id, label) => window.open(`/terminal.html?id=${encodeURIComponent(id)}&label=${encodeURIComponent(label || id)}`, '_blank');
+async function showAccess(id, label) {
+  const el = $('adm-access'); if (!el) return;
+  el.innerHTML = `<div class="card"><b>${t('acc.title', { name: esc(label || id) })}</b> <span class="muted">${t('m.working')}</span></div>`;
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const r = await api('/access?id=' + encodeURIComponent(id));
+  if (!r.ok) { el.innerHTML = `<div class="card"><b>${t('acc.title', { name: esc(label || id) })}</b> <span class="tbad">${esc(r.error)}</span></div>`; return; }
+  const row = (k, v, pw) => v ? `<tr><td class="muted">${esc(k)}</td><td>${pw ? `<code class="secret pw" data-v="${esc(v)}">••••••••</code>` : `<code>${esc(v)}</code>`}</td></tr>` : '';
+  const s = r.ssh, w = r.windows, d = r.desktop;
+  el.innerHTML = `<div class="card"><div class="row"><b>${t('acc.title', { name: esc(r.label) })}</b>
+      <span class="right row" style="gap:6px"><button class="btn small" onclick="togglePw(this)">${t('a.show')}</button><button class="btn small" onclick="$('adm-access').innerHTML=''">✕</button></span></div>
+    <div class="grid2" style="margin-top:8px">
+      ${w ? `<div><b>${t('acc.windows')}</b><table>${row(t('acc.user'), w.user)}${row(t('acc.password'), w.password, 1)}${row(t('acc.host'), w.ip)}${row('RDP', w.mstsc)}${row('PowerShell Direct', w.psDirect)}</table>
+        <button class="btn small primary" style="margin-top:6px" onclick="openTerminal('${esc(r.id)}','${esc(r.label)}')">${t('acc.psTerm')}</button> <span class="muted">${t('acc.psNote')}</span></div>` : ''}
+      ${s ? `<div><b>${t('acc.ssh')}${s.note ? ` <span class="muted">(${esc(s.note)})</span>` : ''}</b><table>${row(t('acc.user'), s.user)}${row(t('acc.password'), s.password, 1)}${row(t('acc.host'), s.host + ':' + s.port)}${row(t('acc.key'), s.key)}${row(t('acc.command'), s.command)}</table>
+        ${w ? '' : `<button class="btn small primary" style="margin-top:6px" onclick="openTerminal('${esc(r.id)}','${esc(r.label)}')">${t('acc.term')}</button>`}
+        ${w ? `<button class="btn small" style="margin-top:6px" onclick="openTerminal('${esc(r.id)}','${esc(r.label)}')">${t('acc.psTerm')}</button>` : ''}</div>` : ''}
+    </div>
+    ${s && !w ? deskPanel(r.id, d) : ''}
+    ${w || d ? elPanel(r.id) : ''}</div>`;
+  if (w || d) elCheck(r.id);
+}
+// ELO links: desktop launchers + browser bookmarks of ELO's web apps, offered only when the machine does not have them yet.
+function elPanel(id) {
+  return `<div class="card" style="margin-top:10px"><b>${t('el.title')}</b> <span id="el-state" class="muted"></span>
+    <p class="muted" style="margin:4px 0">${t('el.note')}</p>
+    <div class="row" style="gap:8px"><button class="btn small" onclick="elCheck('${esc(id)}')">${t('el.check')}</button>
+      <button class="btn small primary" id="el-apply" hidden onclick="elApply('${esc(id)}')">${t('el.apply')}</button>
+      <label class="row" style="gap:4px" id="el-close-wrap" hidden><input type="checkbox" id="el-close"> ${t('el.closeBr')}</label></div>
+    <div id="el-creds" style="margin-top:8px"></div><div id="el-list" style="margin-top:8px"></div><div id="el-out" style="margin-top:6px"></div></div>`;
+}
+async function elCheck(id, keepOut) {
+  const st = $('el-state'); if (!st) return;
+  st.textContent = '· ' + t('el.checking'); $('el-apply').hidden = true; $('el-close-wrap').hidden = true; if (!keepOut) $('el-out').innerHTML = ''; $('el-creds').innerHTML = '';
+  const r = await api('/elolinks/status', { id });
+  if (!$('el-state')) return;
+  if (!r.ok) {
+    st.innerHTML = `· <span class="tbad">${esc(r.error)}</span>`;
+    if (/no access data/.test(r.error || '') && /^(hyperv|vbox):/.test(id)) $('el-creds').innerHTML = `<span class="muted">${t('el.creds')}</span>
+      <div class="row" style="gap:8px;margin-top:4px"><select id="el-os"><option value="windows">Windows</option><option value="linux">Linux</option></select>
+      <input id="el-user" placeholder="${t('acc.user')}" autocomplete="off"><input id="el-pw" type="password" placeholder="${t('acc.password')}" autocomplete="new-password">
+      <button class="btn small" onclick="elSaveCreds('${esc(id)}')">${t('el.credsSave')}</button></div>`;
+    return;
+  }
+  const reqHtml = (r.requirements || []).length ? `<div style="margin-bottom:6px"><b>${t('el.reqs')}</b><table>${r.requirements.map(q => `<tr><td>${q.ok ? '<span class="tok">✓</span>' : '<span class="tbad">✗</span>'}</td><td>${esc(q.key)}</td><td class="muted">${esc(q.detail)}</td></tr>`).join('')}</table></div>` : '';
+  if (r.needsSetup) {
+    st.innerHTML = `· <span class="tbad">${t('el.needSetup')}</span>`; $('el-list').innerHTML = reqHtml;
+    $('el-creds').innerHTML = `<button class="btn small primary" onclick="elPrepare('${esc(id)}')">${t('el.reqInstall')}</button> <span class="muted">${t('el.reqNote', { pm: esc(r.packageManager || '?') })}</span>`;
+    return;
+  }
+  const found = r.items.filter(i => i.found);
+  $('el-list').innerHTML = reqHtml + `<table>${r.items.map(i => `<tr><td>${i.found ? '<span class="tok">✓</span>' : '<span class="muted">–</span>'}</td><td>${esc(i.name)}</td><td class="muted">${esc(i.detail)}</td></tr>`).join('')}</table>
+    <div class="muted" style="margin-top:4px">${t('el.browsers')}: ${r.scan.browsers.length ? esc(r.scan.browsers.join(', ')) : t('el.none')}</div>
+    ${r.os === 'linux' && !r.scan.desktopInstalled ? `<div class="tbad" style="margin-top:4px">${t('el.noDesktop')}</div>` : ''}`;
+  if (!found.length) st.textContent = '· ' + t('el.noElo');
+  else if (!r.pending) st.innerHTML = `· <span class="tok">✓ ${t('el.allDone')}</span>`;
+  else { st.textContent = '· ' + t('el.pending', { n: r.pending }); $('el-apply').hidden = false; $('el-close-wrap').hidden = r.os !== 'windows'; }
+}
+async function elPrepare(id) {
+  $('el-creds').innerHTML = `<span class="muted">${t('el.installing')}</span>`;
+  const r = await api('/elolinks/prepare', { id });
+  if (!r.ok) { $('el-creds').innerHTML = `<span class="tbad">${esc(r.error)}</span>`; return; }
+  elCheck(id);
+}
+async function elSaveCreds(id) {
+  const r = await api('/machine/credentials', { id, os: $('el-os').value, user: $('el-user').value.trim(), password: $('el-pw').value });
+  if (!r.ok) { $('el-state').innerHTML = `· <span class="tbad">${esc(r.error)}</span>`; return; }
+  elCheck(id);
+}
+async function elApply(id) {
+  const o = $('el-out'); o.innerHTML = `<span class="muted">${t('el.applying')}</span>`; $('el-apply').disabled = true;
+  const r = await api('/elolinks/apply', { id, closeBrowsers: !!$('el-close')?.checked });
+  $('el-apply').disabled = false;
+  if (!r.ok) { o.innerHTML = `<span class="tbad">${esc(r.error)}</span>`; return; }
+  const sc = [].concat(r.result.shortcuts || []), bm = [].concat(r.result.bookmarks || []);
+  const mark = x => /^error|^skipped/.test(x) ? 'tbad' : x === 'exists' || x === 'nothing to add' ? 'muted' : 'tok';
+  o.innerHTML = `<table>${sc.map(s => `<tr><td>${esc(s.name)}</td><td class="muted">${esc(s.dir)}</td><td class="${mark(s.result)}">${esc(s.result === 'created' ? t('el.created') : s.result === 'exists' ? t('el.exists') : s.result)}</td></tr>`).join('')}
+    ${bm.map(b => `<tr><td>${esc(b.browser)}</td><td class="muted">${esc(b.user || '')}</td><td class="${mark(b.result)}">${esc(b.result)}${b.added?.length ? ' (' + b.added.map(esc).join(', ') + ')' : ''}</td></tr>`).join('')}</table>
+    ${r.noBrowsers ? `<div class="muted">${t('el.browsers')}: ${t('el.none')}</div>` : ''}`;
+  setTimeout(() => elCheck(id, true), 400);
+}
+// X desktop: install (Xfce / LXQt / GNOME + Firefox) and open it in the browser through an SSH tunnel.
+function deskPanel(id, d) {
+  return `<div class="card" style="margin-top:10px"><b>${t('desk.title')}</b> <span class="muted">${d?.installed ? t('desk.installed', { s: esc(d.session || '') }) : t('desk.not')}</span>
+    <p class="muted" style="margin:4px 0">${t('desk.note')}</p>
+    <div class="row" style="gap:8px"><select id="desk-kind"><option value="xfce">Xfce</option><option value="lxqt">LXQt (${t('desk.light')})</option><option value="gnome">GNOME (${t('desk.heavy')})</option></select>
+      <label class="row" style="gap:4px"><input type="checkbox" id="desk-browser" checked> Firefox</label>
+      <button class="btn small" onclick="deskInstall('${esc(id)}')">${d?.installed ? t('desk.reinstall') : t('desk.install')}</button>
+      <button class="btn small primary" ${d?.installed ? '' : 'disabled'} onclick="deskOpen('${esc(id)}')">${t('desk.open')}</button>
+      <button class="btn small" onclick="api('/desktop/close',{id:'${esc(id)}'}).then(()=>$('desk-msg').textContent='')">${t('desk.close')}</button></div>
+    <div id="desk-job" style="margin-top:8px"></div><div id="desk-msg" class="muted" style="margin-top:6px"></div></div>`;
+}
+function deskInstall(id) { runJob('/desktop/install', { id, desktop: $('desk-kind').value, browser: $('desk-browser').checked }, $('desk-job'), () => showAccess(id)); }
+async function deskOpen(id) {
+  $('desk-msg').textContent = t('m.working');
+  const r = await api('/desktop/open', { id });
+  if (!r.ok) { $('desk-msg').innerHTML = `<span class="tbad">${esc(r.error)}</span>`; return; }
+  $('desk-msg').innerHTML = `<span class="tok">✓ ${t('desk.opened')}</span> <a href="${esc(r.url)}" target="_blank">${esc(r.url)}</a> · VNC: <code>${esc(r.vnc)}</code> · <code>${esc(r.tunnel)}</code>`;
+  window.open(r.url, '_blank');
+}
 // Delete an installation (frees disk space): confirmation row naming what will be removed.
 function instDelete(n) {
   const i = CACHE.inst.installations[n], row = $('inst-del-' + n), cell = row.querySelector('td');
@@ -747,7 +852,8 @@ async function renderWsl(reload) {
   el.hidden = false;
   el.innerHTML = `<div class="row"><b>WSL</b><span class="dot ${w.running ? 'ok' : 'idle'}"></span><span>${w.running ? t('st.running') : t('wsl.off')}</span>
     ${w.running ? `<span class="muted">${t('wsl.mem', { win: gb(w.memBytes), used: gb(w.usedBytes), total: gb(w.totalBytes) })}</span>` : ''}
-    <span class="right row" style="gap:6px"><button class="btn small" onclick="renderWsl(true)">${t('m.refresh')}</button>
+    <span class="right row" style="gap:6px">${w.running ? `<button class="btn small" onclick="showAccess('wsl','WSL ${esc(w.distro || '')}')">${t('acc.btn')}</button>
+      <button class="btn small" onclick="openTerminal('wsl','WSL ${esc(w.distro || '')}')">${t('acc.term')}</button>` : ''}<button class="btn small" onclick="renderWsl(true)">${t('m.refresh')}</button>
     ${w.running ? `<button class="btn small" onclick="wslAction('shutdown')">${t('wsl.shutdown')}</button>` : `<button class="btn small primary" onclick="wslAction('start')">${t('m.start')}</button>`}</span></div>
     <div class="row" style="gap:8px;margin-top:10px"><span>${t('wsl.limit')}</span>
       <input type="number" id="wsl-gb" min="2" max="${w.hostGB}" step="1" value="${w.limitGB || w.defaultGB}" style="width:90px"> GB
@@ -876,7 +982,10 @@ async function renderHelp() {
 }
 
 // ── Start: environment + detection of an existing installation ──────────────
-async function refreshEnv() { const e = await api('/target'); $('envinfo').textContent = e.ok ? `${e.mode}${e.distro ? ' · ' + e.distro : ''}${e.target ? ' · ' + e.target.user + '@' + e.target.host : ''}` : ''; }
+// Readable label of the installer's environment (the mode names are internal: wsl-user, wsl, linux, ssh).
+const envLabel = e => e.mode === 'ssh' ? t('env.ssh', { host: `${e.target.user}@${e.target.host}` }) : e.mode === 'wsl-user' ? t('env.wslUser', { distro: e.distro || '' })
+  : e.mode === 'wsl' ? t('env.wsl', { distro: e.distro || '' }) : e.mode === 'linux' ? t('env.linux') : e.mode;
+async function refreshEnv() { const e = await api('/target'); $('envinfo').textContent = e.ok ? envLabel(e) : ''; $('envinfo').title = e.ok ? `mode: ${e.mode}` : ''; }
 (async () => {
   document.documentElement.lang = LANG; shell();
   const tg = await api('/target');               // start on the current target (e.g. a VM over SSH)
