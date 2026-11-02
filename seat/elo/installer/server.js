@@ -19,6 +19,7 @@ const session = { registry: null };          // { username, secret } kept in mem
 // Installer settings (local file, not committed): cache sources for container images.
 const CONFIG_FILE = path.join(x.RUN_DIR, 'elo-installer-config.json');
 const readConfig = () => { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch { return { cacheSources: [] }; } };
+const setInstance = name => fs.writeFileSync(CONFIG_FILE, JSON.stringify({ ...readConfig(), instance: name }, null, 2));
 // Cache source entries → CACHE_SOURCES for elo.sh: URLs as they are, \\server\share → unc:…, C:\… → /mnt/c/… (WSL).
 function cacheSourcesEnv() {
   const mode = x.getMode();
@@ -60,29 +61,41 @@ app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 const wrap = fn => async (req, res) => { try { res.json(await fn(req, res)); } catch (e) { res.json({ ok: false, error: e.message }); } };
 
-// Run elo.sh (CRLF-safe copy) with optional environment.
+// ELO instances (several versions side by side): name = compose project, container prefix; "elo" is the default one.
+// The instance the Administration works on is stored in the installer config (current instance).
+const INST_RE = /^elo[a-z0-9]{0,20}$/;
+const curInstance = () => INST_RE.test(readConfig().instance || '') ? readConfig().instance : 'elo';
+const instOf = n => INST_RE.test(n || '') ? n : curInstance();
+const envRel = n => n === 'elo' ? '.env' : `instances/${n}/.env`;
+const parseEnv = txt => Object.fromEntries(String(txt).replace(/\r/g, '').split('\n').filter(l => /^[A-Z_0-9]+=/.test(l))
+  .map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
+// Host ports of an instance from its env (defaults = the standard ELO ports).
+const portsOf = e => ({ server: +e?.PORT_SERVER || 9090, as: +e?.PORT_AS || 9060, flows: +e?.PORT_FLOWS || 9010,
+  search: +e?.PORT_SEARCH || 9200, searchT: +e?.PORT_SEARCH_T || 9204, pgadmin: +e?.PORT_PGADMIN || 5050 });
+
+// Run elo.sh (CRLF-safe copy) with optional environment, for the current (or given) instance.
 const elo = async (args, env = {}, t = 600) => { await x.detect(); return x.sh(
-  `export ELO_DIR=${x.shq(x.eloDir())}; ${Object.entries(env).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `export ${k}=${x.shq(v)}; `).join('')}` +
+  `export ELO_DIR=${x.shq(x.eloDir())}; export ELO_INSTANCE=${instOf(env.ELO_INSTANCE)}; ${Object.entries(env).filter(([k, v]) => k !== 'ELO_INSTANCE' && v !== undefined && v !== '').map(([k, v]) => `export ${k}=${x.shq(v)}; `).join('')}` +
   `E=$(mktemp /tmp/elo-XXXXXX); tr -d '\\r' < "$ELO_DIR/elo.sh" > $E; bash $E ${args}`, t); };
 
-// .env of the installation (local file; on an SSH target read remotely).
-async function readEnv() {
+// Env file of an instance (local file; on an SSH target read remotely).
+async function readEnv(name = curInstance()) {
   await x.detect();
   let txt = null;
-  if (x.getMode() === 'ssh') txt = await x.sh(`cat ${x.REMOTE_DIR}/.env 2>/dev/null`, 30);
-  else { try { txt = fs.readFileSync(path.join(ELO, '.env'), 'utf8'); } catch {} }
+  if (x.getMode() === 'ssh') txt = await x.sh(`cat ${x.REMOTE_DIR}/${envRel(name)} 2>/dev/null`, 30);
+  else { try { txt = fs.readFileSync(path.join(ELO, envRel(name)), 'utf8'); } catch {} }
   if (!txt || !/=/.test(txt)) return null;
-  return Object.fromEntries(txt.replace(/\r/g, '').split('\n').filter(l => /^[A-Z_]+=/.test(l))
-    .map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
+  return parseEnv(txt);
 }
 
-// Base URL to reach the published ports from where this backend runs (WSL IP on Windows, target host over SSH).
-async function baseUrl() {
+// Base URL to reach the published server port from where this backend runs (WSL IP on Windows, target host over SSH).
+async function baseUrl(e) {
   const { mode } = await x.detect();
-  if (mode === 'linux') return 'http://localhost:9090';
-  if (mode === 'ssh') { const t = x.getTarget(); return `http://${t.host}:${t.portMap?.[9090] || 9090 + (t.portOffset || 0)}`; }
+  const gp = portsOf(e === undefined ? await readEnv().catch(() => null) : e).server;
+  if (mode === 'linux') return `http://localhost:${gp}`;
+  if (mode === 'ssh') { const t = x.getTarget(); return `http://${t.host}:${t.portMap?.[gp] || gp + (t.portOffset || 0)}`; }
   const ip = (await x.sh('hostname -I | awk \'{print $1}\'', 60)).trim().split(/\s+/)[0];
-  return `http://${ip}:9090`;
+  return `http://${ip}:${gp}`;
 }
 
 // ── Environment & requirements ──────────────────────────────────────────────
@@ -103,8 +116,8 @@ echo "registry=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 https://reg
 echo "license_server=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 https://license.services.elo.cloud)"
 echo "logged_in=$(grep -qs registry.elo.com /root/.docker/config.json && echo yes || echo no)"
 echo "images=$(docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -c registry.elo.com)"
-echo "installed=$(docker ps -aq -f name=elo-server 2>/dev/null | grep -q . && echo yes || echo no)"
-echo "running=$(docker ps -q -f name=elo-server 2>/dev/null | grep -q . && echo yes || echo no)"
+echo "installed=$(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -Eq '^elo[a-z0-9]*-server$' && echo yes || echo no)"
+echo "running=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -Eq '^elo[a-z0-9]*-server$' && echo yes || echo no)"
 `, 120);
   const v = Object.fromEntries(out.split('\n').filter(l => l.includes('=')).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]));
   let host = null;
@@ -218,13 +231,13 @@ app.post('/api/cache/save', wrap(async req => {
   const { ELO_TAG, ELO_SEARCH_TAG } = req.body || {};
   if (!/^[\w.-]+$/.test(ELO_TAG || '') || !/^[\w.-]+$/.test(ELO_SEARCH_TAG || '')) throw new Error('bad version');
   await x.detect(); await x.deployRemote();
-  return x.startJob('cache', `export ELO_DIR=${x.shq(x.eloDir())} ELO_TAG=${x.shq(ELO_TAG)} ELO_SEARCH_TAG=${x.shq(ELO_SEARCH_TAG)}
+  // A throw-away instance ("elocache") carries the versions, so no installation's configuration is touched.
+  return x.startJob('cache', `export ELO_DIR=${x.shq(x.eloDir())} ELO_INSTANCE=elocache ELO_TAG=${x.shq(ELO_TAG)} ELO_SEARCH_TAG=${x.shq(ELO_SEARCH_TAG)}
+export CACHE_SOURCES=${x.shq(cacheSourcesEnv())}
 cd "$ELO_DIR"; E=$(mktemp /tmp/elo-XXXXXX); tr -d '\\r' < elo.sh > $E
 echo "__STEP__ Saving ELO ${ELO_TAG} (+ iSearch ${ELO_SEARCH_TAG}) into the local cache"
-# Use a temporary env so the installation's .env (versions) is not changed.
-[ -f .env ] && cp .env /tmp/elo-env.bak; sed -i "s/^ELO_TAG=.*/ELO_TAG=$ELO_TAG/; s/^ELO_SEARCH_TAG=.*/ELO_SEARCH_TAG=$ELO_SEARCH_TAG/" .env 2>/dev/null || true
 bash $E cache; rc=$?
-[ -f /tmp/elo-env.bak ] && cp /tmp/elo-env.bak .env
+rm -rf instances/elocache
 echo "__STEP__ Done"; exit $rc`);
 }));
 
@@ -244,40 +257,138 @@ app.post('/api/license', wrap(async req => {
 
 // ── Install (background job) ────────────────────────────────────────────────
 const SETTINGS = ['ELO_TAG', 'ELO_SEARCH_TAG', 'REPO', 'REPO_LANGUAGE', 'ELO_DISPLAY_NAME', 'ELO_LICENSE_TYPE', 'COMPOSE_PROFILES',
-  'AUTH_ADMIN_USERNAME', 'AUTH_ADMIN_PASSWORD', 'AUTH_SERVICE_USERNAME', 'AUTH_SERVICE_PASSWORD', 'DATABASE_USERNAME', 'DATABASE_PASSWORD', 'IX_URL_PUBLIC'];
+  'AUTH_ADMIN_USERNAME', 'AUTH_ADMIN_PASSWORD', 'AUTH_SERVICE_USERNAME', 'AUTH_SERVICE_PASSWORD', 'DATABASE_USERNAME', 'DATABASE_PASSWORD', 'IX_URL_PUBLIC',
+  'PORT_SERVER', 'PORT_AS', 'PORT_FLOWS', 'PORT_SEARCH', 'PORT_SEARCH_T', 'PORT_PGADMIN'];
+const PORT_KEYS = ['PORT_SERVER', 'PORT_AS', 'PORT_FLOWS', 'PORT_SEARCH', 'PORT_SEARCH_T', 'PORT_PGADMIN'];
+const STD_PORTS = { PORT_SERVER: 9090, PORT_AS: 9060, PORT_FLOWS: 9010, PORT_SEARCH: 9200, PORT_SEARCH_T: 9204, PORT_PGADMIN: 5050 };
+
+// Does the stack's script have to be told the instance's ports? Checks the requested host ports in the Linux
+// environment of the target (listening sockets + published Docker ports) and suggests a free set (+100, +200 …).
+// Ports published by the instance's own containers are no conflict (it is reinstalled over them).
+// Conflicts come from programs/containers using a port now and from the ports configured for the OTHER instances
+// (also while they are stopped: starting both later would clash).
+async function portCheck(inst, ports) {
+  await x.detect();
+  const out = await x.sh(`echo "__L__"; ss -ltnH 2>/dev/null | awk '{n=split($4,a,":"); print a[n]}' | sort -un; echo "__D__"; docker ps --format '{{.Names}}|{{.Ports}}' 2>/dev/null`, 60);
+  const used = new Map();    // port → owner
+  const sect = (n) => (out.split(`__${n}__`)[1] || '').split(/__[A-Z]__/)[0].split('\n').map(s => s.trim()).filter(Boolean);
+  for (const p of sect('L')) used.set(+p, 'a program on the Linux side');
+  for (const l of sect('D')) { const [name, pp] = l.split('|'); for (const m of (pp || '').matchAll(/:(\d+)->/g)) used.set(+m[1], name); }
+  for (const o of parseInstances(await x.sh(instProbe(x.eloDir()), 120)).filter(i => i.name !== inst))
+    for (const p of Object.values(o.ports)) if (!used.has(p)) used.set(p, `${o.name}-… (instance ${o.name}, ports configured)`);
+  const own = owner => typeof owner === 'string' && owner.startsWith(inst + '-');
+  const conflict = p => used.has(p) && !own(used.get(p));
+  const conflicts = PORT_KEYS.filter(k => conflict(ports[k])).map(k => ({ key: k, port: ports[k], by: used.get(ports[k]) }));
+  const duplicates = PORT_KEYS.filter((k, i) => PORT_KEYS.findIndex(j => ports[j] === ports[k]) !== i);
+  let suggestion = null;
+  if (conflicts.length || duplicates.length) for (let off = 100; off < 5000 && !suggestion; off += 100) {
+    const s = Object.fromEntries(PORT_KEYS.map(k => [k, ports[k] + off]));
+    if (PORT_KEYS.every(k => s[k] < 65535 && !conflict(s[k]))) suggestion = s;
+  }
+  return { instance: inst, conflicts, duplicates, suggestion };
+}
+const portsOfBody = b => Object.fromEntries(PORT_KEYS.map(k => [k, Number(b?.[k]) || STD_PORTS[k]]));
+app.post('/api/ports/check', wrap(async req => ({ ok: true, ...(await portCheck(instOf(req.body?.instance), portsOfBody(req.body?.ports))) })));
+// Change the host ports of an existing instance (env file); it takes effect at the next start.
+app.post('/api/instances/ports', wrap(async req => {
+  const inst = instOf(req.body?.name), p = portsOfBody(req.body?.ports);
+  if (!PORT_KEYS.every(k => p[k] > 0 && p[k] < 65536)) throw new Error('bad port');
+  const f = envRel(inst);
+  await x.detect();
+  const sed = PORT_KEYS.map(k => `grep -q '^${k}=' "$F" && sed -i 's/^${k}=.*/${k}=${p[k]}/' "$F" || echo '${k}=${p[k]}' >> "$F"`).join('; ');
+  await x.sh(`cd ${x.shq(x.eloDir())}; F=${x.shq(f)}; [ -f "$F" ] || { echo "no such instance"; exit 1; }; ${sed}; sed -i 's#^\\(IX_URL_PUBLIC=http://[^:/]*\\):[0-9]*#\\1:${p.PORT_SERVER}#' "$F"; echo done`, 30);
+  return { ok: true, instance: inst, ports: p };
+}));
+
+// Free memory of the Linux side (what the new stack gets) — the full stack needs about 10 GB.
+const freeMem = async () => { const m = (await x.sh(`awk '/MemTotal/{t=$2}/MemAvailable/{a=$2}END{print t, a}' /proc/meminfo`, 30)).trim().split(/\s+/).map(Number); return { totalGB: m[0] / 1048576, availGB: m[1] / 1048576 }; };
+
+// WSL memory limit (.wslconfig) of the signed-in user; applied at the next WSL start, or by restarting WSL now.
+async function applyWslLimit(gb, restart) {
+  const hostGB = require('os').totalmem() / 2 ** 30;
+  if (!(gb >= 2 && gb <= Math.floor(hostGB))) throw new Error(`memory: 2–${Math.floor(hostGB)} GB`);
+  const cfg = await wslConfigPath();
+  const old = fs.existsSync(cfg) ? fs.readFileSync(cfg, 'utf8') : '';
+  if (wslMemLimit(old) === gb && !restart) return { configPath: cfg, limitGB: gb, restarted: false, unchanged: true };
+  if (old) fs.writeFileSync(cfg + '.bak-elo-installer', old);
+  fs.writeFileSync(cfg, setWslMem(old, gb));
+  let restarted = false;
+  if (restart) {
+    const cmd = `wsl.exe --shutdown; 'shut down'`;
+    if (x.getMode() === 'wsl-user') await x.getSeatLib().runAsUser(cmd, 120); else await x.ps(cmd, 120000);
+    await x.shLocal('true', 120); restarted = true;
+  }
+  return { configPath: cfg, limitGB: gb, restarted };
+}
 
 app.post('/api/install', wrap(async req => {
   const c = req.body || {};
-  const lic = fs.existsSync(path.join(ELO, 'elo-license.lic')) ? 'elo-license.lic'
+  const inst = INST_RE.test(c.instance || '') ? c.instance : 'elo';
+  const v23 = /^v(2[0-3])-/.test(c.ELO_TAG || '');
+  // ELO 23 and older: elo.sh takes the ELO_23*.txt license; ELO 25: the uploaded license or the private key.
+  const lic = v23 ? '' : fs.existsSync(path.join(ELO, 'elo-license.lic')) ? 'elo-license.lic'
     : fs.existsSync(path.join(ELO, 'uploaded-license.pk')) ? 'uploaded-license.pk' : '';
   const env = Object.fromEntries(SETTINGS.map(k => [k, c[k]]));
   if (lic) env.LICENSE_FILE = lic;
   await x.detect();
+  // WSL memory for this stack (the limit is per WSL VM, shared by all instances in it).
+  let memNote = '';
+  if (x.IS_WIN && ['wsl', 'wsl-user'].includes(x.getMode()) && Number(c.wslMemGB) >= 2) {
+    const r = await applyWslLimit(Number(c.wslMemGB), !!c.wslRestart);
+    memNote = `WSL memory limit ${r.limitGB} GB${r.unchanged ? ' (unchanged)' : r.restarted ? ' (WSL restarted)' : ' (applies at the next WSL start)'}`;
+  }
   env.CACHE_SOURCES = cacheSourcesEnv();
+  env.ELO_INSTANCE = inst;
   const exports = Object.entries(env).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `export ${k}=${x.shq(v)}`).join('\n');
-  await x.detect(); await x.deployRemote();
+  await x.deployRemote();
+  const mem = await freeMem().catch(() => null);
+  await setInstance(inst);
+  // The run is kept in last-run-<instance>.log (also read after a failure or a restart): steps, every check and, at the end,
+  // the diagnosis of every container (out of memory, port conflict, exit codes) with a final __SUMMARY__ line.
   return x.startJob('install', `
-set -e
 export ELO_DIR=${x.shq(x.eloDir())}; cd "$ELO_DIR"; E=$(mktemp /tmp/elo-XXXXXX); tr -d '\\r' < elo.sh > $E
 ${exports}
+LAST="$ELO_DIR/last-run-$ELO_INSTANCE.log"; : > "$LAST"
 step() { echo "__STEP__ $*"; }
-${c.fresh ? 'step "Removing the previous installation (containers and data volumes)"; bash $E down --volumes || true' : ''}
-step "Writing configuration (.env)"; bash $E env ${c.fresh ? '--force' : ''}
+main() {
+set -e
+echo "Instance $ELO_INSTANCE · ELO $ELO_TAG · started $(date '+%F %T') · ports $PORT_SERVER/$PORT_AS/$PORT_FLOWS/$PORT_SEARCH/$PORT_PGADMIN"
+echo "Linux memory: $(free -m | awk '/Mem:/{print "total " $2 " MB, available " $7 " MB"}')${memNote ? ' · ' + memNote.replace(/'/g, '') : ''}"
+${c.fresh ? 'step "Removing the previous installation of this instance (containers and data volumes)"; bash $E down --volumes || true' : ''}
+step "Writing configuration (${inst}: $([ "$ELO_INSTANCE" = elo ] && echo .env || echo instances/$ELO_INSTANCE/.env))"; bash $E env ${c.fresh ? '--force' : ''}
 step "Getting images (local Docker → local cache → registry)"; bash $E pull
 step "Starting the stack"; bash $E up
-. ./.env
+if [ "$ELO_INSTANCE" = elo ]; then EF=.env; else EF=instances/$ELO_INSTANCE/.env; fi
+ev() { grep -h "^$1=" "./$EF" | head -1 | cut -d= -f2-; }   # the env file is read, not sourced: values may hold spaces
+REPO=$(ev REPO); AUTH_SERVICE_USERNAME=$(ev AUTH_SERVICE_USERNAME); AUTH_SERVICE_PASSWORD=$(ev AUTH_SERVICE_PASSWORD); PORT_SERVER=$(ev PORT_SERVER); PORT_SEARCH=$(ev PORT_SEARCH)
 step "Waiting for the repository setup and the services"
 for i in $(seq 1 80); do
   sleep 15
-  ix=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "http://localhost:9090/$REPO/ix?cmd=status")
-  web=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "http://localhost:9090/$REPO/plugin/de.elo.ix.plugin.proxy/web/")
-  setup=$(docker inspect -f '{{.State.Status}}/{{.State.ExitCode}}' elo-ix-setup 2>/dev/null)
+  ix=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "http://localhost:\${PORT_SERVER:-9090}/$REPO/ix?cmd=status")
+  web=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "http://localhost:\${PORT_SERVER:-9090}/$REPO/plugin/de.elo.ix.plugin.proxy/web/")
+  setup=$(docker inspect -f '{{.State.Status}}/{{.State.ExitCode}}' $ELO_INSTANCE-ix-setup 2>/dev/null)
   echo "__CHECK__ {\\"ix\\":\\"$ix\\",\\"web\\":\\"$web\\",\\"setup\\":\\"$setup\\",\\"t\\":$((i*15))}"
-  case "$setup" in exited/0) [ "$ix" = 200 ] && break ;; exited/*) echo "ix-setup failed:"; docker logs --tail 30 elo-ix-setup; exit 1 ;; esac
+  case "$setup" in exited/0) [ "$ix" = 200 ] && break ;; exited/*) echo "ix-setup failed:"; docker logs --tail 30 $ELO_INSTANCE-ix-setup; exit 1 ;; esac
 done
-search=$(curl -sk --max-time 8 -u "$AUTH_SERVICE_USERNAME:$AUTH_SERVICE_PASSWORD" https://localhost:9200/_cluster/health | sed -n 's/.*"status":"\\([a-z]*\\)".*/\\1/p')
+search=$(curl -sk --max-time 8 -u "$AUTH_SERVICE_USERNAME:$AUTH_SERVICE_PASSWORD" https://localhost:\${PORT_SEARCH:-9200}/_cluster/health | sed -n 's/.*"status":"\\([a-z]*\\)".*/\\1/p')
 echo "__CHECK__ {\\"search\\":\\"\${search:-down}\\"}"
-step "Done"`);
+}
+set +e; (main) 2>&1 | tee -a "$LAST"; rc=\${PIPESTATUS[0]}
+{ step "Checking the result of every service"; bash $E diagnose; } 2>&1 | tee -a "$LAST" > /tmp/elo-diag.$$
+cat /tmp/elo-diag.$$; probs=$(grep -c '^PROBLEM' /tmp/elo-diag.$$); rm -f /tmp/elo-diag.$$
+res=ok; [ "$rc" != 0 ] && res=failed; [ "$probs" != 0 ] && res=problems
+echo "__SUMMARY__ {\\"instance\\":\\"$ELO_INSTANCE\\",\\"tag\\":\\"$ELO_TAG\\",\\"result\\":\\"$res\\",\\"problems\\":$probs,\\"rc\\":$rc,\\"finished\\":\\"$(date '+%F %T')\\"}" | tee -a "$LAST"
+step "Done"; [ "$res" = ok ]`);
+}));
+
+// Last run (install or start) of an instance: log kept next to the installation + its summary.
+app.get('/api/lastrun', wrap(async req => {
+  const inst = instOf(req.query.instance);
+  await x.detect();
+  const log = (await x.sh(`tail -c 80000 ${x.shq(x.eloDir() + '/last-run-' + inst + '.log')} 2>/dev/null; true`, 30)).replace(/\r/g, '');
+  if (!log.trim()) return { ok: true, instance: inst, found: false };
+  const m = log.match(/__SUMMARY__ (\{.*\})/g), summary = m ? JSON.parse(m[m.length - 1].slice(12)) : null;
+  return { ok: true, instance: inst, found: true, summary, log: log.split('\n').filter(l => !/^__(STEP|CHECK|SUMMARY)__/.test(l) || /^__STEP__/.test(l)).map(l => l.replace(/^__STEP__ /, '▸ ')).join('\n') };
 }));
 
 // Executed commands since id (secrets masked) — "terminal commands" panel of each wizard step.
@@ -315,18 +426,18 @@ app.get('/api/jobs/:id/stream', (req, res) => {
 // ── Post-install: EULA and Web Client ───────────────────────────────────────
 app.post('/api/eula', wrap(async () => {
   const e = await readEnv(); if (!e) throw new Error('not installed');
-  return acceptEula({ base: await baseUrl(), repo: e.REPO, user: e.AUTH_ADMIN_USERNAME || 'Administrator', pass: e.AUTH_ADMIN_PASSWORD });
+  return acceptEula({ base: await baseUrl(e), repo: e.REPO, user: e.AUTH_ADMIN_USERNAME || 'Administrator', pass: e.AUTH_ADMIN_PASSWORD });
 }));
 app.post('/api/webcheck', wrap(async () => {
   const e = await readEnv(); if (!e) throw new Error('not installed');
-  return webClientCheck({ base: await baseUrl(), repo: e.REPO, user: e.AUTH_ADMIN_USERNAME || 'Administrator', pass: e.AUTH_ADMIN_PASSWORD });
+  return webClientCheck({ base: await baseUrl(e), repo: e.REPO, user: e.AUTH_ADMIN_USERNAME || 'Administrator', pass: e.AUTH_ADMIN_PASSWORD });
 }));
 
 // ── ELO IX API test with curl (JSON API: /<repo>/rest/IXServicePortIF/<method>, session via cookie) ──
 app.post('/api/ixtest', wrap(async () => {
   const e = await readEnv(); if (!e) throw new Error('not installed');
   const user = e.AUTH_ADMIN_USERNAME || 'Administrator', repo = e.REPO || 'repository';
-  const B = `http://localhost:9090/${repo}`, J = `${B}/rest/IXServicePortIF`;
+  const B = `http://localhost:${portsOf(e).server}/${repo}`, J = `${B}/rest/IXServicePortIF`;
   // In the ECK images the /rest interface allows login for any user; other IXServicePortIF methods answer 401/403
   // there (reserved for internal services), so the test covers the status page and an authenticated login.
   const steps = [
@@ -361,35 +472,38 @@ app.post('/api/ixtest', wrap(async () => {
 // ── Administration ──────────────────────────────────────────────────────────
 app.get('/api/status', wrap(async () => {
   const e = await readEnv();
-  const out = await x.sh(`cd ${x.shq(x.eloDir())} 2>/dev/null; echo "__PS__"; docker ps -a --filter network=elo-network --format '{{json .}}' 2>/dev/null
-echo "__STATS__"; docker stats --no-stream --format '{{json .}}' $(docker ps -q --filter network=elo-network) 2>/dev/null
+  const inst = curInstance();
+  const out = await x.sh(`cd ${x.shq(x.eloDir())} 2>/dev/null; echo "__PS__"; docker ps -a --filter network=${inst}-network --format '{{json .}}' 2>/dev/null
+echo "__STATS__"; docker stats --no-stream --format '{{json .}}' $(docker ps -q --filter network=${inst}-network) 2>/dev/null
 echo "__MEM__"; free -b | awk '/Mem/ {print $2, $3, $7}'; echo "__DOCKER__"; systemctl is-active docker 2>/dev/null || (pgrep dockerd >/dev/null && echo active)`, 120);
   const sect = n => (out.split(`__${n}__`)[1] || '').split(/__[A-Z]+__/)[0].split('\n').map(s => s.trim()).filter(Boolean);
   const json = l => { try { return JSON.parse(l); } catch { return null; } };
   const stats = Object.fromEntries(sect('STATS').map(json).filter(Boolean).map(s => [s.Name, s]));
   const containers = sect('PS').map(json).filter(Boolean).map(c => ({
-    name: c.Names, service: c.Names.replace(/^elo-/, ''), state: c.State, status: c.Status, image: c.Image,
+    name: c.Names, service: c.Names.replace(new RegExp('^' + inst + '-'), ''), state: c.State, status: c.Status, image: c.Image,
     mem: stats[c.Names]?.MemUsage || '', memPerc: stats[c.Names]?.MemPerc || '', cpu: stats[c.Names]?.CPUPerc || '',
   }));
   const [total, used, avail] = (sect('MEM')[0] || '').split(' ').map(Number);
-  const base = await baseUrl();
-  const repo = e?.REPO || 'repository';
+  const base = await baseUrl(e);
+  const repo = e?.REPO || 'repository', pt = portsOf(e);
   const tg = x.getMode() === 'ssh' ? x.getTarget() : null;
   // Same host, another ELO port (VirtualBox NAT forwards to other host ports: portMap).
   const at = p => base.replace(/:\d+$/, ':' + (tg?.portMap?.[p] || p + (tg?.portOffset || 0)));
   return {
-    ok: true, installed: !!e, docker: sect('DOCKER')[0] || 'inactive', memory: { total, used, avail }, containers,
+    ok: true, installed: !!e, instance: inst, docker: sect('DOCKER')[0] || 'inactive', memory: { total, used, avail }, containers,
+    // ELO 25 serves the web apps through the IX proxy plugin; ELO 23 and older as separate contexts (/web, /ac, /wf).
     urls: e ? {
-      'Web Client': `${base}/${repo}/plugin/de.elo.ix.plugin.proxy/web/`,
-      'Admin Console': `${base}/${repo}/plugin/de.elo.ix.plugin.proxy/ac/`,
-      'ELO WF (Web Forms)': `${base}/${repo}/plugin/de.elo.ix.plugin.proxy/wf/`,
+      ...(/^v2[0-3]-/.test(e.ELO_TAG || '') ? { 'Web Client': `${base}/web/`, 'Admin Console': `${base}/ac/`, 'ELO WF (Web Forms)': `${base}/wf/` } : {
+        'Web Client': `${base}/${repo}/plugin/de.elo.ix.plugin.proxy/web/`,
+        'Admin Console': `${base}/${repo}/plugin/de.elo.ix.plugin.proxy/ac/`,
+        'ELO WF (Web Forms)': `${base}/${repo}/plugin/de.elo.ix.plugin.proxy/wf/` }),
       'Index Server status': `${base}/${repo}/ix?cmd=status`,
       'IX URL (Java Client / API)': `${base}/${repo}/ix`,
       'Tomcat manager (server)': `${base}/manager/html`,
-      'Automation Services': at(9060) + '/',
-      'Flows': at(9010) + '/',
-      'Elasticsearch (iSearch)': at(9200).replace('http:', 'https:') + '/_cluster/health',
-      'pgAdmin': at(5050) + '/',
+      'Automation Services': at(pt.as) + '/',
+      'Flows': at(pt.flows) + '/',
+      'Elasticsearch (iSearch)': at(pt.search).replace('http:', 'https:') + '/_cluster/health',
+      'pgAdmin': at(pt.pgadmin) + '/',
       'This installer': `http://localhost:${PORT}/`,
     } : {},
     javaClient: e ? { ixUrl: `${base}/${repo}/ix`, user: e.AUTH_ADMIN_USERNAME || 'Administrator',
@@ -440,7 +554,8 @@ echo "__STEP__ Done"`);
 // Windows: forward the ELO ports from the host network to the WSL IP (portproxy + firewall; elevated).
 app.post('/api/expose', wrap(async req => {
   if (!x.IS_WIN) return { ok: true, note: 'On Linux the published Docker ports are already reachable on the host IP.' };
-  const ports = (req.body?.ports || Object.values(PORTS)).map(Number).filter(p => p > 0 && p < 65536);
+  const pt = portsOf(await readEnv().catch(() => null));
+  const ports = (req.body?.ports || [pt.server, pt.as, pt.flows, pt.search, pt.searchT, pt.pgadmin]).map(Number).filter(p => p > 0 && p < 65536);
   const ip = (await x.sh('hostname -I | awk \'{print $1}\'', 60)).trim().split(/\s+/)[0];
   const r = await x.ps(ports.map(p => `netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=${p} | Out-Null; ` +
     `netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=${p} connectaddress=${ip} connectport=${p} | Out-Null; ` +
@@ -543,7 +658,7 @@ app.get('/api/containers', wrap(async () => {
   const stats = Object.fromEntries(json(st || '').map(s => [s.Name, s]));
   return { ok: true, containers: json(ps).map(c => ({
     name: c.Names, image: c.Image, state: c.State, status: c.Status, ports: c.Ports, created: c.RunningFor, size: c.Size,
-    networks: c.Networks, mem: stats[c.Names]?.MemUsage || '', cpu: stats[c.Names]?.CPUPerc || '', elo: /^elo-/.test(c.Names),
+    networks: c.Networks, mem: stats[c.Names]?.MemUsage || '', cpu: stats[c.Names]?.CPUPerc || '', elo: /^elo[a-z0-9]*-/.test(c.Names),
   })) };
 }));
 app.post('/api/container', wrap(async req => {
@@ -557,7 +672,7 @@ app.post('/api/license/apply', wrap(async () => {
   const lic = ['elo-license.lic', 'uploaded-license.pk'].find(f => fs.existsSync(path.join(ELO, f)));
   if (!lic) throw new Error('upload a license first');
   await x.detect(); await x.deployRemote();
-  return x.startJob('license', `export ELO_DIR=${x.shq(x.eloDir())}; E=$(mktemp /tmp/elo-XXXXXX); tr -d '\\r' < "$ELO_DIR/elo.sh" > $E
+  return x.startJob('license', `export ELO_DIR=${x.shq(x.eloDir())} ELO_INSTANCE=${curInstance()}; E=$(mktemp /tmp/elo-XXXXXX); tr -d '\\r' < "$ELO_DIR/elo.sh" > $E
 echo "__STEP__ Applying ${lic} (re-running ix-setup)"; bash $E license ${x.shq(lic)}
 echo "__STEP__ Done"`);
 }));
@@ -585,7 +700,7 @@ app.post('/api/open', wrap(async req => {
   const vol = { logs: 'logs', archive: 'repository-basis', system: 'repository-system', data: 'data-ix' }[req.body?.what];
   if (!vol) throw new Error('unknown folder');
   // Docker volume of the compose project; make it readable for the file manager (test environment).
-  const mp = (await x.sh(`v=$(docker volume ls -q | grep -E '_${vol}$' | head -1); m=$(docker volume inspect -f '{{.Mountpoint}}' "$v" 2>/dev/null); ` +
+  const mp = (await x.sh(`v=$(docker volume ls -q | grep -E '^${curInstance()}_${vol}$' | head -1); m=$(docker volume inspect -f '{{.Mountpoint}}' "$v" 2>/dev/null); ` +
     `[ -n "$m" ] && chmod o+x /var/lib/docker /var/lib/docker/volumes "$(dirname "$m")" 2>/dev/null; [ -n "$m" ] && chmod -R o+rX "$m" 2>/dev/null; echo "$m"`, 120)).trim().split('\n').pop();
   if (!mp) throw new Error(`volume ${vol} not found`);
   const mode = x.getMode();
@@ -602,15 +717,37 @@ app.post('/api/open', wrap(async req => {
 // ── ELO installations found on this computer (all runtimes) ─────────────────
 // local Docker (WSL/Linux), Docker Desktop, Hyper-V VMs, VirtualBox VMs, the configured SSH server.
 const VBOXM = 'C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe';
-const eloState = out => { const m = out.match(/__ELO__ (\d+) (\d+)/); return m ? { running: +m[1], total: +m[2] } : { running: 0, total: 0 }; };
-// Docker host probe: ELO container counts, disk used by Docker, and each ELO container with status and ports.
-const ELO_PROBE = `echo "__ELO__ $(docker ps -q -f name=^elo- 2>/dev/null | wc -l) $(docker ps -aq -f name=^elo- 2>/dev/null | wc -l)"
-echo "__DISK__ $(du -sbc /var/lib/docker /var/lib/containerd 2>/dev/null | tail -1 | cut -f1)"
-docker ps -a -f name=^elo- --format '__SVC__ {{.Names}}|{{.Status}}|{{.Ports}}' 2>/dev/null`;
-const eloDisk = out => { const m = out.match(/__DISK__ (\d+)/); return m ? +m[1] : null; };
+// Probe of a Docker host (run in its Linux environment): every instance of ELO (env files), its volume size and the
+// containers by compose project.
+const instProbe = dir => `cd ${x.shq(dir)} 2>/dev/null
+for f in .env instances/*/.env; do [ -f "$f" ] || continue; n=elo; case "$f" in instances/*) n=$(basename "$(dirname "$f")");; esac
+  g() { grep -h "^$1=" "$f" | head -1 | cut -d= -f2-; }
+  echo "__INST__ $n|$(g ELO_TAG)|$(g REPO)|$(g PORT_SERVER)|$(g PORT_AS)|$(g PORT_FLOWS)|$(g PORT_SEARCH)|$(g PORT_SEARCH_T)|$(g PORT_PGADMIN)|$(g COMPOSE_PROFILES)|$(dirname "$(readlink -f "$f")")"
+  echo "__DISK__ $n|$(du -sbc /var/lib/docker/volumes/\${n}_* 2>/dev/null | tail -1 | cut -f1)"
+done
+docker ps -a --format '__SVC__ {{.Names}}|{{.Status}}|{{.Ports}}|{{.Label "com.docker.compose.project"}}' 2>/dev/null`;
 // "0.0.0.0:9090->9090/tcp, [::]:9090->9090/tcp" → "9090→9090/tcp" (IPv4/IPv6 duplicates merged).
-const svcList = out => [...out.matchAll(/^__SVC__ ([^|]*)\|([^|]*)\|(.*)$/gm)].map(m => ({ name: m[1], status: m[2].trim(),
+const svcList = out => [...out.matchAll(/^__SVC__ ([^|]*)\|([^|]*)\|([^|]*)(?:\|(.*))?$/gm)].map(m => ({ name: m[1], status: m[2].trim(), project: m[4] || '',
   ports: [...new Set(m[3].split(',').map(p => p.trim().replace(/^(0\.0\.0\.0|\[::\]|::):/, '')).filter(Boolean))].join(', ') }));
+// Instances found in a probe output: env summary, containers of its project, size of its volumes.
+function parseInstances(out) {
+  const svcs = svcList(out), disks = Object.fromEntries([...out.matchAll(/^__DISK__ ([^|]*)\|(\d*)\s*$/gm)].map(m => [m[1], +m[2] || null]));
+  return [...out.matchAll(/^__INST__ (.*)$/gm)].map(m => {
+    const [name, tag, repo, ps, pa, pf, pse, pst, ppg, profiles, dir] = m[1].split('|');
+    const services = svcs.filter(s => s.project === name);
+    // init containers (ix-setup, ix-import) exit by design: they do not count as stopped services
+    const main = services.filter(s => !/-ix-(setup|import)$/.test(s.name));
+    return { name, tag, repo, dir, profiles, disk: disks[name] || null, services, running: main.filter(s => /^Up/.test(s.status)).length, total: main.length,
+      ports: portsOf({ PORT_SERVER: ps, PORT_AS: pa, PORT_FLOWS: pf, PORT_SEARCH: pse, PORT_SEARCH_T: pst, PORT_PGADMIN: ppg }) };
+  });
+}
+// Physical locations of every listed installation (for the "open folder" links); only these paths can be opened.
+const LOCS = {};
+// Folder opened in Explorer as the interactive user (Windows) / file manager (Linux).
+async function openFolder(winPath) {
+  const cmd = `Start-Process explorer.exe -ArgumentList '${winPath.replace(/'/g, "''")}'`;
+  if (x.getMode() === 'wsl-user') await x.getSeatLib().runAsUser(cmd, 60); else await x.ps(cmd);
+}
 // TCP ports checked on running VMs (connect test, 800 ms).
 const KNOWN_PORTS = { 22: 'SSH', 80: 'HTTP', 443: 'HTTPS', 3389: 'RDP', 5985: 'WinRM', 8080: 'HTTP alt / Tomcat', 9090: 'ELO server (Web Client, IX)',
   9060: 'ELO Automation Services', 9010: 'ELO Flows', 9200: 'iSearch (Elasticsearch)', 5050: 'pgAdmin', 5432: 'PostgreSQL', 1433: 'SQL Server' };
@@ -720,8 +857,9 @@ async function openViewer(id) {
   if (kind === 'hyperv') { launch('vmconnect.exe', ['localhost', name]); return { opened: 'vmconnect' }; }
   if (kind === 'vbox') { launch('C:\\Program Files\\Oracle\\VirtualBox\\VirtualBox.exe', []); return { opened: 'VirtualBox Manager' }; }
   if (id === 'desktop') { launch('C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe', []); return { opened: 'Docker Desktop' }; }
-  const e = await readEnv().catch(() => null);
-  return { url: `${await baseUrl()}/${e?.REPO || 'repository'}/plugin/de.elo.ix.plugin.proxy/web/` };
+  const inst = kind === 'local' || kind === 'ssh' ? instOf(name) : curInstance();
+  const e = await readEnv(inst).catch(() => null);
+  return { url: /^v2[0-3]-/.test(e?.ELO_TAG || '') ? `${await baseUrl(e)}/web/` : `${await baseUrl(e)}/${e?.REPO || 'repository'}/plugin/de.elo.ix.plugin.proxy/web/` };
 }
 app.post('/api/installations/viewer', wrap(async req => ({ ok: true, ...(await openViewer(req.body?.id)) })));
 
@@ -732,41 +870,54 @@ app.get('/api/installations', wrap(async () => {
   const tasks = [];
   // Local Linux side (WSL / native): Docker stack of this installer. A shut-down WSL is not started just to look.
   const wslOff = x.IS_WIN && !(await wslInfo()).running;
+  const cur = curInstance();
+  // One row per ELO instance of a Docker host (local Linux / WSL, or the SSH target), with services, size and locations.
+  const instRows = (insts, scope, hostLabel, active) => insts.map(i => {
+    const id = `${scope}:${i.name}`, dockerDir = '/var/lib/docker/volumes';
+    const locs = [];
+    if (scope === 'local' && x.IS_WIN) {
+      locs.push({ label: 'Docker volumes (data)', path: `\\\\wsl.localhost\\${x.getDistro()}${dockerDir.replace(/\//g, '\\')}`, openable: true, kind: 'volumes' });
+      locs.push({ label: 'Configuration (.env)', path: i.name === 'elo' ? ELO : path.join(ELO, 'instances', i.name), openable: true });
+    } else if (scope === 'local') locs.push({ label: 'Docker volumes (data)', path: dockerDir }, { label: 'Configuration (.env)', path: i.dir });
+    else locs.push({ label: 'Docker volumes (data) on the target', path: dockerDir }, { label: 'Configuration (.env) on the target', path: i.dir });
+    LOCS[id] = locs;
+    return { id, order: scope === 'local' ? 0 : 4, name: `ELO ${i.tag || '?'} · ${i.name}`, type: 'docker', instance: i.name, deletable: true,
+      typeLabel: scope === 'local' ? (x.IS_WIN ? 'Docker Engine (WSL2)' : 'Docker Engine') : hostLabel,
+      state: i.running ? 'running' : 'stopped', detail: `${i.running}/${i.total} containers · ports ${i.ports.server}/${i.ports.as}/${i.ports.flows}/${i.ports.search}/${i.ports.pgadmin}`,
+      disk: i.disk, diskNote: 'volumes', services: i.services, locations: locs, active: active && i.name === cur, current: active && i.name === cur };
+  });
   if (wslOff) list.push({ id: 'local', order: 0, name: `WSL ${x.getDistro() || ''}`.trim(), type: 'docker', typeLabel: 'Docker Engine (WSL2)',
     state: 'stopped', detail: 'WSL is shut down', active: !tgt });
   else tasks.push((async () => {
-    const out = await x.shLocal(ELO_PROBE, 120);
-    const s = eloState(out);
-    // Also listed with 0 containers when this installer has an installation (.env) there.
-    if (s.total || fs.existsSync(path.join(ELO, '.env'))) list.push({ id: 'local', order: 0, name: x.IS_WIN ? `WSL ${x.getDistro() || ''}`.trim() : 'This machine', type: 'docker',
-      typeLabel: x.IS_WIN ? 'Docker Engine (WSL2)' : 'Docker Engine', state: s.running ? 'running' : 'stopped', detail: `${s.running}/${s.total} ELO containers`,
-      disk: eloDisk(out), diskNote: 'Docker data', services: svcList(out), active: !tgt });
+    list.push(...instRows(parseInstances(await x.shLocal(instProbe(x.toLinux(ELO)), 180)), 'local', '', !tgt));
   })().catch(() => {}));
   if (x.IS_WIN) {
     // Docker Desktop: shown whenever it is installed; state = engine reachable; disk = its data VHDX.
     if (fs.existsSync('C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe')) tasks.push((async () => {
-      const dd = await x.run('docker', ['--context', 'desktop-linux', 'ps', '-a', '--filter', 'name=^elo-', '--format', '__SVC__ {{.Names}}|{{.Status}}|{{.Ports}}'], { timeoutMs: 20000 });
+      const dd = await x.run('docker', ['--context', 'desktop-linux', 'ps', '-a', '--filter', 'name=^elo', '--format', '__SVC__ {{.Names}}|{{.Status}}|{{.Ports}}'], { timeoutMs: 20000 });
       const svcs = dd.code === 0 ? svcList(dd.out) : [], r = svcs.filter(s => /^Up/.test(s.status)).length;
-      const vhd = await x.ps(`(Get-ChildItem C:\\Users\\*\\AppData\\Local\\Docker\\wsl -Recurse -Filter *.vhdx -EA SilentlyContinue | Measure-Object Length -Sum).Sum`);
-      list.push({ id: 'desktop', order: 1, name: 'Docker Desktop', type: 'desktop', typeLabel: 'Docker Desktop', state: dd.code === 0 ? 'running' : 'stopped',
+      const vhd = (await x.ps(`$f=@(Get-ChildItem C:\\Users\\*\\AppData\\Local\\Docker\\wsl -Recurse -Filter *.vhdx -EA SilentlyContinue); "$(($f | Measure-Object Length -Sum).Sum)|$($f[0].DirectoryName)"`)).out.trim().split('|');
+      const locs = vhd[1] ? [{ label: 'Docker Desktop data (VHDX)', path: vhd[1], openable: true }] : [];
+      LOCS.desktop = locs;
+      list.push({ id: 'desktop', order: 1, name: 'Docker Desktop', type: 'desktop', typeLabel: 'Docker Desktop', state: dd.code === 0 ? 'running' : 'stopped', deletable: svcs.length > 0, deleteWhat: 'ELO containers and volumes',
         detail: dd.code !== 0 ? 'engine not running' : svcs.length ? `${r}/${svcs.length} ELO containers` : 'engine running · no ELO containers',
-        disk: +vhd.out.trim() || null, diskNote: 'Docker Desktop data', services: svcs });
+        disk: +vhd[0] || null, diskNote: 'Docker Desktop data', services: svcs, locations: locs });
     })().catch(() => {}));
     // Hyper-V VMs (all; the installer's ones are marked): RAM, size of the virtual disks, IP and open ports.
     tasks.push((async () => {
-      const hv = await x.ps(`try { Get-VM -EA Stop | % { $d=(Get-VMHardDiskDrive -VM $_ | % { if($_.Path -and (Test-Path $_.Path)){ (Get-Item $_.Path).Length } } | Measure-Object -Sum).Sum
-$ip=@($_.NetworkAdapters.IPAddresses | ?{ $_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$' })[0]
-"$($_.Name)|$($_.State)|$([math]::Round($_.MemoryStartup/1GB,1))|$($_.Path)|$d|$ip|$($_.DynamicMemoryEnabled)" } } catch {}`, 60000);
+      const hv = await x.ps(`try { Get-VM -EA Stop | % { $h=@(Get-VMHardDiskDrive -VM $_ | ?{ $_.Path }); $d=($h | % { if(Test-Path $_.Path){ (Get-Item $_.Path).Length } } | Measure-Object -Sum).Sum
+$ip=@($_.NetworkAdapters.IPAddresses | ?{ $_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$' })[0]; $dir=if($h){ Split-Path $h[0].Path } else { '' }
+"$($_.Name)|$($_.State)|$([math]::Round($_.MemoryStartup/1GB,1))|$($_.Path)|$d|$ip|$($_.DynamicMemoryEnabled)|$dir" } } catch {}`, 60000);
       await Promise.all(hv.out.trim().split('\n').filter(s => s.includes('|')).map(async l => {
-        const [name, state, ram, vpath, disk, ip, dyn] = l.trim().split('|');
+        const [name, state, ram, vpath, disk, ip, dyn, vdir] = l.trim().split('|');
         const ours = /hvc-vms/i.test(vpath) || (tgt?.vm === name), running = state === 'Running';
+        const locs = vdir ? [{ label: 'Virtual disks', path: vdir, openable: true }, ...(vpath && vpath !== vdir ? [{ label: 'VM configuration', path: vpath, openable: true }] : [])] : [];
+        LOCS[`hyperv:${name}`] = locs;
         const item = { id: `hyperv:${name}`, order: 2, name, type: 'hyperv', typeLabel: ours ? `Hyper-V VM · ELO Docker (installer)${tgt?.vm === name && tgt.os ? ' · ' + tgt.os : ''}` : 'Hyper-V VM',
           state: running ? 'running' : state === 'Off' ? 'stopped' : state.toLowerCase(), detail: `${ram} GB RAM${dyn === 'True' ? ' (dynamic)' : ''}${ip ? ' · ' + ip : ''}`, ramGB: +ram,
-          disk: +disk || null, diskNote: 'virtual disks', active: tgt?.vm === name };
-        if (running && ip) {
-          item.ports = await openPorts(ip, known);
-          if (tgt?.vm === name) try { item.services = svcList(await x.sh(ELO_PROBE, 30)); } catch {}
-        }
+          disk: +disk || null, diskNote: 'virtual disks', active: tgt?.vm === name, locations: locs,
+          deletable: /hvc-vms/i.test(vpath) && !!vdir, deleteWhat: 'the VM and its disk files' };   // only VMs the installer created
+        if (running && ip) item.ports = await openPorts(ip, known);
         list.push(item);
       }));
     })().catch(() => {}));
@@ -782,27 +933,25 @@ $ip=@($_.NetworkAdapters.IPAddresses | ?{ $_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$
         const disks = [...info.matchAll(/^"[^"]+-\d+-\d+"="([^"]+\.(?:vdi|vmdk|vhd|vhdx))"$/gim)].map(d => fileSize(d[1]) || 0);
         const ram = +(info.match(/^memory=(\d+)/m) || [])[1] || 0, vmState = (info.match(/^VMState="([^"]+)"/m) || [])[1] || '';
         const fwd = [...info.matchAll(/^Forwarding\(\d+\)="([^,]*),tcp,[^,]*,(\d+),[^,]*,(\d+)"$/gm)].map(f => ({ port: +f[3], hostPort: +f[2], label: KNOWN_PORTS[f[3]] || f[1] }));
-        const item = { id: `vbox:${name}`, order: 3, name, type: 'vbox', typeLabel: /hvc-vms/i.test(info) ? 'VirtualBox VM · ELO Docker (installer)' : 'VirtualBox VM',
+        const cfg = (info.match(/^CfgFile="([^"]+)"/m) || [])[1] || '', vdir = cfg ? path.dirname(cfg.replace(/\\\\/g, '\\')) : '', ours = /hvc-vms/i.test(cfg);
+        const locs = vdir ? [{ label: 'VM folder (disks + configuration)', path: vdir, openable: true }] : [];
+        LOCS[`vbox:${name}`] = locs;
+        const item = { id: `vbox:${name}`, order: 3, name, type: 'vbox', typeLabel: ours ? 'VirtualBox VM · ELO Docker (installer)' : 'VirtualBox VM',
           state: vmState === 'running' ? 'running' : vmState === 'saved' ? 'saved' : vmState === 'paused' ? 'paused' : 'stopped', ramGB: ram / 1024,
           detail: ram ? `${Math.round(ram / 102.4) / 10} GB RAM` : '',
-          disk: disks.reduce((a, b) => a + b, 0) || null, diskNote: 'virtual disks', active: tgt?.vm === name };
-        if (item.state === 'running' && fwd.length) {
-          item.ports = await openPorts('127.0.0.1', fwd);
-          if (tgt?.vm === name) try { item.services = svcList(await x.sh(ELO_PROBE, 30)); } catch {}
-        }
+          disk: disks.reduce((a, b) => a + b, 0) || null, diskNote: 'virtual disks', active: tgt?.vm === name, locations: locs,
+          deletable: ours, deleteWhat: 'the VM and its disk files' };
+        if (item.state === 'running' && fwd.length) item.ports = await openPorts('127.0.0.1', fwd);
         list.push(item);
       }));
     })().catch(() => {}));
   }
   await Promise.all(tasks);
-  // Configured SSH server (not one of the VMs above): ELO containers there.
-  if (tgt && !list.some(i => i.active)) {
-    let out = '', reach = true;
-    try { out = await x.sh(ELO_PROBE, 60); } catch { reach = false; }
-    const s = eloState(out);
-    list.push({ id: 'ssh', order: 4, name: `${tgt.user}@${tgt.host}`, type: 'ssh', typeLabel: 'Linux server (SSH)', state: !reach ? 'unreachable' : s.running ? 'running' : 'stopped',
-      detail: `${s.running}/${s.total} ELO containers`, disk: eloDisk(out), diskNote: 'Docker data', services: svcList(out),
-      ports: reach ? await openPorts(tgt.host, known) : [], active: true });
+  // The SSH target (a VM or any Linux server): one row per ELO instance inside it; unreachable → one row saying so.
+  if (tgt) {
+    const label = tgt.vm ? `Docker in ${tgt.kind === 'vbox' ? 'VirtualBox' : 'Hyper-V'} VM ${tgt.vm}` : `Docker on ${tgt.user}@${tgt.host}`;
+    try { list.push(...instRows(parseInstances(await x.sh(instProbe(x.REMOTE_DIR), 60)), 'ssh', label, true)); }
+    catch { list.push({ id: 'ssh', order: 4, name: `${tgt.user}@${tgt.host}`, type: 'ssh', typeLabel: label, state: 'unreachable', detail: 'SSH target not reachable' }); }
   }
   list.sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
   return { ok: true, installations: list };
@@ -840,11 +989,29 @@ app.post('/api/installations/action', wrap(async req => {
   if (action === 'start' && viewer && r.ok && !String(id).startsWith('vbox:')) Object.assign(r, await openViewer(id).catch(() => ({})));
   return r;
 }));
+// elo.sh of an instance on the local Linux side (scope "local") or on the SSH target (scope "ssh").
+const eloScript = (dir, inst, body) => `export ELO_DIR=${x.shq(dir)} ELO_INSTANCE=${inst}; E=$(mktemp /tmp/elo-XXXXXX); tr -d '\\r' < "$ELO_DIR/elo.sh" > $E; cd "$ELO_DIR"\n${body}`;
+const runInst = (scope, inst, body, t = 900) => scope === 'local' ? x.shLocal(eloScript(x.toLinux(ELO), inst, body), t) : x.sh(eloScript(x.REMOTE_DIR, inst, body), t);
+// Start = "up" (starts the containers, or recreates them if they were removed) then, after the services had time to
+// fail (memory, ports), the diagnosis; both are kept in last-run-<instance>.log. Stop keeps the containers.
+const startBody = inst => `L="$ELO_DIR/last-run-${inst}.log"; { echo "Start of ${inst} · $(date '+%F %T') · Linux memory: $(free -m | awk '/Mem:/{print "total " $2 " MB, available " $7 " MB"}')"
+bash $E up; sleep 40; echo "__STEP__ Checking the result of every service"; bash $E diagnose; } 2>&1 | tee "$L" | grep -v '^__'
+r=$(grep -c '^PROBLEM' "$L"); echo "__SUMMARY__ {\\"instance\\":\\"${inst}\\",\\"result\\":\\"$([ "$r" = 0 ] && echo ok || echo problems)\\",\\"problems\\":$r,\\"finished\\":\\"$(date '+%F %T')\\"}" >> "$L"`;
 async function instAction(id, action, viewer) {
-  const eloCmd = `export ELO_DIR=${x.shq(x.toLinux(ELO))}; E=$(mktemp /tmp/elo-XXXXXX); tr -d '\\r' < "$ELO_DIR/elo.sh" > $E; bash $E ${action === 'start' ? 'up' : 'stop'}`;
-  // stop keeps the containers (start = "up": starts them, or recreates them if they were removed).
-  if (id === 'local') return { ok: true, out: await x.shLocal(eloCmd, 900) };
-  if (id === 'ssh') return { ok: true, out: await elo(action === 'start' ? 'up' : 'stop', {}, 900) };
+  const m = /^(local|ssh):(.+)$/.exec(String(id));
+  if (m) {
+    const [, scope, inst] = m; if (!INST_RE.test(inst)) throw new Error('bad instance');
+    if (action === 'start') {   // starting a second stack on the same ports would fail: say so and offer other ports
+      const e = await readEnv(inst).catch(() => null);
+      const chk = await portCheck(inst, Object.fromEntries(PORT_KEYS.map(k => [k, Number(e?.[k]) || STD_PORTS[k]])));
+      const live = chk.conflicts.filter(c => !/ports configured/.test(c.by));   // configured-only clashes matter when both run
+      if (live.length) return { ok: false, error: `Port conflict: ${live.map(c => `${c.port} is used by ${c.by}`).join('; ')}`, portConflict: { ...chk, conflicts: live } };
+    }
+    const out = await runInst(scope, inst, action === 'start' ? startBody(inst) : 'bash $E stop');
+    if (action === 'start') setInstance(inst);   // the instance just started is the one the other panels show
+    return { ok: true, out: out.trim(), instance: inst, lastRun: action === 'start' };
+  }
+  if (id === 'local') return { ok: true, out: await x.shLocal(eloScript(x.toLinux(ELO), curInstance(), 'bash $E up'), 900) };
   if (id === 'desktop') {   // Docker Desktop itself (its engine); ELO containers there follow their restart policy.
     if (action === 'start') {
       await x.ps(`Start-Process 'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe'`);
@@ -872,6 +1039,75 @@ async function instAction(id, action, viewer) {
   }
   throw new Error('unknown installation');
 }
+
+// Instance the Administration shows (status, services, logs, credentials…).
+app.post('/api/instances/current', wrap(async req => {
+  if (!INST_RE.test(req.body?.name || '')) throw new Error('bad instance');
+  setInstance(req.body.name); CURRENT_CHANGED = Date.now();
+  return { ok: true, instance: req.body.name };
+}));
+let CURRENT_CHANGED = 0;
+// Instances known on the current target (for the install wizard: name suggestions and used ports).
+app.get('/api/instances', wrap(async () => {
+  await x.detect();
+  const insts = parseInstances(await x.sh(instProbe(x.eloDir()), 90));
+  return { ok: true, current: curInstance(), instances: insts.map(i => ({ name: i.name, tag: i.tag, repo: i.repo, ports: i.ports, running: i.running, total: i.total })) };
+}));
+
+// Delete an installation to free disk space: an ELO instance (containers, data volumes, configuration, optionally its
+// images), a VM created by this installer (VM + its files), or the ELO containers of Docker Desktop.
+app.post('/api/installations/delete', wrap(async req => {
+  const { id, images } = req.body || {};
+  const m = /^(local|ssh):(.+)$/.exec(String(id));
+  if (m) {
+    const [, scope, inst] = m; if (!INST_RE.test(inst) || inst === 'elocache') throw new Error('bad instance');
+    const out = await runInst(scope, inst, `bash $E delete ${images ? '--images' : ''}\nrm -f "$ELO_DIR/last-run-${inst}.log"`, 1200);
+    if (curInstance() === inst) setInstance('elo');
+    return { ok: true, out: out.trim() };
+  }
+  if (id === 'desktop') {
+    const ids = (await x.run('docker', ['--context', 'desktop-linux', 'ps', '-aq', '--filter', 'name=^elo'])).out.trim().split('\n').filter(Boolean);
+    const out = [];
+    if (ids.length) out.push((await x.run('docker', ['--context', 'desktop-linux', 'rm', '-f', '-v', ...ids], { timeoutMs: 300000 })).out);
+    const vols = (await x.run('docker', ['--context', 'desktop-linux', 'volume', 'ls', '-q'])).out.split('\n').filter(v => /^elo[a-z0-9]*_/.test(v));
+    if (vols.length) out.push((await x.run('docker', ['--context', 'desktop-linux', 'volume', 'rm', ...vols], { timeoutMs: 300000 })).out);
+    return { ok: true, out: out.join('\n').trim() || 'nothing to remove' };
+  }
+  const [kind, name] = String(id).split(/:(.+)/);
+  if (!name || /['"]/.test(name)) throw new Error('bad id');
+  const item = (LOCS[id] || [])[0];
+  if (kind === 'hyperv') {
+    // Only VMs inside the installer's own VM folder; the files are deleted with the VM.
+    const r = await x.ps(`$ErrorActionPreference='Stop'; $v=Get-VM -Name '${name}'; $root=(Resolve-Path '${require('./provision').VM_DIR}').Path
+$paths=@(Get-VMHardDiskDrive -VM $v | % Path); if(-not ($v.Path -like "$root*")){ throw "not a VM of this installer: $($v.Path)" }
+if($v.State -ne 'Off'){ Stop-VM -VM $v -TurnOff -Force }; Remove-VM -VM $v -Force
+$dir=Join-Path $root '${name}'; if(Test-Path $dir){ Remove-Item $dir -Recurse -Force }; "VM ${name} and its files removed"`, 600000);
+    if (r.err.trim()) throw new Error(r.err.trim().split('\n')[0]);
+    if (x.getTarget()?.vm === name) x.setTarget(null);
+    return { ok: true, out: r.out.trim() };
+  }
+  if (kind === 'vbox') {
+    const info = (await x.run(VBOXM, ['showvminfo', name, '--machinereadable'], { timeoutMs: 30000 })).out;
+    if (!/hvc-vms/i.test((info.match(/^CfgFile="([^"]+)"/m) || [])[1] || '')) throw new Error('not a VM of this installer');
+    await x.run(VBOXM, ['controlvm', name, 'poweroff'], { timeoutMs: 60000 });
+    await new Promise(r => setTimeout(r, 3000));
+    const r = await x.run(VBOXM, ['unregistervm', name, '--delete'], { timeoutMs: 300000 });
+    if (r.code !== 0) throw new Error((r.err || r.out).trim().split('\n').pop());
+    if (x.getTarget()?.vm === name) x.setTarget(null);
+    return { ok: true, out: `VM ${name} and its files removed` };
+  }
+  throw new Error('unknown installation');
+}));
+
+// Open a physical location listed for an installation (only paths the list itself offered).
+app.post('/api/installations/open', wrap(async req => {
+  const loc = (LOCS[req.body?.id] || [])[Number(req.body?.index)];
+  if (!loc) throw new Error('unknown location (refresh the list)');
+  if (!loc.openable) return { ok: true, path: loc.path, note: 'not openable from here' };
+  if (loc.kind === 'volumes') await x.sh(`chmod o+x /var/lib/docker /var/lib/docker/volumes 2>/dev/null; chmod o+rx /var/lib/docker/volumes/* 2>/dev/null; true`, 60);
+  await openFolder(loc.path);
+  return { ok: true, path: loc.path };
+}));
 
 // ── Provisioning of targets (Windows): WSL2 + distro, Docker Desktop, Hyper-V, VirtualBox, Ubuntu/Debian VMs ──
 const prov = require('./provision');

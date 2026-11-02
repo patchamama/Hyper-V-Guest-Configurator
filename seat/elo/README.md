@@ -152,6 +152,23 @@ Además:
   disponibilidad de cada imagen; se puede instalar **sin registro** ("Usar solo imágenes locales"). Las imágenes cloud de
   las VMs también se cachean. "Contenedores e imágenes" muestra la caché y abre sus carpetas.
 - **Comandos de terminal** de cada paso (desplegable al final; contraseñas enmascaradas).
+- **Varias instancias de ELO a la vez** (p. ej. ELO 25 y ELO 23 en el mismo WSL/Docker): cada instancia es un proyecto de
+  Compose con su nombre (`elo`, `elo23`…; `ELO_INSTANCE`), prefijo de contenedores, red, volúmenes y archivo de
+  configuración propios (`.env` para `elo`, `instances/<nombre>/.env` para las demás). Los puertos del host son los
+  estándar (9090, 9060, 9010, 9200/9204, 5050) y se pueden cambiar por instancia (`PORT_*`). En la configuración del
+  asistente se elige nombre, puertos y, en WSL, el límite de memoria de la VM de WSL; si los puertos chocan con los de
+  otra instancia (en marcha o configurada) se avisa y se ofrece un juego libre (+100, +200…). Al arrancar una instancia
+  cuyos puertos están en uso se vuelve a avisar y se ofrece cambiarlos. Normalmente solo corre una pila a la vez;
+  cada pila completa necesita unos 10 GB.
+- **Última ejecución**: cada instalación o arranque guarda su registro en `last-run-<instancia>.log` junto a la
+  instalación y lo termina con un diagnóstico por contenedor (`elo.sh diagnose`: memoria, eventos OOM del kernel, código
+  de salida, "OOMKilled", puertos) y un resumen (correcta / con problemas / fallida). Se muestra al terminar la
+  instalación y siempre en Administración ("Última ejecución"). `elo.sh pull` reintenta las descargas.
+- **Eliminar instalaciones** (Administración → Eliminar): instancias de Docker (contenedores, volúmenes, configuración
+  y, si se pide, imágenes que nadie más usa), VMs de Hyper-V/VirtualBox **creadas por el instalador** (VM y archivos) y
+  los contenedores de ELO en Docker Desktop. Las VMs ajenas nunca se pueden borrar desde aquí.
+- **Dónde está en disco**: cada fila tiene una sección con enlaces (📁) a las carpetas: volúmenes de Docker
+  (`\\wsl.localhost\<distro>\var\lib\docker\volumes`), configuración, discos de la VM, datos de Docker Desktop.
 - **Instalaciones de ELO en este equipo** (Administración): Docker en WSL/Linux, Docker Desktop, VMs de Hyper-V
   (marcando las creadas por el instalador), VMs de VirtualBox y el servidor SSH, con Arrancar/Parar según el estado.
   Los servicios de larga duración tienen `restart: unless-stopped`, así ELO arranca con la VM.

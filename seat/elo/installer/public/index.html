@@ -60,6 +60,7 @@ pre.log { background:var(--log); color:var(--logtext); font:12px/1.45 var(--mono
 .info { display:inline-grid; place-items:center; width:18px; height:18px; border-radius:50%; border:1px solid var(--accent2); color:var(--accent2); font-size:11px; font-weight:700; cursor:pointer; margin-left:6px; background:none; padding:0; }
 .tcard { margin:0; cursor:pointer; } .tcard.sel { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
 .tcard.disabled { opacity:.45; cursor:not-allowed; }
+.btn.danger { border-color:#c0392b; color:#e74c3c; } .btn.danger:hover { background:#c0392b22; }
 .membar { display:flex; height:18px; border-radius:5px; overflow:hidden; margin:10px 0 8px; background:var(--sur2); }
 .membar > div { height:100%; min-width:2px; }
 .memlegend { gap:6px 16px; font-size:13px; } .memlegend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:6px; vertical-align:-1px; }
@@ -97,7 +98,8 @@ const store = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 const W = { step: 0, done: new Set(), checks: null, inv: null, license: null, prov: null,
   cfg: { ELO_TAG: 'v25-0.30.1', ELO_SEARCH_TAG: 'v25-0.7', REPO: 'repository', ELO_DISPLAY_NAME: '', REPO_LANGUAGE: 'en', ELO_LICENSE_TYPE: '1',
     AUTH_ADMIN_USERNAME: 'Administrator', AUTH_ADMIN_PASSWORD: rnd(), AUTH_SERVICE_USERNAME: 'ELO Service', AUTH_SERVICE_PASSWORD: rnd(),
-    DATABASE_USERNAME: 'elodb', DATABASE_PASSWORD: rnd(), IX_URL_PUBLIC: '', as: true, flows: true, pgadmin: true, fresh: true, eula: true },
+    DATABASE_USERNAME: 'elodb', DATABASE_PASSWORD: rnd(), IX_URL_PUBLIC: '', as: true, flows: true, pgadmin: true, fresh: true, eula: true,
+    instance: '', wslMemGB: null, wslRestart: true, PORT_SERVER: 9090, PORT_AS: 9060, PORT_FLOWS: 9010, PORT_SEARCH: 9200, PORT_SEARCH_T: 9204, PORT_PGADMIN: 5050 },
   target: 'wsl', vm: { name: 'elo-docker', distro: 'ubuntu', ramGB: 16, cpus: 4, diskGB: 80 } };
 // Administration / containers data is cached and only reloaded with Refresh (or after an action).
 const CACHE = { status: null, images: null, containers: null, at: {} };
@@ -191,7 +193,9 @@ function welcome() {
   <div class="explain">${t('w.explain')}</div>
   <div class="card"><b>${t('w.need')}</b><ul>
     <li>${t('w.need1')}<button class="info" title="${esc(t('cli.title'))}" onclick="$('cli-help').hidden=!$('cli-help').hidden">i</button>
-      <div id="cli-help" class="explain" hidden style="margin-top:8px"><b>${t('cli.title')}</b>${t('cli.steps')}</div></li>
+      <div id="cli-help" class="explain" hidden style="margin-top:8px"><b>${t('cli.title')}</b>${t('cli.steps')}
+        <p style="margin-top:8px"><b>${t('cli.pdf')}</b> <a href="/help/docs/en-us_consultingops-opsletter_ubuntu.pdf" target="_blank" rel="noopener">📄 English (PDF)</a> ·
+          <a href="/help/docs/de-de_consultingops-opsletter_ubuntu.pdf" target="_blank" rel="noopener">📄 Deutsch (PDF)</a></p></div></li>
     <li>${t('w.need2')}</li><li>${t('w.need3')}</li></ul><p class="muted">${t('w.platform')}</p></div>
   <div class="card"><b>${t('w.where')}</b><div class="grid2" style="margin-top:10px">${TARGETS.map(k => {
     // "This Linux machine" only when the installer itself runs on Linux.
@@ -320,7 +324,9 @@ function installDocker() { runJob('/install-docker', {}, $('dockerjob'), () => r
 function registry() {
   $('page').innerHTML = `<h2>${t('g.title')}</h2><p class="lead">${t('g.lead')}</p>
   <div class="explain">${t('g.explain')}<button class="info" onclick="$('cli-help2').hidden=!$('cli-help2').hidden">i</button>
-    <div id="cli-help2" hidden style="margin-top:8px"><b>${t('cli.title')}</b>${t('cli.steps')}</div></div>
+    <div id="cli-help2" hidden style="margin-top:8px"><b>${t('cli.title')}</b>${t('cli.steps')}
+        <p style="margin-top:8px"><b>${t('cli.pdf')}</b> <a href="/help/docs/en-us_consultingops-opsletter_ubuntu.pdf" target="_blank" rel="noopener">📄 English (PDF)</a> ·
+          <a href="/help/docs/de-de_consultingops-opsletter_ubuntu.pdf" target="_blank" rel="noopener">📄 Deutsch (PDF)</a></p></div></div>
   <div class="card grid2">
     <div><label>${t('g.user')}</label><input type="text" id="r-user" autocomplete="username"></div>
     <div><label>${t('g.secret')}</label><input type="password" id="r-secret" autocomplete="off"></div>
@@ -415,15 +421,55 @@ function config() {
   $('page').innerHTML = `<h2>${t('c.title')}</h2><p class="lead">${t('c.lead')}</p><div class="explain">${t('c.explain')}</div>
   <div class="card grid2">${FIELDS.map(([k, pw]) => `<div><label>${t('c.' + k)}</label><div class="row" style="flex-wrap:nowrap">
     <input type="text" class="${pw ? 'pw' : ''}" value="${esc(W.cfg[k])}" oninput="W.cfg['${k}']=this.value">${pw ? `<button class="btn small" title="${esc(t('c.newpw'))}" onclick="W.cfg['${k}']=rnd();config()">↻</button>` : ''}</div></div>`).join('')}</div>
+  <div class="card" id="inst-cfg"><span class="muted">${t('a.loading')}</span></div>
   <div class="card"><label><input type="checkbox" ${W.cfg.fresh ? 'checked' : ''} onchange="W.cfg.fresh=this.checked"> ${t('c.fresh')}</label>
     <label><input type="checkbox" ${W.cfg.eula ? 'checked' : ''} onchange="W.cfg.eula=this.checked"> ${t('c.eula')}</label></div>` + nav(true) + cmdsPanel();
+  cfgInstance();
 }
+// Instance (several ELO versions side by side): name, host ports (standard by default; conflicts are reported with a free
+// alternative) and, in WSL, the memory limit of the WSL VM.
+const PORT_FIELDS = [['PORT_SERVER', 'Server (Web Client, IX)'], ['PORT_AS', 'Automation Services'], ['PORT_FLOWS', 'Flows'], ['PORT_SEARCH', 'iSearch'], ['PORT_SEARCH_T', 'iSearch transport'], ['PORT_PGADMIN', 'pgAdmin']];
+const STD = { PORT_SERVER: 9090, PORT_AS: 9060, PORT_FLOWS: 9010, PORT_SEARCH: 9200, PORT_SEARCH_T: 9204, PORT_PGADMIN: 5050 };
+async function cfgInstance() {
+  const c = W.cfg, el = $('inst-cfg'); if (!el) return;
+  const [li, wsl] = await Promise.all([api('/instances'), W.isWindows && ['wsl', 'desktop'].includes(W.target) ? api('/wsl') : null]);
+  const insts = li.ok ? li.instances : [];
+  if (!c.instance || !c.instanceTouched) {   // suggestion: elo (25), elo23 (23)… and a free name
+    const base = /^v(\d+)-/.exec(c.ELO_TAG)?.[1] === '25' ? 'elo' : 'elo' + (/^v(\d+)-/.exec(c.ELO_TAG)?.[1] || '');
+    let n = base, k = 0; while (insts.some(i => i.name === n)) n = base + 'abcdefgh'[k++];
+    c.instance = n;
+  }
+  if (wsl?.ok && c.wslMemGB == null) c.wslMemGB = wsl.limitGB || wsl.defaultGB;
+  const exists = insts.find(i => i.name === c.instance);
+  el.innerHTML = `<b>${t('ic.title')}</b><p class="muted" style="margin:4px 0 8px">${t('ic.note')}</p>
+    ${insts.length ? `<table style="margin-bottom:8px">${insts.map(i => `<tr><td><b>${esc(i.name)}</b></td><td>ELO ${esc(i.tag || '?')}</td><td class="muted">${Object.values(i.ports).join(' / ')}</td><td>${i.running}/${i.total} ${t('ic.running')}</td></tr>`).join('')}</table>` : ''}
+    <div class="grid2"><div><label>${t('ic.name')}</label><input type="text" value="${esc(c.instance)}" maxlength="24" oninput="W.cfg.instance=this.value.toLowerCase().replace(/[^a-z0-9]/g,'');W.cfg.instanceTouched=true" onchange="cfgInstance()"></div>
+      ${wsl?.ok ? `<div><label>${t('ic.mem')} <span class="muted">(${t('ic.memHost', { gb: wsl.hostGB })})</span></label><div class="row" style="flex-wrap:nowrap"><input type="number" min="2" max="${wsl.hostGB}" value="${c.wslMemGB}" oninput="W.cfg.wslMemGB=+this.value"> GB
+        <label class="row" style="gap:4px"><input type="checkbox" ${c.wslRestart ? 'checked' : ''} onchange="W.cfg.wslRestart=this.checked"> ${t('ic.restart')}</label></div></div>`
+        : `<div class="muted" style="align-self:end">${t('ic.memVm')}</div>`}</div>
+    ${exists ? `<p class="twarn">${t('ic.exists', { name: esc(c.instance) })}</p>` : ''}
+    <div class="grid2" style="margin-top:8px">${PORT_FIELDS.map(([k, l]) => `<div><label>${esc(l)} <span class="muted">(${STD[k]})</span></label>
+      <input type="number" min="1" max="65535" value="${c[k]}" oninput="W.cfg['${k}']=+this.value" onchange="cfgPorts()"></div>`).join('')}</div>
+    <div id="ic-ports" style="margin-top:8px"></div>`;
+  cfgPorts();
+}
+async function cfgPorts() {
+  const c = W.cfg, el = $('ic-ports'); if (!el) return;
+  el.innerHTML = `<span class="muted">${t('s.checking')}</span>`;
+  const r = await api('/ports/check', { instance: c.instance, ports: Object.fromEntries(PORT_FIELDS.map(([k]) => [k, c[k]])) });
+  if (!r.ok) { el.innerHTML = `<span class="tbad">${esc(r.error)}</span>`; return; }
+  if (!r.conflicts.length && !r.duplicates.length) { el.innerHTML = `<span class="tok">✓ ${t('ic.portsFree')}</span>`; return; }
+  el.innerHTML = `<p class="twarn"><b>${t('ic.conflict')}</b></p><ul>${r.conflicts.map(x => `<li>${x.port} (${esc(x.key.replace('PORT_', ''))}) — ${esc(x.by)}</li>`).join('')}${r.duplicates.map(k => `<li>${esc(k)}: ${t('ic.dup')}</li>`).join('')}</ul>
+    ${r.suggestion ? `<div class="row"><span>${t('ic.suggest')}: ${Object.values(r.suggestion).join(' / ')}</span><button class="btn small primary" onclick='cfgUsePorts(${JSON.stringify(r.suggestion)})'>${t('ic.useOther')}</button></div>` : ''}
+    <p class="muted">${t('ic.keep')}</p>`;
+}
+function cfgUsePorts(s) { Object.assign(W.cfg, s); cfgInstance(); }
 
 // ── 7 Install ────────────────────────────────────────────────────────────────
 function install() {
   const c = W.cfg;
   $('page').innerHTML = `<h2>${t('n.title')}</h2><p class="lead">${t('n.lead')}</p><div class="explain">${t('n.explain')}</div>
-  <div class="card"><div class="row"><b>ELO ${esc(c.ELO_TAG)}</b> · ${t('n.repo')} <b>${esc(c.REPO)}</b> · ${t('n.services')}: core${c.as ? ', as' : ''}${c.flows ? ', flows' : ''}${c.pgadmin ? ', pgAdmin' : ''}
+  <div class="card"><div class="row"><b>ELO ${esc(c.ELO_TAG)}</b> → <b>${esc(c.instance || 'elo')}</b> (${c.PORT_SERVER}/${c.PORT_AS}/${c.PORT_FLOWS}/${c.PORT_SEARCH}/${c.PORT_PGADMIN}) · ${t('n.repo')} <b>${esc(c.REPO)}</b> · ${t('n.services')}: core${c.as ? ', as' : ''}${c.flows ? ', flows' : ''}${c.pgadmin ? ', pgAdmin' : ''}
     <button class="btn primary right" id="go" onclick="runInstall()">${t('n.now')}</button></div></div>
   <div class="card" id="inst" hidden><div class="progress"><div id="pbar"></div></div>
     <div class="grid2" style="margin-top:12px"><div class="steplist" id="slist"></div><div id="live" class="muted"></div></div>
@@ -433,6 +479,9 @@ async function runInstall() {
   const c = W.cfg, body = Object.fromEntries(Object.entries(c).filter(([k]) => /^[A-Z_]+$/.test(k)));
   body.COMPOSE_PROFILES = [c.as && 'as', c.flows && 'flows', c.pgadmin && 'pgadmin'].filter(Boolean).join(',') || 'none';
   body.ELO_DISPLAY_NAME = c.ELO_DISPLAY_NAME || c.REPO; body.fresh = c.fresh;
+  body.instance = c.instance || 'elo'; body.wslMemGB = W.isWindows && ['wsl', 'desktop'].includes(W.target) ? c.wslMemGB : null; body.wslRestart = c.wslRestart;
+  // The IX URL follows the instance's server port unless the user typed one.
+  if (!body.IX_URL_PUBLIC && c.PORT_SERVER !== 9090) body.IX_URL_PUBLIC = `http://localhost:${c.PORT_SERVER}/${c.REPO}/ix`;
   $('go').disabled = true; $('inst').hidden = false;
   const j = await api('/install', body); if (!j.id) { $('ilog').textContent = j.error; $('go').disabled = false; return; }
   const steps = []; let pct = 3;
@@ -442,10 +491,16 @@ async function runInstall() {
     if (line.startsWith('__CHECK__ ')) { $('live').innerHTML = Object.entries(JSON.parse(line.slice(10))).map(([a, b]) => `${a}: <b>${esc(b)}</b>`).join(' · '); return; }
     if (line.startsWith('__EXIT__:')) return;
     $('ilog').textContent += line + '\n'; $('ilog').scrollTop = 1e9;
-  }, ok => {
+  }, async ok => {
     $('pbar').style.width = '100%'; $('slist').innerHTML = steps.map(s => `<div class="done">${esc(s)}</div>`).join('');
     $('live').innerHTML += ok ? `<p class="tok">${t('n.done')}</p>` : `<p class="tbad">${t('n.failed')}</p>`;
-    if (ok) { W.done.add(6); setNav(true); CACHE.status = null; } $('go').disabled = false;
+    // Always show how the run went (also kept for later in Administration → last run): result, problems (memory, ports…).
+    const lr = await api('/lastrun?instance=' + encodeURIComponent(body.instance)), s = lr.summary;
+    const problems = (lr.log || '').split('\n').filter(l => /^PROBLEM|^ERROR|failed:/.test(l));
+    $('live').innerHTML += `<div class="card" style="margin-top:10px"><b>${t('lr.title', { inst: esc(body.instance) })}</b>
+      <span class="${s?.result === 'ok' ? 'tok' : 'tbad'}">${s?.result === 'ok' ? t('lr.ok') : s?.result === 'problems' ? t('lr.problems', { n: s.problems }) : t('lr.failed')}</span>
+      ${problems.length ? `<ul>${problems.map(p => `<li>${esc(p)}</li>`).join('')}</ul><p class="muted">${t('lr.hint')}</p>` : ''}</div>`;
+    if (ok) { W.done.add(6); setNav(true); CACHE.status = null; CACHE.inst = null; } $('go').disabled = false;
   });
 }
 
@@ -584,22 +639,31 @@ async function renderInstallations(reload) {
           <td><span class="dot ${/^Up/.test(s.status) ? (/unhealthy/.test(s.status) ? 'warn' : 'ok') : 'idle'}"></span> ${esc(s.status)}</td><td class="muted">${esc(s.ports || '—')}</td></tr>`).join('')}</table>` : '';
       const ports = i.state === 'running' && i.ports?.length ? `<b>${t('inst.ports')}</b><div class="row" style="gap:6px;margin-top:4px">${i.ports.map(p =>
           `<span class="pill">${p.hostPort && p.hostPort !== p.port ? `${p.hostPort}→` : ''}${p.port} · ${esc(p.label)}</span>`).join('')}</div>` : '';
-      const more = svc || ports, vm = ['hyperv', 'vbox'].includes(i.type) && i.state !== 'unreachable';
-      return `<tr><td>${more ? `<button class="info" style="margin-right:6px" onclick="const r=$('inst-more-${n}'); r.hidden=!r.hidden; this.textContent=r.hidden?'▸':'▾'">▸</button>` : ''}<b>${esc(i.name)}</b>${i.active ? ` <span class="tok">· ${t('inst.active')}</span>` : ''}</td><td>${esc(i.typeLabel)}</td>
+      // Where it lives on disk (always shown, also when stopped): folders open in the file manager; others are shown as text.
+      const loc = i.locations?.length ? `<b>${t('inst.where')}</b><table style="margin:4px 0 8px">${i.locations.map((l, k) => `<tr><td class="muted">${esc(l.label)}</td>
+          <td>${l.openable ? `<a href="#" onclick="instOpen('${esc(i.id)}',${k});return false" title="${esc(t('inst.openFolder'))}">📁 ${esc(l.path)}</a>` : `<code>${esc(l.path)}</code>`}</td></tr>`).join('')}</table>` : '';
+      const more = svc || ports || loc, vm = ['hyperv', 'vbox'].includes(i.type) && i.state !== 'unreachable';
+      return `<tr><td>${more ? `<button class="info" style="margin-right:6px" onclick="const r=$('inst-more-${n}'); r.hidden=!r.hidden; this.textContent=r.hidden?'▸':'▾'">▸</button>` : ''}<b>${esc(i.name)}</b>${i.current ? ` <span class="tok">· ${t('inst.current')}</span>` : i.active ? ` <span class="tok">· ${t('inst.active')}</span>` : ''}
+        ${i.instance && !i.current ? `<a href="#" class="muted" onclick="instUse('${esc(i.instance)}');return false">${t('inst.use')}</a>` : ''}</td><td>${esc(i.typeLabel)}</td>
       <td><span class="dot ${dot(i.state)}"></span> ${esc(t('st.' + i.state) === 'st.' + i.state ? i.state : t('st.' + i.state))}</td>
       <td class="muted">${esc([i.detail, i.disk ? `${gb(i.disk)} ${t('inst.disk')}${i.diskNote ? ` (${i.diskNote})` : ''}` : ''].filter(Boolean).join(' · '))}</td>
       <td style="white-space:nowrap">${i.state === 'running' ? `<button class="btn small" onclick="instViewer('${esc(i.id)}')">${t('inst.viewer')}</button>
           ${vm ? `<button class="btn small" title="${esc(t('inst.saveHint'))}" onclick="instAction('${esc(i.id)}','save')">${t('inst.save')}</button>` : ''}
           <button class="btn small" onclick="instAction('${esc(i.id)}','stop')">${t('m.stop')}</button>`
         : ['stopped', 'saved', 'paused'].includes(i.state) ? `<button class="btn small primary" onclick="instAction('${esc(i.id)}','start')">${i.state === 'stopped' ? t('m.start') : t('inst.resume')}</button>` : ''}
-        ${vm && i.ramGB ? `<button class="btn small" title="${esc(t('inst.ramHint'))}" onclick="vmMem(${n})">RAM…</button>` : ''}</td></tr>
+        ${vm && i.ramGB ? `<button class="btn small" title="${esc(t('inst.ramHint'))}" onclick="vmMem(${n})">RAM…</button>` : ''}
+        ${i.instance ? `<button class="btn small" onclick="lastRun('${esc(i.instance)}')">${t('inst.lastRun')}</button>` : ''}
+        ${i.deletable ? `<button class="btn small danger" title="${esc(t('inst.deleteHint'))}" onclick="instDelete(${n})">${t('inst.delete')}</button>` : ''}</td></tr>
       <tr id="inst-mem-${n}" hidden><td colspan="5" style="padding-left:34px"></td></tr>
-      ${more ? `<tr id="inst-more-${n}" hidden><td colspan="5" style="padding-left:34px">${svc}${ports}</td></tr>` : ''}`; }).join('')}
+      <tr id="inst-del-${n}" hidden><td colspan="5" style="padding-left:34px"></td></tr>
+      ${more ? `<tr id="inst-more-${n}" hidden><td colspan="5" style="padding-left:34px">${svc}${ports}${loc}</td></tr>` : ''}`; }).join('')}
     </table></div>` : `<p class="muted">${t('inst.none')}</p>`}
+    <div id="adm-last" style="margin-top:10px"></div>
     <label class="row" style="gap:8px;margin-top:8px"><input type="checkbox" ${viewerOnStart() ? 'checked' : ''} onchange="localStorage.setItem('elo-viewer', this.checked ? '1' : '0')">
       <span class="muted">${t('inst.viewerOnStart')}</span></label>
     <pre class="log" id="inst-out" hidden style="margin-top:8px"></pre>`;
   renderWsl();
+  lastRun(r.installations.find(i => i.current)?.instance);
 }
 const viewerOnStart = () => localStorage.getItem('elo-viewer') !== '0';
 const viewerResult = r => { if (r.url) window.open(r.url, '_blank'); return r.url || r.opened ? `\n${t('inst.viewerOpened')}: ${r.url || r.opened}` : ''; };
@@ -607,7 +671,50 @@ async function instAction(id, action) {
   const o = $('inst-out'); o.hidden = false; o.textContent = t('m.working');
   const r = await api('/installations/action', { id, action, viewer: action === 'start' && viewerOnStart() });
   o.textContent = r.ok ? (r.out || 'OK') + viewerResult(r) : r.error;
+  if (!r.ok && r.portConflict?.suggestion) {   // another stack uses these ports: offer a free set
+    const s = r.portConflict.suggestion, inst = /^(?:local|ssh):(.+)$/.exec(id)?.[1];
+    o.insertAdjacentHTML('afterend', `<div class="card" id="inst-pc"><span class="twarn">${t('inst.portConflict')}</span> <span class="muted">${esc(r.error)}</span>
+      <div class="row" style="margin-top:8px"><span>${Object.entries(s).map(([k, v]) => `${k.replace('PORT_', '')} ${v}`).join(' · ')}</span>
+      <button class="btn small primary" onclick="instOtherPorts('${esc(id)}','${esc(inst)}',${esc(JSON.stringify(s))})">${t('inst.useOtherPorts')}</button></div></div>`);
+  }
   CACHE.status = null; await renderInstallations(true);
+  if (r.lastRun) lastRun(r.instance, true);
+}
+async function instOtherPorts(id, inst, ports) {
+  $('inst-pc')?.remove();
+  const r = await api('/instances/ports', { name: inst, ports });
+  if (!r.ok) { $('inst-out').textContent = r.error; return; }
+  instAction(id, 'start');
+}
+async function instUse(name) { await api('/instances/current', { name }); CACHE.status = null; await renderInstallations(true); }
+async function instOpen(id, k) { const r = await api('/installations/open', { id, index: k }), o = $('inst-out'); o.hidden = false; o.textContent = r.ok ? `${t('m.opening')} ${r.path}` : r.error; }
+// Delete an installation (frees disk space): confirmation row naming what will be removed.
+function instDelete(n) {
+  const i = CACHE.inst.installations[n], row = $('inst-del-' + n), cell = row.querySelector('td');
+  if (!row.hidden) { row.hidden = true; return; }
+  row.hidden = false;
+  cell.innerHTML = `<div class="row" style="gap:10px"><span class="twarn">${t(i.instance ? 'inst.deleteInst' : 'inst.deleteVm', { what: i.deleteWhat || '', name: esc(i.name), size: i.disk ? gb(i.disk) : '?' })}</span>
+    ${i.instance ? `<label class="row" style="gap:6px"><input type="checkbox" id="del-img-${n}"> ${t('inst.deleteImages')}</label>` : ''}
+    <button class="btn small danger" onclick="instDeleteGo(${n})">${t('inst.deleteGo')}</button><button class="btn small" onclick="$('inst-del-${n}').hidden=true">${t('m.cancel')}</button>
+    <span class="muted" id="del-msg-${n}"></span></div>`;
+}
+async function instDeleteGo(n) {
+  const i = CACHE.inst.installations[n]; $('del-msg-' + n).textContent = t('m.working');
+  const r = await api('/installations/delete', { id: i.id, images: !!$('del-img-' + n)?.checked });
+  const o = $('inst-out'); o.hidden = false; o.textContent = r.ok ? r.out : r.error;
+  CACHE.status = null; CACHE.hostmem = null; await renderInstallations(true);
+}
+// Result of the last run (install or start) of an instance: success / problems, with the kept log (collapsed).
+async function lastRun(inst, open) {
+  const el = $('adm-last'); if (!el || !inst) { if (el) el.innerHTML = ''; return; }
+  const r = await api('/lastrun?instance=' + encodeURIComponent(inst));
+  if (!r.ok || !r.found) { el.innerHTML = `<div class="muted">${t('lr.none', { inst: esc(inst) })}</div>`; return; }
+  const s = r.summary, res = s?.result, cls = res === 'ok' ? 'ok' : res ? 'bad' : 'warn';
+  el.innerHTML = `<div class="card"><div class="row"><b>${t('lr.title', { inst: esc(inst) })}</b><span class="dot ${cls}"></span>
+    <b class="${res === 'ok' ? 'tok' : 'tbad'}">${res === 'ok' ? t('lr.ok') : res === 'problems' ? t('lr.problems', { n: s.problems }) : res ? t('lr.failed') : t('lr.unknown')}</b>
+    <span class="muted">${esc(s?.finished || '')}${s?.tag ? ' · ' + esc(s.tag) : ''}</span></div>
+    <details ${open || res !== 'ok' ? 'open' : ''}><summary class="muted">${t('lr.log')}</summary><pre class="log" style="max-height:340px">${esc(r.log)}</pre></details>
+    ${res && res !== 'ok' ? `<p class="muted">${t('lr.hint')}</p>` : ''}</div>`;
 }
 // Memory of a Hyper-V / VirtualBox VM (only while it is off; a saved VM has to be started and shut down first).
 function vmMem(n) {
@@ -760,7 +867,9 @@ async function renderHelp() {
   $('help-page').innerHTML = `<h2>${t('h.title')}</h2><p class="lead">${t('h.lead')}</p>
   <div class="card"><b>${t('h.files')}</b> <span class="muted">${t('h.filesNote')}</span>
     <table>${(d.local || []).map(f => `<tr><td><a target="_blank" href="${esc(f.url)}">${esc(f.name)}</a></td><td class="muted">${esc(f.where)}</td></tr>`).join('') || `<tr><td class="muted">${t('m.none')}</td></tr>`}</table></div>
-  <div class="card"><b>${t('cli.title')}</b>${t('cli.steps')}</div>
+  <div class="card"><b>${t('cli.title')}</b>${t('cli.steps')}
+        <p style="margin-top:8px"><b>${t('cli.pdf')}</b> <a href="/help/docs/en-us_consultingops-opsletter_ubuntu.pdf" target="_blank" rel="noopener">📄 English (PDF)</a> ·
+          <a href="/help/docs/de-de_consultingops-opsletter_ubuntu.pdf" target="_blank" rel="noopener">📄 Deutsch (PDF)</a></p></div>
   <div class="card"><b>${t('h.online')}</b> <span class="muted">${t('h.onlineNote')}</span>
     <table>${(d.online || []).map(f => `<tr><td>${esc(f.name)}</td><td><a target="_blank" href="${esc(f.url)}">${esc(f.url)}</a></td></tr>`).join('')}</table></div>
   <div class="card"><b>${t('h.how')}</b><ul>${[1, 2, 3, 4, 5].map(n => `<li>${t('h.how' + n)}</li>`).join('')}</ul></div>`;

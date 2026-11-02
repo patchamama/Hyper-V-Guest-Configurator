@@ -12,3 +12,7 @@ seat/elo/backup/
 seat/elo/inventory.json
 # ELO partner documentation (proprietary)
 docs/
+
+# several ELO instances: their env files and last-run logs
+seat/elo/instances/
+seat/elo/last-run-*.log
